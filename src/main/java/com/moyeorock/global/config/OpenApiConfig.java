@@ -18,13 +18,13 @@ public class OpenApiConfig {
     public OpenAPI finSightOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("FinSight API")
+                        .title("모여락 API")
                         .description(
-                                "소상공인 매장 운영 데이터 분석 및 운영 안정성 지표 제공 서비스 API"
+                                "밴드 통합 관리 플랫폼"
                         )
                         .version("v1.0.0")
                         .contact(new Contact()
-                                .name("FinSight")))
+                                .name("moyeorock")))
                 .components(new Components()
                         .addSecuritySchemes(SECURITY_SCHEME_NAME,
                                 new SecurityScheme()
