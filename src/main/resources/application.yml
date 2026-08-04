@@ -23,6 +23,15 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+
 server:
   port: 8080
   servlet:
