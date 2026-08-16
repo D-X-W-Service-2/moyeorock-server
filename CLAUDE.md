@@ -1,0 +1,64 @@
+# moyeorock
+
+밴드 합주·공연 팀 매칭 플랫폼. Spring Boot 백엔드.
+
+## 스택
+
+- Java 17 · Spring Boot 4.1.0 · Gradle
+- MySQL 8.0 · Spring Data JPA
+- Spring Security (JWT) · springdoc-openapi 2.7.0
+- Lombok
+
+```bash
+./gradlew build      # 빌드
+./gradlew test       # 테스트
+./gradlew bootRun    # 실행
+```
+
+> **`spring-boot-starter-validation` 추가 필요.** 없으면 `@Valid` `@NotBlank` `@Size`가 컴파일되지 않고, `GlobalExceptionHandler`의 `MethodArgumentNotValidException` 처리도 실행되지 않는다.
+> ```gradle
+> implementation 'org.springframework.boot:spring-boot-starter-validation'
+> ```
+
+## 구조
+
+`com.moyeorock` 아래 2층. `global/`(공통 인프라) + `domain/`(기능 단위).
+
+기능 하나가 디렉토리 하나다. 도메인 디렉토리 안에 `controller` `service` `repository` `entity` `dto`를 둔다.
+
+```
+domain/team/
+├── controller/TeamController.java
+├── service/TeamService.java
+├── repository/TeamRepository.java
+├── entity/Team.java
+└── dto/
+    ├── request/TeamCreateRequest.java
+    └── response/TeamDetailResponse.java
+```
+
+## 절대 규칙
+
+1. **엔티티는 도메인 밖으로 나가지 않는다.** 컨트롤러 반환값과 도메인 간 전달은 항상 DTO.
+2. **다른 도메인은 Service를 통해서만 호출한다.** 남의 Repository·Entity 직접 접근 금지.
+3. **계층·추상화를 임의로 추가하지 않는다.** Facade·Manager·Helper·`ServiceImpl` 금지. 필요하다고 판단되면 만들지 말고 물어볼 것.
+4. **공용 enum은 `global/common/enums`에만 정의한다.** 도메인에서 같은 이름으로 새로 만들지 않는다.
+5. **스키마를 임의로 변경하지 않는다.** `docs/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것.
+
+## 작업 전 읽을 문서
+
+| 작업 | 읽을 것 |
+|---|---|
+| 새 도메인·엔드포인트 추가 | `docs/architecture.md` `docs/domains.md` `docs/api-conventions.md` |
+| 엔티티 작성·수정 | `docs/erd.md` 해당 테이블 |
+| DTO 작성 | `docs/dto-naming.md` 해당 도메인 절 |
+| 엔드포인트 구현 | `docs/api-spec-part1.md` 또는 `part2.md` 해당 절 |
+| 기존 코드 수정·버그 | `docs/conventions.md` |
+
+명세 문서는 길다. **작업과 무관한 절은 읽지 말 것.** 도메인별 위치는 `docs/domains.md` 표에 있다.
+
+## 작업 방식
+
+- 코드를 쓰기 전에 계획을 먼저 제시하고 승인을 받는다.
+- 명세에 없는 엔드포인트·필드를 임의로 만들지 않는다. 필요해 보이면 제안만 한다.
+- 명세와 ERD가 어긋나면 그대로 진행하지 말고 알린다.
