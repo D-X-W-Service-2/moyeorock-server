@@ -4,22 +4,26 @@
 
 ## 전체
 
-| 도메인 | 담당 | 소유 테이블 | 개수 | 명세 |
-|---|---|---|---|---|
-| `auth` | 1팀 | (없음 · `users` 읽기) | 3 | part2 §5 |
-| `user` | 1팀 | `users` `user_instruments` | 9 | part1 §1 |
-| `team` | 2팀 | `teams` `team_genres` `team_members` | 9 | part1 §2 |
-| `rehearsal` | 2팀 | `rehearsals` | 6 | part1 §3 |
-| `recruit` | 3팀 | `recruit_posts` | 5 | part1 §4 |
-| `join` | 3팀 | `join_requests` | 12 | part1 §5·§6 |
-| `notification` | 3팀 | `notifications` | 2 | part2 §4 |
-| `bookmark` | 3팀 | `bookmarks` | 3 | part2 §4 |
-| `group` | 4팀 | `groups` `group_members` | 6 | part2 §1 |
-| `notice` | 4팀 | `group_notices` | 4 | part2 §1 |
-| `performance` | 4팀 | `performances` | 7 | part2 §2 |
-| `song` | 4팀 | `songs` | 2 | part2 §3 |
-| `setlist` | 4팀 | `team_songs` | 2 | part2 §3 |
-| `dashboard` | 3팀 | (없음) | 1 | part2 §4 |
+| 도메인 | 담당 | 소유 테이블 | 개수 |
+|---|---|---|---|
+| `auth` | 1팀 | (없음 · `users` 읽기) | 3 |
+| `user` | 1팀 | `users` `user_instruments` | 9 |
+| `team` | 2팀 | `teams` `team_genres` `team_members` | 9 |
+| `rehearsal` | 2팀 | `rehearsals` | 6 |
+| `recruit` | 3팀 | `recruit_posts` | 5 |
+| `join` | 3팀 | `join_requests` | 12 |
+| `notification` | 3팀 | `notifications` | 2 |
+| `bookmark` | 3팀 | `bookmarks` | 3 |
+| `group` | 4팀 | `groups` `group_members` | 6 |
+| `notice` | 4팀 | `group_notices` | 4 |
+| `performance` | 4팀 | `performances` | 7 |
+| `song` | 4팀 | `songs` | 2 |
+| `setlist` | 4팀 | `team_songs` | 2 |
+| `dashboard` | 3팀 | (없음) | 1 |
+
+> **엔드포인트 상세 명세(요청·응답 구조·에러 코드)는 이 저장소에 없다.** 작업 지시와 함께 전달된다.
+> 주어지지 않았으면 **임의로 만들지 말고 요청할 것.** 응답 필드나 에러 코드를 추측해서 채우지 않는다.
+> DTO 이름은 `docs/dto-naming.md`, 컬럼은 `docs/erd.md`에 있다.
 
 `global/file`은 도메인이 아니고 엔드포인트 1개를 갖는다. **3팀 담당.**
 
