@@ -15,10 +15,7 @@
 ./gradlew bootRun    # 실행
 ```
 
-> **`spring-boot-starter-validation` 추가 필요.** 없으면 `@Valid` `@NotBlank` `@Size`가 컴파일되지 않고, `GlobalExceptionHandler`의 `MethodArgumentNotValidException` 처리도 실행되지 않는다.
-> ```gradle
-> implementation 'org.springframework.boot:spring-boot-starter-validation'
-> ```
+필드 제약은 `spring-boot-starter-validation`으로 구현한다(`@Valid` `@NotBlank` `@Size`).
 
 ## 구조
 

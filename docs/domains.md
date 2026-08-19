@@ -25,7 +25,7 @@
 > 주어지지 않았으면 **임의로 만들지 말고 요청할 것.** 응답 필드나 에러 코드를 추측해서 채우지 않는다.
 > DTO 이름은 `docs/dto-naming.md`, 컬럼은 `docs/erd.md`에 있다.
 
-`global/file`은 도메인이 아니고 엔드포인트 1개를 갖는다. **3팀 담당.**
+`global/file`은 도메인이 아니고 엔드포인트 1개를 갖는다. **1팀 담당** — Security와 같은 인프라 성격이고, 1팀(프로필)·4팀(커버·포스터)이 함께 쓴다.
 
 ## 헷갈리는 경계
 
@@ -37,7 +37,9 @@
 
 **`notice`는 `group`과 분리한다.** 테이블이 `group_notices`이고 엔티티는 `GroupNotice`. `Post`라는 이름을 쓰지 않는다. 경로는 생성·목록만 `/v0/groups/{id}/notices`이고 수정·삭제는 `/v0/notices/{id}`다.
 
-**`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v0/teams/{id}/setlist`와 `PUT /v0/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`가 `team_songs`를 직접 건드리지 않는다.
+**`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v0/teams/{id}/setlist`와 `PUT /v0/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다.
+
+한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistUpdateRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
 
 **`user/me` 경로는 user 도메인이 아니다.** `/v0/users/me/rehearsals`는 `rehearsal`, `/v0/users/me/join-requests`는 `join`, `/v0/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
 
@@ -68,12 +70,11 @@
 
 | 팀 | 도메인 | 엔드포인트 |
 |---|---|---|
-| **1팀** | `auth` `user` | 12 |
+| **1팀** | `auth` `user` `file` | 13 |
 | **2팀** | `team` `rehearsal` | 15 |
-| **3팀** | `recruit` `join` `notification` `bookmark` `file` `dashboard` | 24 |
+| **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
 | **4팀** | `group` `notice` `performance` `song` `setlist` | 21 |
 
-`file`은 1팀(프로필)·4팀(커버·포스터)이 쓰므로 **3팀이 먼저 만들어 공유해야 한다.**
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
 ## 팀 간 의존
@@ -84,6 +85,7 @@
 |---|---|---|
 | `global/common` `enums` `exception` | **1팀 → 전원** | 나머지 셋이 이것 없이는 시작 못 한다. **최우선** |
 | Security · `@AuthUser` | **1팀 → 전원** | 주입 타입(`Long userId`)을 먼저 확정 |
+| `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가. 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v0/performances/{id}/teams`가 팀을 만든다 |
 | 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체 |
@@ -100,9 +102,9 @@
 
 1. 1팀 — `global/common/dto` `enums` `exception`
 2. 1팀 — Security · JWT · `@AuthUser`
-3. 3팀 — `file` (1팀 프로필 이미지, 4팀 포스터가 기다린다)
+3. 1팀 — `file` (4팀 포스터·커버가 기다린다)
 4. 2팀 — `TeamService` 시그니처 확정 후 공유
 5. 2·3·4팀 병렬
-5. 3팀 — `dashboard` (다른 도메인이 끝난 뒤)
+6. 3팀 — `dashboard` (다른 도메인이 끝난 뒤)
 
 3팀은 `recruit`(5개)부터 시작하는 게 좋다. 다른 도메인 의존이 없어 1·2팀을 기다리지 않아도 되는 유일한 묶음이다.

@@ -27,17 +27,17 @@
 
 ```java
 public record TeamCreateRequest(
-    @NotBlank @Size(max = 50) String name,
-    @Size(max = 1000) String description,
-    Region region,
-    @Size(max = 5) List<Genre> genres,
-    @NotNull Instrument instrument
+        @NotBlank @Size(max = 50) String name,
+        @Size(max = 1000) String description,
+        Region region,
+        @Size(max = 5) List<Genre> genres,
+        @NotNull Instrument instrument
 ) {}
 
 public record UserActivityResponse(
-    List<TeamActivity> teams,
-    List<GroupActivity> groups,
-    List<PerformanceActivity> performances
+        List<TeamActivity> teams,
+        List<GroupActivity> groups,
+        List<PerformanceActivity> performances
 ) {
     public record TeamActivity(TeamSummaryResponse team, TeamRole role, Instrument instrument) {}
     public record GroupActivity(Long id, String name, GroupType type, GroupRole role, String coverImage) {}
@@ -290,7 +290,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 
 ---
 
-## 9. performance (7)
+## 9. performance (6 + 셋리스트 1)
 
 패키지 `domain/performance`
 
@@ -302,7 +302,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 공연 정보 수정 | PUT | `/v0/performances/{id}` | `PerformanceUpdateRequest` | `PerformanceDetailResponse` |
 | 공연 상태 변경 | PATCH | `/v0/performances/{id}/status` | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` |
 | 공연 내 팀 생성 | POST | `/v0/performances/{performanceId}/teams` | `PerformanceTeamCreateRequest` | `TeamDetailResponse` |
-| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `PerformanceSetlistUpdateRequest` | `PerformanceSetlistResponse` |
+| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` | ← `setlist` 소유 |
 
 **보조 DTO**
 
@@ -310,8 +310,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 |---|---|
 | `PerformanceSummaryResponse` | `TeamDetailResponse`·`GroupDetailResponse`·`UserActivityResponse`에서 재사용 |
 | `PerformanceStatusResponse` | `(Long id, PerformanceStatus status)` |
-| `PerformanceSetlistUpdateRequest` | `(List<SetlistItem> items)`, 중첩 `SetlistItem(Long teamId, Long songId, int sortOrder)` |
-| `PerformanceSetlistResponse` | `(Long performanceId, List<TeamSongResponse> setlist)` |
+| — | 셋리스트 DTO는 `domain/setlist`에 둔다. §10 참고 |
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 
@@ -319,7 +318,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 
 ---
 
-## 10. song · setlist (4)
+## 10. song · setlist (4 + performance에서 1)
 
 패키지 `domain/song`, 셋리스트는 `domain/setlist`
 
@@ -329,6 +328,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 내 취향 추천곡 | GET | `/v0/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 셋리스트 추천 (AI) | GET | `/v0/teams/{id}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
 | 팀 셋리스트 저장 | PUT | `/v0/teams/{id}/setlist` | `TeamSetlistUpdateRequest` | `TeamSetlistResponse` |
+| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
 
 **보조 DTO**
 
@@ -337,7 +337,9 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, Map<Instrument, Level> difficulty)` |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 셋리스트 항목용 축약형 |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song, int sortOrder, SongProgress progress)` — team·performance 양쪽에서 재사용 |
-| `TeamSetlistUpdateRequest` | `(List<SetlistItem> items)`, 중첩 `SetlistItem(Long songId, int sortOrder, SongProgress progress)` |
+| `TeamSetlistUpdateRequest` | `(List<Item> items)`, 중첩 `Item(Long songId, int sortOrder, SongProgress progress)` |
+| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 공연 확정용 |
+| `SetlistResponse` | `(Long performanceId, List<TeamSongResponse> setlist)` |
 | `SongRecommendationResponse` · `TeamSongRecommendationResponse` | 추천 근거(`reasons`) 포함 여부가 달라 분리 |
 
 `difficulty`를 `Map<Instrument, Level>`로 받는 건 `songs.difficulty` JSON 컬럼 구조를 그대로 반영한 것이다.
@@ -362,15 +364,19 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 
 | 클래스 | 설명 |
 |---|---|
-| `NotificationsResponse` | `(int unreadCount, List<NotificationResponse> notifications)` — 배지 숫자를 위해 래퍼 필요 |
-| `NotificationResponse` | `(Long id, NotificationType type, String message, TargetType targetType, Long targetId, boolean isRead, LocalDateTime createdAt)` |
+| `NotificationsResponse` | `(int unreadCount, PageResponse<NotificationResponse> notifications)` — 배지 숫자 때문에 래퍼가 필요하지만, 알림은 상한이 없으므로 목록 자체는 페이징한다 |
+| `NotificationResponse` | `(Long id, NotificationType type, String message, NotificationTargetType targetType, Long targetId, boolean isRead, LocalDateTime createdAt)` |
 | `NotificationReadRequest` | `(List<Long> ids)` — 빈 배열이면 전체 읽음 |
 | `NotificationReadResponse` | `(int readCount, int unreadCount)` |
 | `BookmarkCreateRequest` | `(BookmarkTargetType targetType, Long targetId)` |
+| `BookmarkResponse` | `(Long id, BookmarkTargetType targetType, Long targetId, BookmarkTarget target, LocalDateTime createdAt)` |
+| `BookmarkTarget` | `(Long id, String name, Region region, List<Genre> genres, String imageUrl)` — 중첩 record |
 | `PresignedUrlCreateRequest` | `(FileDomain domain, String fileName, String contentType)` |
 | `PresignedUrlResponse` | `(String uploadUrl, String fileUrl, LocalDateTime expiresAt)` |
 
-`BookmarkTargetType`은 `TEAM|USER|SONG`이라 `TargetType`(`TEAM|GROUP`)과 값이 다르다. **이름이 비슷하니 별도 enum으로 두고 재사용하지 않는다.** 여기서 enum을 공유하면 잘못된 값이 통과한다.
+`BookmarkTargetType`(`TEAM|USER|SONG`) · `NotificationTargetType`(`TEAM|GROUP|PERFORMANCE|NOTICE|JOIN_REQUEST|INVITATION`)은 `TargetType`(`TEAM|GROUP`)과 값이 다르다. **이름이 비슷하니 각각 별도 enum으로 두고 재사용하지 않는다.** 공유하면 잘못된 값이 검증을 통과한다.
+
+`BookmarkTarget`은 팀·사용자·곡 세 타입을 한 형태로 담는다. 해당 없는 필드는 `null`이다(곡은 `region`이 없고, 사용자는 `genres`가 있다). **대상이 삭제·해체됐으면 `target` 전체가 `null`**이고 프론트가 "삭제된 항목"으로 표시한다 — 조회에서 제외하지 않는 이유는 사용자가 직접 지울 수 있어야 하기 때문이다.
 
 `DashboardResponse(List<RehearsalSummaryResponse> upcomingRehearsals, List<RecruitPostSummaryResponse> openRecruitPosts, List<SongSummaryResponse> recommendedSongs, int unreadNotificationCount)` — 4.1 화면 배치 순서와 필드 순서를 맞췄다. 다른 도메인의 응답 DTO 4종을 조합하므로, dashboard는 각 도메인 **Service만** 호출하고 Repository에 직접 접근하지 않는다.
 

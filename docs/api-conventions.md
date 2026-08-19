@@ -106,9 +106,11 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 
 | `PageResponse` | 배열이 든 객체 |
 |---|---|
-| 팀 목록, 공고, 신청·초대, 모임원, 공지, 북마크, 사용자 검색, 곡 검색, 공연 목록 | 팀원(밴드 편성), 합주(기간 제한), 세션, 알림 |
+| 팀 목록, 공고, 신청·초대, 모임원, 공지, 북마크, 사용자 검색, 곡 검색, 공연 목록, **알림** | 팀원(밴드 편성), 합주(기간 제한), 세션 |
 
 `size` 상한을 건다 (`spring.data.web.pageable.max-page-size`).
+
+알림은 삭제 기능이 없어 무한히 쌓이므로 페이징한다. 다만 배지 숫자(`unreadCount`)가 필요해 `NotificationsResponse` 안에 `PageResponse<NotificationResponse>`를 중첩한다.
 
 ## 5. URL
 

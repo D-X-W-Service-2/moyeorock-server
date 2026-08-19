@@ -108,3 +108,11 @@ performances.status = DONE
 대신 **팀을 참조하는 조회에는 `teams.status = 'ACTIVE'` 조건이 반드시 들어가야 한다.** 이 조건이 빠지면 해체된 팀이 목록·활동·대시보드에 남는다. 팀 조회는 `TeamRepository`의 정해진 메서드를 통해서만 한다.
 
 Hard delete는 3곳뿐이다 — 합주, 공지, 북마크.
+
+## 7. 알려진 한계 (v0)
+
+의도적으로 두는 것이다. 발견했다고 임의로 고치지 말 것.
+
+**신청·초대 중복은 사전 검증으로만 막는다.** 동시 요청이 정확히 겹치면 `PENDING` 신청이 두 건 생길 수 있다. DB 유니크 제약으로 막으려면 "`PENDING`일 때만 유일" 조건이 필요한데(신청→거절→재신청이 막히면 안 되므로) 생성 컬럼 트릭이 든다. 실사용에서는 프론트의 버튼 비활성화로 대부분 막히므로 v0에서는 넣지 않는다.
+
+**확정된 셋리스트 곡의 상태는 팀이 바꿀 수 없다.** `team_songs.selected_song_id`는 `progress = SELECTED`일 때만 값을 갖는 생성 컬럼이라, 팀이 `SELECTED` → `PRACTICING`으로 바꾸면 공연 내 곡 중복 방지가 풀린다. 따라서 `PUT /v0/teams/{id}/setlist`는 **`SELECTED` 곡의 제거와 상태 변경을 모두 거부한다**(`409 SETLIST_LOCKED`). 해제는 모임장이 `PUT /v0/performances/{id}/setlist`로만 한다.
