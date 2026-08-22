@@ -102,6 +102,8 @@ public class TeamService {
 
 같은 도메인 안에서는 제한 없다. 다른 도메인에서 import할 수 있는 것은 **Service와 응답 DTO뿐**이다. Entity·Repository·요청 DTO를 import하고 있으면 잘못된 것이다.
 
+단, 엔티티 필드의 `@ManyToOne` 연관관계로 다른 도메인 엔티티 타입을 참조하는 것은 예외다 (`docs/architecture.md` §3 참고).
+
 ## 7. 테스트
 
 - 위치는 `src/test/java` 아래 동일 패키지
