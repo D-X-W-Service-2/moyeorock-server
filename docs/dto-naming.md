@@ -47,11 +47,10 @@ public record UserActivityResponse(
 ```
 
 ### 패키지
-
 ```
-domain/{domain}/dto/request/    ← 요청
-domain/{domain}/dto/response/   ← 응답
-global/common/dto/              ← 봉투·페이지·공통 응답
+domain/{domain}/dto/request/ ← 요청
+domain/{domain}/dto/response/ ← 응답
+global/common/dto/ ← 봉투·페이지·공통 응답
 ```
 
 응답 DTO는 도메인 간 import를 허용한다. `TeamDetailResponse`가 `UserSummaryResponse`를 참조하는 건 정상이다. **엔티티는 절대 도메인을 넘기지 않는다.**
@@ -134,7 +133,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 팀 해체 | PATCH | `/v0/teams/{id}/status` | `TeamStatusUpdateRequest` | `TeamStatusResponse` |
 | 팀원 목록 | GET | `/v0/teams/{id}/members` | — | `TeamMembersResponse` |
 | 팀원 역할·세션 변경 | PATCH | `/v0/teams/{teamId}/members/{userId}` | `TeamMemberUpdateRequest` | `TeamMemberResponse` |
-| 팀원 내보내기·탈퇴 | DELETE | `/v0/teams/{teamId}/members/{userId}` | — | `TeamMemberRemoveResponse` |
+| 팀원 상태 변경(탈퇴·강퇴) | PATCH | `/v0/teams/{teamId}/members/{userId}/status` | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` |
 | 팀원 추천 (AI) | GET | `/v0/teams/{id}/members/recommendations` | — | `TeamMemberRecommendationResponse` |
 
 **보조 DTO**
@@ -144,7 +143,8 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | `TeamSummaryResponse` | 목록 항목. activity·join·invitation·recruit에서도 재사용 |
 | `TeamMemberResponse` | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` |
 | `TeamMembersResponse` | `(List<TeamMemberResponse> members)` |
-| `TeamMemberRemoveResponse` | `(Long teamId, Long userId, MemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `REMOVED` |
+| `TeamMemberStatusUpdateRequest` | `(MemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `REMOVED`(강퇴)만 허용 |
+| `TeamMemberStatusResponse` | `(Long teamId, Long userId, MemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `REMOVED` |
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
@@ -269,7 +269,7 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 모임 정보 수정 | PUT | `/v0/groups/{id}` | `GroupUpdateRequest` | `GroupDetailResponse` |
 | 모임원 목록 | GET | `/v0/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
 | 모임원 역할 변경 | PATCH | `/v0/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
-| 모임원 내보내기·탈퇴 | DELETE | `/v0/groups/{groupId}/members/{userId}` | — | `GroupMemberRemoveResponse` |
+| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v0/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
 | 공지 목록 | GET | `/v0/groups/{id}/notices` | — | `PageResponse<NoticeResponse>` |
 | 공지 작성 | POST | `/v0/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeResponse` |
 | 공지 수정 | PUT | `/v0/notices/{id}` | `NoticeUpdateRequest` | `NoticeResponse` |
@@ -280,8 +280,9 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 클래스 | 설명 |
 |---|---|
 | `GroupSummaryResponse` | `UserActivityResponse`에서 재사용 |
-| `GroupMemberResponse` | team과 동일 구조. 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
-| `GroupMemberRemoveResponse` | `(Long groupId, Long userId, MemberStatus status)` |
+| `GroupMemberResponse` | team과 동일 구조(`status`는 `GroupMemberStatus`) — 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
+| `GroupMemberStatusUpdateRequest` | `(GroupMemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `BANNED`(강퇴)만 허용 |
+| `GroupMemberStatusResponse` | `(Long groupId, Long userId, GroupMemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `BANNED` |
 | `NoticeResponse` | 목록에도 `body`를 담는다 — 상세 API를 따로 두지 않았기 때문 |
 
 모임원 역할 변경(모임장 위임)은 원래 표에 없어서 추가한 항목이다. 없으면 모임장이 영구히 탈퇴할 수 없다. `GroupMemberUpdateRequest(GroupRole role)`.
@@ -302,7 +303,9 @@ global/common/dto/              ← 봉투·페이지·공통 응답
 | 공연 정보 수정 | PUT | `/v0/performances/{id}` | `PerformanceUpdateRequest` | `PerformanceDetailResponse` |
 | 공연 상태 변경 | PATCH | `/v0/performances/{id}/status` | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` |
 | 공연 내 팀 생성 | POST | `/v0/performances/{performanceId}/teams` | `PerformanceTeamCreateRequest` | `TeamDetailResponse` |
-| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` | ← `setlist` 소유 |
+| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
+
+이 표의 마지막 행(공연 셋리스트 확정)은 `setlist` 도메인 소유다 — 아래 보조 DTO 설명 참고.
 
 **보조 DTO**
 

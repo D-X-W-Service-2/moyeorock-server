@@ -29,7 +29,6 @@
 ## 3. 예외 · ErrorCode
 
 도메인별 예외 클래스를 만들지 않는다. `BusinessException` 하나 + `ErrorCode` enum으로 처리한다.
-
 ```
 global/exception/
 ├── ErrorCode.java
@@ -120,7 +119,7 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 - 하위 리소스는 부모 경로 아래 (`/teams/{teamId}/rehearsals`), 단건 조회·수정·삭제는 단독 경로 (`/rehearsals/{id}`)
 - `me` 별칭 지원 — `?authorId=me`
 
-**소프트 삭제는 `DELETE`가 아니라 `PATCH .../status`다.** `DELETE`는 실제로 행이 사라지는 3곳(합주·공지·북마크)과 멤버 제거에만 쓴다.
+**소프트 삭제는 `DELETE`가 아니라 `PATCH .../status`다.** `DELETE`는 실제로 행이 사라지는 3곳(합주·공지·북마크)에만 쓴다. 팀원·모임원의 탈퇴·강퇴는 행이 사라지지 않고 `status`만 바뀌므로 `PATCH /{teamId 또는 groupId}/members/{userId}/status`를 쓴다.
 
 ## 6. DTO
 

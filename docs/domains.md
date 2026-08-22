@@ -39,7 +39,7 @@
 
 **`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v0/teams/{id}/setlist`와 `PUT /v0/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다.
 
-한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistUpdateRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
+한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistConfirmRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
 
 **`user/me` 경로는 user 도메인이 아니다.** `/v0/users/me/rehearsals`는 `rehearsal`, `/v0/users/me/join-requests`는 `join`, `/v0/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
 
