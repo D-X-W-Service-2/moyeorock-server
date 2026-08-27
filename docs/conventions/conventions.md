@@ -84,7 +84,7 @@ public class TeamService {
 - `JpaRepository<Team, Long>` 상속
 - 메서드 이름이 길어지면(조건 3개 초과) `@Query` 또는 QueryDSL. **QueryDSL은 아직 도입 안 함**
 - N+1이 예상되는 조회는 `@EntityGraph` 또는 `join fetch`
-- 팀 조회 메서드에는 `status = ACTIVE` 조건을 넣는다 (`docs/architecture.md` §6)
+- 팀 조회 메서드에는 `status = ACTIVE` 조건을 넣는다 (`docs/conventions/architecture.md` §6)
 
 ## 5. 네이밍
 
@@ -102,7 +102,7 @@ public class TeamService {
 
 같은 도메인 안에서는 제한 없다. 다른 도메인에서 import할 수 있는 것은 **Service와 응답 DTO뿐**이다. Entity·Repository·요청 DTO를 import하고 있으면 잘못된 것이다.
 
-단, 엔티티 필드의 `@ManyToOne` 연관관계로 다른 도메인 엔티티 타입을 참조하는 것은 예외다 (`docs/architecture.md` §3 참고).
+단, 엔티티 필드의 `@ManyToOne` 연관관계로 다른 도메인 엔티티 타입을 참조하는 것은 예외다 (`docs/conventions/architecture.md` §3 참고).
 
 ## 7. 테스트
 
@@ -126,7 +126,7 @@ void accept_fails_when_caller_is_inviter() {
 
 권한·상태 검증은 성공 경로만 테스트하면 통과해버린다. 특히 `join` 도메인의 "신청자가 자기 신청을 승인", "리더가 자기 초대를 수락"은 빠뜨리면 상대 동의 없이 팀원이 추가된다. 기대하는 `ErrorCode`까지 단언한다.
 
-`ErrorCode` 정의 방법은 `docs/api-conventions.md` §3.
+`ErrorCode` 정의 방법은 `docs/conventions/api-conventions.md` §3.
 
 ## 8. Git · PR
 

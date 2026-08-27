@@ -123,7 +123,7 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 
 ## 6. DTO
 
-명명 규칙 전체는 `docs/dto-naming.md`. 핵심만:
+명명 규칙 전체는 `docs/conventions/dto-naming.md`. 핵심만:
 
 1. `record`로 선언
 2. 생성·수정 요청은 항상 분리
