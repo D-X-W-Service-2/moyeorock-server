@@ -46,16 +46,16 @@ domain/team/
 
 | 작업 | 읽을 것 |
 |---|---|
-| 새 도메인·엔드포인트 추가 | `docs/conventions/architecture.md` `docs/conventions/domains.md` `docs/conventions/api-conventions.md` |
+| 새 도메인·엔드포인트 추가 | `docs/conventions/architecture.md` `docs/conventions/domains.md` `docs/conventions/api-conventions.md` `docs/specs/api-spec.md` |
 | 엔티티 작성·수정 | `docs/conventions/erd.md` 해당 테이블 |
-| DTO 작성 | `docs/conventions/dto-naming.md` 해당 도메인 절 |
+| DTO 작성 | `docs/conventions/dto-naming.md` 해당 도메인 절, `docs/specs/dto-spec.md` 필드 정의 |
 | 기존 코드 수정·버그 | `docs/conventions/conventions.md` |
 
-**엔드포인트 상세 명세(요청·응답 구조·에러 코드)는 이 저장소에 없다.** 작업 지시와 함께 전달된다. 주어지지 않았으면 임의로 만들지 말고 요청할 것.
+**엔드포인트 상세 명세(요청·응답 구조)는 `docs/specs/`에 있다** (`api-spec.md` 엔드포인트 지도 · `dto-spec.md` DTO 필드 정의). **정본은 노션 `API 명세서 v0`**이고 `docs/specs/`는 대조 날짜가 명시된 스냅샷이다 — 노션 변경 시 대조해서 갱신한다.
 
 ## 작업 방식
 
 - 코드를 쓰기 전에 계획을 먼저 제시하고 승인을 받는다.
-- 전달받은 명세에 없는 엔드포인트·필드를 임의로 만들지 않는다. 필요해 보이면 제안만 한다.
-- 명세를 받지 못했으면 추측하지 말고 요청한다.
+- 명세(`docs/specs/`)에 없는 엔드포인트·필드를 임의로 만들지 않는다. 필요해 보이면 제안만 한다.
+- 명세에 없거나 비어 있는 항목은 추측하지 말고 요청한다.
 - 명세와 `docs/conventions/erd.md`가 어긋나면 그대로 진행하지 말고 알린다.
