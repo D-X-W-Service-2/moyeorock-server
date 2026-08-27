@@ -1,13 +1,13 @@
 # DTO 명세 — API 명세서 v0 기준
 
 - **원본**: Notion `API 명세서 v0` DTO 하위 페이지
-- 절 구성은 `api-spec.md`와 동일 (§1~§11 — 두 파일에서만 쓰는 좌표다). 네이밍 규칙은 `docs/dto-naming.md` 참조.
+- 절 구성은 `api-spec.md`와 동일 (§1~§11 — 두 파일에서만 쓰는 좌표다). 네이밍 규칙은 `docs/conventions/dto-naming.md` 참조.
 - `PageResponse<T>` 페이지는 **item(T)의 형태만** 정의한다. 페이지 래퍼(content, page, size, totalElements 등)는 `global/common/dto/PageResponse` 공통 정의를 따른다.
 
 ## 공용 참조 객체 — 확정 (2026-08-27, 1팀)
 
-원본 JSON 예시가 문자열로만 참조하던 객체들. `docs/dto-naming.md`의 정식 이름으로 매핑하고 필드를 확정했다.
-패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투 5종만 둔다.
+원본 JSON 예시가 문자열로만 참조하던 객체들. `docs/conventions/dto-naming.md`의 정식 이름으로 매핑하고 필드를 확정했다.
+패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/conventions/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투 5종만 둔다.
 
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
@@ -17,17 +17,17 @@
 | `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
 
-`PageResponse<T>` 래퍼 필드도 `docs/dto-naming.md` §0에 이미 확정되어 있다: `{content, page, size, totalElements, totalPages, last}` + `PageResponse.from(Page<T>)` 변환. 이 파일 상단의 "래퍼는 공통 정의를 따른다" 문구가 가리키는 정의가 이것이다.
+`PageResponse<T>` 래퍼 필드도 `docs/conventions/dto-naming.md` §0에 이미 확정되어 있다: `{content, page, size, totalElements, totalPages, last}` + `PageResponse.from(Page<T>)` 변환. 이 파일 상단의 "래퍼는 공통 정의를 따른다" 문구가 가리키는 정의가 이것이다.
 
 ### 왜 지금(착수 전) 확정하는가
 
 DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3개는 **팀 경계를 넘는 의존의 시작점**이라 착수 전에 정하지 않으면 서로를 블로킹한다.
 
-1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 5종·enums 다음 3순위로 못 박힌 이유.
-2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v0/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v0/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
+1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 5종·enums 다음 3순위로 못 박힌 이유.
+2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v0/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v0/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/conventions/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
 3. **`PageResponse<T>` (1팀 소유, global/common)** — 모든 팀의 목록 API가 import하는 클래스. 확정이 늦으면 각 팀이 임시 포장을 만들었다가 갈아엎게 된다. 필드는 이미 dto-naming.md §0에 있으므로 구현만 선행하면 된다.
 
-나머지 요약 객체(`RehearsalSummaryResponse` 등)는 1팀이 의존하지 않으므로 소유 팀 착수 시점에 확정해도 늦지 않다 — 단, 재사용 상위 5개는 변경 시 공유 필수 규칙(`docs/dto-naming.md` §12)을 따른다.
+나머지 요약 객체(`RehearsalSummaryResponse` 등)는 1팀이 의존하지 않으므로 소유 팀 착수 시점에 확정해도 늦지 않다 — 단, 재사용 상위 5개는 변경 시 공유 필수 규칙(`docs/conventions/dto-naming.md` §12)을 따른다.
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
@@ -108,7 +108,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### UserInstrumentsResponse
 
-`PUT /v0/users/me/instruments`의 응답이다 (`docs/dto-naming.md` §2).
+`PUT /v0/users/me/instruments`의 응답이다 (`docs/conventions/dto-naming.md` §2).
 
 ```json
 {

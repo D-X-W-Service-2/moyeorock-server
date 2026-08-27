@@ -21,9 +21,9 @@
 | GET | `/v0/users/search?nickname=` | 사용자&nbsp;검색 | | `PageResponse<UserSummaryResponse>` |
 | GET | `/v0/users/nickname/check` | 닉네임&nbsp;중복&nbsp;확인 | | `NicknameCheckResponse` † |
 
-> † 원본 Notion 표에는 없고 `docs/dto-naming.md` §2가 정의한 9번째 엔드포인트다. Notion 명세에 역반영 필요 (2026-08-27 기준 여전히 미반영).
+> † 원본 Notion 표에는 없고 `docs/conventions/dto-naming.md` §2가 정의한 9번째 엔드포인트다. Notion 명세에 역반영 필요 (2026-08-27 기준 여전히 미반영).
 > `/v0/users/search`는 원본에서 팀 섹션에 있었지만 user 도메인 소유다.
-> `PUT /v0/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/dto-naming.md` §2).
+> `PUT /v0/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/conventions/dto-naming.md` §2).
 
 ---
 
@@ -42,7 +42,7 @@
 | GET | `/v0/teams/{id}/members/recommendations?instrument=` | 팀원&nbsp;추천&nbsp;(AI) | | `TeamMemberRecommendationResponse` |
 
 > ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` · `status` (전부 선택).
-> ‡ 원본이 2026-08-22에 DELETE → **PATCH**로 변경됨 (행 재생성, Request/Response 비어 있음). 세팅 문서 기준 완성형은 경로에 `/status`를 붙이고 `TeamMemberStatusUpdateRequest`/`TeamMemberStatusResponse`를 쓰는 것 (`docs/api-conventions.md` §5, `docs/dto-naming.md` §3) — 노션은 메서드만 바뀐 반영 미완 상태라 이대로면 "팀원 역할 변경"과 메서드+경로가 충돌한다. 노션 보완 건의 예정.
+> ‡ 원본이 2026-08-22에 DELETE → **PATCH**로 변경됨 (행 재생성, Request/Response 비어 있음). 세팅 문서 기준 완성형은 경로에 `/status`를 붙이고 `TeamMemberStatusUpdateRequest`/`TeamMemberStatusResponse`를 쓰는 것 (`docs/conventions/api-conventions.md` §5, `docs/conventions/dto-naming.md` §3) — 노션은 메서드만 바뀐 반영 미완 상태라 이대로면 "팀원 역할 변경"과 메서드+경로가 충돌한다. 노션 보완 건의 예정.
 > `TeamsummaryResponse`는 원본 표기 그대로다. 컨벤션대로면 `TeamSummaryResponse` — 구현 시 교정하고 원본에 알릴 것.
 
 ---
@@ -94,7 +94,7 @@
 
 ## §6. 초대 (join · InvitationController) — 3팀
 
-`direction=INVITE`. 별도 엔티티·테이블을 만들지 않는다 (`docs/domains.md` 참조).
+`direction=INVITE`. 별도 엔티티·테이블을 만들지 않는다 (`docs/conventions/domains.md` 참조).
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
@@ -122,8 +122,8 @@
 | PATCH | `/v0/groups/{groupId}/members/{userId}` | 모임원&nbsp;역할&nbsp;변경&nbsp;(모임장&nbsp;위임) | `GroupMemberUpdateRequest` | | 모임장 |
 | PATCH | `/v0/groups/{groupId}/members/{userId}` | 모임원&nbsp;내보내기·탈퇴&nbsp;‡ | | `GroupMemberRemoveResponse` * | |
 
-> ‡ 원본이 2026-08-22에 DELETE → **PATCH**로 변경됨. 세팅 문서 기준 완성형은 경로에 `/status`를 붙이고 `GroupMemberStatusUpdateRequest`/`GroupMemberStatusResponse`를 쓰는 것 (`docs/dto-naming.md` §8) — 노션은 반영 미완 상태라 "모임원 역할 변경"과 메서드+경로가 충돌한다. 노션 보완 건의 예정.
-> § 원본 DTO 페이지 `GroupMembersResponse`가 2026-08-22에 `PageResponse<>`로 개명됨 (내용은 단일 멤버 JSON 그대로, 제네릭 미기입). 세팅 문서 기준 완성형은 `PageResponse<GroupMemberResponse>` (`docs/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조.
+> ‡ 원본이 2026-08-22에 DELETE → **PATCH**로 변경됨. 세팅 문서 기준 완성형은 경로에 `/status`를 붙이고 `GroupMemberStatusUpdateRequest`/`GroupMemberStatusResponse`를 쓰는 것 (`docs/conventions/dto-naming.md` §8) — 노션은 반영 미완 상태라 "모임원 역할 변경"과 메서드+경로가 충돌한다. 노션 보완 건의 예정.
+> § 원본 DTO 페이지 `GroupMembersResponse`가 2026-08-22에 `PageResponse<>`로 개명됨 (내용은 단일 멤버 JSON 그대로, 제네릭 미기입). 세팅 문서 기준 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조.
 
 ### notice
 
@@ -151,7 +151,7 @@
 | PATCH | `/v0/performances/{id}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
 | POST | `/v0/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
 
-> ⚠️ **원본 CSV에는 6개만 있다** (`docs/domains.md`는 performance 7개). `PUT /v0/performances/{id}/setlist`를 performance로 세면 7이 맞지만, `docs/domains.md`는 이를 **setlist 도메인 소유**로 명시한다(§9에 배치). 개수 기준을 어느 쪽으로 볼지 팀 확인 필요.
+> ⚠️ **원본 CSV에는 6개만 있다** (`docs/conventions/domains.md`는 performance 7개). `PUT /v0/performances/{id}/setlist`를 performance로 세면 7이 맞지만, `docs/conventions/domains.md`는 이를 **setlist 도메인 소유**로 명시한다(§9에 배치). 개수 기준을 어느 쪽으로 볼지 팀 확인 필요.
 
 ---
 
@@ -165,7 +165,7 @@
 | GET | `/v0/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
 | GET | `/v0/teams/{id}/songs/recommendations` | 팀&nbsp;셋리스트&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 |
 
-> ⚠️ `docs/domains.md`는 song 2개로 집계한다. 팀 셋리스트 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.**
+> ⚠️ `docs/conventions/domains.md`는 song 2개로 집계한다. 팀 셋리스트 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.**
 
 ### setlist
 
@@ -225,7 +225,7 @@
 | POST | `/v0/auth/signup` | 이메일&nbsp;회원가입 | `UserSignupRequest` | `AuthTokenResponse` † | 201, 400, 409 | 카카오 회원과 중복 X |
 | POST | `/v0/auth/login` | 이메일&nbsp;로그인 | `UserLoginRequest` | `AuthTokenResponse` † | 200, 400, 401 | |
 
-> † 원본 표에는 Response가 없다. `docs/dto-naming.md` §1 정의 — `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 3곳 공유, 리프레시 토큰 없음.
+> † 원본 표에는 Response가 없다. `docs/conventions/dto-naming.md` §1 정의 — `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 3곳 공유, 리프레시 토큰 없음.
 
 ---
 
@@ -234,7 +234,7 @@
 | # | 항목 | 내용 |
 |---|---|---|
 | 1 | DTO 필드 정의 | `docs/specs/dto-spec.md`에 정리 완료. 공용 요약 객체는 확정·제안까지 완료 (dto-spec.md 상단), 일부 DTO 페이지는 미작성 |
-| 2 | 총 개수 71 vs 72 | `docs/domains.md`는 72개. `GET /v0/users/me/instruments` 누락 추정 (§1, DTO 정의는 존재) |
+| 2 | 총 개수 71 vs 72 | `docs/conventions/domains.md`는 72개. `GET /v0/users/me/instruments` 누락 추정 (§1, DTO 정의는 존재) |
 | 3 | performance 6 vs 7 | 공연 셋리스트 확정의 소유 도메인에 따라 달라짐 (§8) |
 | 4 | song 3 vs 2 | 팀 셋리스트 추천의 소유 도메인 확인 필요 (§9) |
 | 5 | 위치 불명 메모 | 원본의 "모임장" 단독 메모 2건은 인접 행(공연 생성·곡 검색)에 붙어 있었으나 대상 불확실 |

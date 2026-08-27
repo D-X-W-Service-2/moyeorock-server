@@ -40,16 +40,16 @@ domain/team/
 2. **다른 도메인은 Service를 통해서만 호출한다.** 남의 Repository·Entity 직접 접근 금지.
 3. **계층·추상화를 임의로 추가하지 않는다.** Facade·Manager·Helper·`ServiceImpl` 금지. 필요하다고 판단되면 만들지 말고 물어볼 것.
 4. **공용 enum은 `global/common/enums`에만 정의한다.** 도메인에서 같은 이름으로 새로 만들지 않는다.
-5. **스키마를 임의로 변경하지 않는다.** `docs/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것.
+5. **스키마를 임의로 변경하지 않는다.** `docs/conventions/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것.
 
 ## 작업 전 읽을 문서
 
 | 작업 | 읽을 것 |
 |---|---|
-| 새 도메인·엔드포인트 추가 | `docs/architecture.md` `docs/domains.md` `docs/api-conventions.md` |
-| 엔티티 작성·수정 | `docs/erd.md` 해당 테이블 |
-| DTO 작성 | `docs/dto-naming.md` 해당 도메인 절 |
-| 기존 코드 수정·버그 | `docs/conventions.md` |
+| 새 도메인·엔드포인트 추가 | `docs/conventions/architecture.md` `docs/conventions/domains.md` `docs/conventions/api-conventions.md` |
+| 엔티티 작성·수정 | `docs/conventions/erd.md` 해당 테이블 |
+| DTO 작성 | `docs/conventions/dto-naming.md` 해당 도메인 절 |
+| 기존 코드 수정·버그 | `docs/conventions/conventions.md` |
 
 **엔드포인트 상세 명세(요청·응답 구조·에러 코드)는 이 저장소에 없다.** 작업 지시와 함께 전달된다. 주어지지 않았으면 임의로 만들지 말고 요청할 것.
 
@@ -58,4 +58,4 @@ domain/team/
 - 코드를 쓰기 전에 계획을 먼저 제시하고 승인을 받는다.
 - 전달받은 명세에 없는 엔드포인트·필드를 임의로 만들지 않는다. 필요해 보이면 제안만 한다.
 - 명세를 받지 못했으면 추측하지 말고 요청한다.
-- 명세와 `docs/erd.md`가 어긋나면 그대로 진행하지 말고 알린다.
+- 명세와 `docs/conventions/erd.md`가 어긋나면 그대로 진행하지 말고 알린다.
