@@ -40,7 +40,7 @@ domain/team/
 2. **다른 도메인은 Service를 통해서만 호출한다.** 남의 Repository·Entity 직접 접근 금지.
 3. **계층·추상화를 임의로 추가하지 않는다.** Facade·Manager·Helper·`ServiceImpl` 금지. 필요하다고 판단되면 만들지 말고 물어볼 것.
 4. **공용 enum은 `global/common/enums`에만 정의한다.** 도메인에서 같은 이름으로 새로 만들지 않는다.
-5. **스키마를 임의로 변경하지 않는다.** `docs/conventions/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것.
+5. **스키마를 임의로 변경하지 않는다.** `docs/conventions/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것. 변경 절차는 `docs/conventions/erd.md`의 변경 프로세스를 따른다.
 
 ## 작업 전 읽을 문서
 
