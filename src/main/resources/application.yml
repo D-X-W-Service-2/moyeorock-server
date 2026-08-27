@@ -23,6 +23,11 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+jwt:
+  secret-key: ${JWT_SECRET_KEY}
+  issuer: ${JWT_ISSUER}
+  access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY}
+
 springdoc:
   api-docs:
     path: /v3/api-docs
