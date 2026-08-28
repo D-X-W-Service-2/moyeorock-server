@@ -7,18 +7,16 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import java.time.LocalDateTime;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
-import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 
+// @DataJpaTest는 @Configuration을 자동 로드하지 않으므로 auditing 설정을 명시적으로 켠다
 @DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JpaAuditingConfig.class)
 class BaseEntityAuditingTest {
 
@@ -26,21 +24,53 @@ class BaseEntityAuditingTest {
     TestEntityManager entityManager;
 
     @Test
-    void 저장하면_createdAt과_updatedAt이_자동으로_채워진다() {
-        AuditingProbe saved = entityManager.persistFlushFind(new AuditingProbe());
+    @DisplayName("저장하면 createdAt과 updatedAt이 자동으로 채워진다")
+    void created_at_and_updated_at_are_set_on_persist() {
+        AuditingProbe probe = new AuditingProbe();
+        Long id = entityManager.persistAndFlush(probe).getId();
+        entityManager.clear();
 
-        assertThat(saved.getCreatedAt()).isNotNull();
-        assertThat(saved.getUpdatedAt()).isNotNull();
+        AuditingProbe found = entityManager.find(AuditingProbe.class, id);
+
+        assertThat(found.getCreatedAt()).isNotNull();
+        assertThat(found.getUpdatedAt()).isNotNull();
     }
 
-    // 테스트 전용 엔티티 — 로컬 DB에 auditing_probe 테이블이 생성된다 (ddl-auto: update)
+    @Test
+    @DisplayName("수정하면 updatedAt만 갱신되고 createdAt은 바뀌지 않는다")
+    void update_refreshes_updated_at_but_keeps_created_at() throws InterruptedException {
+        AuditingProbe probe = new AuditingProbe();
+        Long id = entityManager.persistAndFlush(probe).getId();
+        LocalDateTime createdAt = probe.getCreatedAt();
+        LocalDateTime updatedAtBefore = probe.getUpdatedAt();
+
+        Thread.sleep(10);
+        probe.rename("changed");
+        entityManager.flush();
+        entityManager.clear();
+
+        AuditingProbe found = entityManager.find(AuditingProbe.class, id);
+
+        assertThat(found.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(found.getUpdatedAt()).isAfter(updatedAtBefore);
+    }
+
+    // 테스트 전용 엔티티 — 테스트 설정(src/test/resources)이 인메모리 H2 + create-drop이라 흔적이 남지 않는다
     @Entity
-    @Getter
-    @NoArgsConstructor(access = AccessLevel.PROTECTED)
     static class AuditingProbe extends BaseEntity {
 
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         private Long id;
+
+        private String name;
+
+        Long getId() {
+            return id;
+        }
+
+        void rename(String name) {
+            this.name = name;
+        }
     }
 }
