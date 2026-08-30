@@ -1,6 +1,9 @@
 package com.moyeorock.global.security;
 
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
 import org.springframework.core.MethodParameter;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -19,6 +22,10 @@ public class AuthUserArgumentResolver implements HandlerMethodArgumentResolver {
     @Override
     public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
             NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
-        return SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof Long userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        return userId;
     }
 }
