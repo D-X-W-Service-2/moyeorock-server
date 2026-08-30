@@ -39,6 +39,11 @@ public class FileService {
         if (dotIndex < 0 || dotIndex == fileName.length() - 1) {
             return "";
         }
-        return fileName.substring(dotIndex).toLowerCase();
+        String extension = fileName.substring(dotIndex + 1);
+        // 영숫자 외 문자('/' 등)가 섞인 확장자를 키에 넣으면 도메인 디렉토리 아래에 의도치 않은 하위 경로가 생긴다
+        if (!extension.matches("[a-zA-Z0-9]+")) {
+            return "";
+        }
+        return "." + extension.toLowerCase();
     }
 }

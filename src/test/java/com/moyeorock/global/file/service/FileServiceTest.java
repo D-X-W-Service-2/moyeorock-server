@@ -50,6 +50,17 @@ class FileServiceTest {
     }
 
     @Test
+    @DisplayName("확장자에 영숫자 외 문자가 섞이면 확장자를 버린다 — 키에 하위 경로 주입 방지")
+    void rejectsUnsafeExtension() {
+        issue(FileDomain.PROFILE_IMAGE, "a.png/evil");
+
+        assertThat(generator.lastFileKey)
+                .startsWith("profile/")
+                .doesNotContain(".")
+                .satisfies(key -> assertThat(key.chars().filter(c -> c == '/').count()).isEqualTo(1));
+    }
+
+    @Test
     @DisplayName("응답은 생성기의 URL 두 개와 설정된 만료 시각을 담는다")
     void responseFields() {
         LocalDateTime before = LocalDateTime.now().plusMinutes(EXPIRATION_MINUTES);
