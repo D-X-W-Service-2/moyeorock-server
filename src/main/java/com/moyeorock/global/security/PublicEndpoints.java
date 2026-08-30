@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 public enum PublicEndpoints {
 
-    AUTH("/api/auth/**"),
+    AUTH("/v0/auth/**"),
     SWAGGER_UI("/swagger-ui.html"),
     SWAGGER_UI_RESOURCES("/swagger-ui/**"),
     API_DOCS("/v3/api-docs"),
