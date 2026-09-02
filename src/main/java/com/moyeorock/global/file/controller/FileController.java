@@ -1,5 +1,6 @@
 package com.moyeorock.global.file.controller;
 
+import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.service.FileService;
@@ -18,10 +19,9 @@ public class FileController {
 
     private final FileService fileService;
 
-    // TODO: ApiResponse 봉투 적용 — 공통 DTO가 PR #12 소속이라 머지 후 감싼다
     @Operation(summary = "업로드 presigned URL 발급")
     @PostMapping("/presigned-url")
-    public PresignedUrlResponse createPresignedUrl(@Valid @RequestBody PresignedUrlCreateRequest request) {
-        return fileService.issuePresignedUrl(request);
+    public ApiResponse<PresignedUrlResponse> createPresignedUrl(@Valid @RequestBody PresignedUrlCreateRequest request) {
+        return ApiResponse.success(fileService.issuePresignedUrl(request));
     }
 }

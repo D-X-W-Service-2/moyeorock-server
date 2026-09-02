@@ -53,9 +53,10 @@ class FileControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.uploadUrl").value("https://upload.example.com"))
-                .andExpect(jsonPath("$.fileUrl").value("https://file.example.com"))
-                .andExpect(jsonPath("$.expiresAt").exists());
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.uploadUrl").value("https://upload.example.com"))
+                .andExpect(jsonPath("$.data.fileUrl").value("https://file.example.com"))
+                .andExpect(jsonPath("$.data.expiresAt").exists());
     }
 
     @Test
