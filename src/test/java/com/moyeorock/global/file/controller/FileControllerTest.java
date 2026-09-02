@@ -75,6 +75,21 @@ class FileControllerTest {
     }
 
     @Test
+    @DisplayName("허용 목록에 없는 contentType이면 400")
+    void disallowedContentType() throws Exception {
+        mockMvc.perform(post("/v0/files/presigned-url")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "domain": "PROFILE_IMAGE",
+                                  "fileName": "page.html",
+                                  "contentType": "text/html"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("정의되지 않은 domain 값이면 400")
     void unknownDomain() throws Exception {
         mockMvc.perform(post("/v0/files/presigned-url")
