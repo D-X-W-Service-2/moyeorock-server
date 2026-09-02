@@ -22,6 +22,14 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+file:
+  presigned-url-expiration-minutes: 10
+  s3:
+    # 버킷 이름·CDN 도메인은 팀 결정 대기(이슈 #18) — 비어 있으면 부팅은 되고 발급 요청 시 에러
+    bucket: ${S3_BUCKET:}
+    region: ${AWS_REGION:ap-northeast-2}
+    public-base-url: ${FILE_PUBLIC_BASE_URL:}
+
 jwt:
   secret-key: ${JWT_SECRET_KEY}
   issuer: ${JWT_ISSUER}
