@@ -71,4 +71,15 @@ class S3PresignedUrlGeneratorTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("S3_BUCKET");
     }
+
+    @Test
+    @DisplayName("리전 미설정이면 부팅은 되고 발급 요청 시 설정 안내와 함께 실패한다")
+    void regionNotConfigured() {
+        S3PresignedUrlGenerator generator =
+                new S3PresignedUrlGenerator(new S3Properties("test-bucket", null, ""));
+
+        assertThatThrownBy(() -> generator.issue("performance/abc.png", "image/png", Duration.ofMinutes(10)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("AWS_REGION");
+    }
 }
