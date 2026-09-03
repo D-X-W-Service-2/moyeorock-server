@@ -1,0 +1,27 @@
+# 테스트 전용 설정 — 실제 MySQL 대신 인메모리 H2를 쓴다.
+# 이유: 테스트가 dev DB에 붙으면 .env·Docker 없이 ./gradlew test가 실패하고,
+#       ddl-auto가 ERD에 없는 테스트용 테이블을 dev 스키마에 영구 생성한다.
+spring:
+  application:
+    name: moyeorock
+
+  datasource:
+    url: jdbc:h2:mem:moyeorock;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100
+    open-in-view: false
+
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
