@@ -55,6 +55,18 @@ class BaseEntityAuditingTest {
         assertThat(found.getUpdatedAt()).isAfter(updatedAtBefore);
     }
 
+    @Test
+    @DisplayName("BaseTimeEntity만 상속해도 createdAt이 자동으로 채워진다")
+    void created_at_is_set_on_persist_for_base_time_entity() {
+        TimeOnlyProbe probe = new TimeOnlyProbe();
+        Long id = entityManager.persistAndFlush(probe).getId();
+        entityManager.clear();
+
+        TimeOnlyProbe found = entityManager.find(TimeOnlyProbe.class, id);
+
+        assertThat(found.getCreatedAt()).isNotNull();
+    }
+
     // 테스트 전용 엔티티 — 테스트 설정(src/test/resources)이 인메모리 H2 + create-drop이라 흔적이 남지 않는다
     @Entity
     static class AuditingProbe extends BaseEntity {
@@ -71,6 +83,18 @@ class BaseEntityAuditingTest {
 
         void rename(String name) {
             this.name = name;
+        }
+    }
+
+    @Entity
+    static class TimeOnlyProbe extends BaseTimeEntity {
+
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long id;
+
+        Long getId() {
+            return id;
         }
     }
 }
