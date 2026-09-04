@@ -2,6 +2,7 @@ package com.moyeorock.global.common.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.global.config.JpaAuditingConfig;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -14,10 +15,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.TestPropertySource;
 
-// @DataJpaTest는 @Configuration을 자동 로드하지 않으므로 auditing 설정을 명시적으로 켠다
+// @DataJpaTest는 @Configuration을 자동 로드하지 않으므로 auditing 설정을 명시적으로 켠다.
+// 이 클래스의 엔티티(AuditingProbe 등)는 실제 스키마(Flyway 마이그레이션)에 없는 테스트 전용 엔티티라
+// ddl-auto를 이 클래스에서만 create-drop으로 풀고 Flyway를 꺼서 즉석으로 테이블을 만든다.
 @DataJpaTest
-@Import(JpaAuditingConfig.class)
+@Import({JpaAuditingConfig.class, TestcontainersConfig.class})
+@TestPropertySource(properties = {
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false"
+})
 class BaseEntityAuditingTest {
 
     @Autowired
@@ -67,7 +75,7 @@ class BaseEntityAuditingTest {
         assertThat(found.getCreatedAt()).isNotNull();
     }
 
-    // 테스트 전용 엔티티 — 테스트 설정(src/test/resources)이 인메모리 H2 + create-drop이라 흔적이 남지 않는다
+    // 테스트 전용 엔티티 — 이 클래스에서만 ddl-auto: create-drop + flyway 비활성화라 흔적이 남지 않는다
     @Entity
     static class AuditingProbe extends BaseEntity {
 
