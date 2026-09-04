@@ -89,10 +89,10 @@ Service끼리 서로 부르게 되는 상황이면 설계가 잘못된 것이다
   - `created_at`·`updated_at` 둘 다 있으면 `global/common/entity/BaseEntity`
   - `created_at`만 있으면 `global/common/entity/BaseTimeEntity`
   - 둘 다 없으면 상속하지 않는다
-- 연관관계는 **전부 `LAZY`**
-- `CascadeType.REMOVE` · `orphanRemoval` 쓰지 않는다. 삭제는 명시적으로
-- 양방향 연관관계는 꼭 필요할 때만. 기본은 단방향 `@ManyToOne`
-- `target_id`(다형성)는 FK가 없다. 연관관계로 매핑하지 말고 `Long` 그대로 두고 존재 검증은 Service에서
+- **`@ManyToOne`·`@OneToMany` 같은 JPA 연관관계 매핑을 쓰지 않는다.** 다른 테이블을 참조하는 컬럼은 같은 도메인 소유 테이블 간이어도 전부 `Long` 필드로 둔다(`group_id`, `user_id` 등). 필요한 연관 데이터는 해당 도메인 Service를 호출해서 받는다. `CascadeType`·`FetchType`·`orphanRemoval` 논의 자체가 필요 없어진다 — 애초에 매핑을 안 하기 때문.
+  - **왜**: `ddl-auto: update`가 아니라 Flyway로 스키마를 관리하기로 하면서(`docs/conventions/flyway-migration.md`), 연관관계 매핑이 실제 DB `FOREIGN KEY` 제약으로 이어지는 걸 원천적으로 막기로 했다. FK 제약은 마이그레이션 SQL에서도 걸지 않는다(`flyway-migration.md` §3-2). DDD의 "다른 애그리거트는 ID로만 참조한다" 원칙과 같은 방향이다.
+  - `target_id`(다형성)도 원래부터 이 규칙과 같은 방향이었다 — FK 없이 `Long`, 존재 검증은 Service에서.
+- `CascadeType.REMOVE` · `orphanRemoval` 쓰지 않는다. 삭제는 명시적으로 (위 규칙으로 사실상 자동으로 지켜진다)
 - Setter 금지. 상태 변경은 의미 있는 메서드로 (`team.disband()`, `member.changeRole(role)`)
 
 ## 6. 상태 변경과 파생

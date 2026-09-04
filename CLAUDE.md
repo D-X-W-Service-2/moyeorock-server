@@ -5,9 +5,10 @@
 ## 스택
 
 - Java 17 · Spring Boot 4.1.0 · Gradle
-- MySQL 8.0 · Spring Data JPA
+- MySQL 8.0 · Spring Data JPA · Flyway (스키마는 `ddl-auto`가 아니라 마이그레이션으로 관리, `docs/conventions/flyway-migration.md`)
 - Spring Security (JWT) · springdoc-openapi 2.7.0
 - Lombok
+- 테스트 DB: Testcontainers MySQL (H2 안 씀)
 
 ```bash
 ./gradlew build      # 빌드
@@ -41,13 +42,14 @@ domain/team/
 3. **계층·추상화를 임의로 추가하지 않는다.** Facade·Manager·Helper·`ServiceImpl` 금지. 필요하다고 판단되면 만들지 말고 물어볼 것.
 4. **공용 enum은 `global/common/enums`에만 정의한다.** 도메인에서 같은 이름으로 새로 만들지 않는다.
 5. **스키마를 임의로 변경하지 않는다.** `docs/conventions/erd.md`가 기준. 컬럼이 없으면 기능을 빼거나 물어볼 것. 변경 절차는 `docs/conventions/erd.md`의 변경 프로세스를 따른다.
+6. **다른 테이블을 참조하는 컬럼은 `@ManyToOne`이 아니라 `Long`으로 매핑한다.** 같은 도메인 소유 테이블 간이어도 예외 없음. DB에도 FK를 걸지 않는다. `docs/conventions/architecture.md` §5, `docs/conventions/flyway-migration.md` §3-2 참고.
 
 ## 작업 전 읽을 문서
 
 | 작업 | 읽을 것 |
 |---|---|
 | 새 도메인·엔드포인트 추가 | `docs/conventions/architecture.md` `docs/conventions/domains.md` `docs/conventions/api-conventions.md` `docs/specs/api-spec.md` |
-| 엔티티 작성·수정 | `docs/conventions/erd.md` 해당 테이블 |
+| 엔티티 작성·수정 | `docs/conventions/erd.md` 해당 테이블, `docs/conventions/flyway-migration.md` |
 | DTO 작성 | `docs/conventions/dto-naming.md` 해당 도메인 절, `docs/specs/dto-spec.md` 필드 정의 |
 | 기존 코드 수정·버그 | `docs/conventions/conventions.md` |
 
