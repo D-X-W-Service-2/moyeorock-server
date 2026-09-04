@@ -132,11 +132,13 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | POST | `/v0/groups/{id}/notices` | 공지&nbsp;작성 | `NoticeCreateRequest` | | 모임장 |
-| GET | `/v0/groups/{id}/notices` | 공지&nbsp;목록 | | `PageResponse<NoticeResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
+| GET | `/v0/groups/{id}/notices` | 공지&nbsp;목록 | | `PageResponse<NoticeSummaryResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
+| GET | `/v0/notices/{id}` | 공지&nbsp;상세 | | `NoticeDetailResponse` | ‖ |
 | PUT | `/v0/notices/{id}` | 공지&nbsp;수정 | `NoticeUpdateRequest` | | |
 | DELETE | `/v0/notices/{id}` | 공지&nbsp;삭제 | | | |
 
 > \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 팀 확인 필요.
+> ‖ 원본 노션 표에는 없다. **팀 결정으로 목록·상세를 분리해 신규 추가한 엔드포인트**다 — 원래는 목록 조회(`PageResponse<NoticeResponse>`) 하나가 `body`까지 포함해 상세 역할까지 겸했다. 목록은 `body`를 뺀 `NoticeSummaryResponse`로 가벼워지고, 상세는 `NoticeDetailResponse`가 전체 필드를 담는다(`docs/specs/dto-spec.md` §7). 노션 명세에도 역반영 필요.
 
 ---
 
@@ -240,4 +242,4 @@
 | 5 | 위치 불명 메모 | 원본의 "모임장" 단독 메모 2건은 인접 행(공연 생성·곡 검색)에 붙어 있었으나 대상 불확실 |
 | 6 | 내보내기 PATCH 미완 | 팀원·모임원 내보내기가 8/22에 DELETE → PATCH로 바뀌었으나 `/status` 경로·DTO 누락 (§2 ‡, §7 ‡) — 노션 보완 건의 예정 |
 | 7 | 모임원 목록 응답 | `GroupMembersResponse` → `PageResponse<>` 개명(8/22), 완성형은 `PageResponse<GroupMemberResponse>` (§7 §) — 노션 보완 건의 예정 |
-| 8 | Notion 역반영 대기 | `GET /v0/users/nickname/check` 추가 · 공고 마감·삭제 Request 오기(`RecruitPostStatusResponse` → `RecruitPostStatusUpdateRequest`) 교정 |
+| 8 | Notion 역반영 대기 | `GET /v0/users/nickname/check` 추가 · 공고 마감·삭제 Request 오기(`RecruitPostStatusResponse` → `RecruitPostStatusUpdateRequest`) 교정 · `GET /v0/notices/{id}` 상세 조회 추가(§7 ‖) |
