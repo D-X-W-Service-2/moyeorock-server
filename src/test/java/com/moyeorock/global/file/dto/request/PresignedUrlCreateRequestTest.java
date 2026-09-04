@@ -12,8 +12,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// 컨트롤러 테스트는 Jackson SNAKE_CASE 설정 탓에 contentType이 바인딩되지 않아
-// @NotBlank로도 400이 나온다 — 화이트리스트(@Pattern) 규칙 자체는 여기서 바인딩 없이 검증한다
+// 화이트리스트(@Pattern) 규칙을 HTTP 바인딩 없이 Validator만으로 검증한다
 class PresignedUrlCreateRequestTest {
 
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
