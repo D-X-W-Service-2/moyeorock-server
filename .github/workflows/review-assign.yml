@@ -1,0 +1,15 @@
+name: Review Assign
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hkusu/review-assign-action@v1
+        with:
+          assignees: ${{ github.actor }}
+          # 팀원 GitHub 아이디가 정해지면 콤마로 구분해 채운다 (예: reviewers: alice, bob)
+          reviewers: "xeoxxn, jjunh33, plzzzean, HyunisEmpty"
