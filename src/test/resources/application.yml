@@ -32,3 +32,13 @@ jwt:
   secret-key: test-only-secret-key-must-be-at-least-32-bytes-long
   issuer: moyeorock-test
   access-token-expiry: 3600000
+
+# 테스트 전용 더미 S3 값 — region은 main yml의 ${AWS_REGION:ap-northeast-2} 기본값이 여기서는 안 실리므로 명시한다.
+# 비어 있으면 S3PresignedUrlGenerator 생성자(Region.of)가 컨텍스트 로드에 실패한다 (의도된 fail-fast).
+# bucket은 팀 결정 대기(이슈 #18)로 main에서도 빈 값이 허용되지만, 테스트에서는 값을 둔다.
+file:
+  presigned-url-expiration-minutes: 10
+  s3:
+    bucket: test-bucket
+    region: ap-northeast-2
+    public-base-url:

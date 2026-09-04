@@ -22,7 +22,7 @@ public class S3PresignedUrlGenerator implements PresignedUrlGenerator {
 
     @Autowired
     public S3PresignedUrlGenerator(S3Properties properties) {
-        this(createPresigner(properties.region()), properties);
+        this(S3Presigner.builder().region(Region.of(properties.region())).build(), properties);
     }
 
     S3PresignedUrlGenerator(S3Presigner presigner, S3Properties properties) {
@@ -30,21 +30,8 @@ public class S3PresignedUrlGenerator implements PresignedUrlGenerator {
         this.properties = properties;
     }
 
-    // region이 없으면 presigner 없이 부팅한다 — bucket과 마찬가지로 발급 시점에 실패시키기 위함
-    // (테스트 등 main application.yml의 ${AWS_REGION:...} 기본값이 안 실리는 환경에서 컨텍스트가 죽지 않도록)
-    private static S3Presigner createPresigner(String region) {
-        if (region == null || region.isBlank()) {
-            return null;
-        }
-        return S3Presigner.builder().region(Region.of(region)).build();
-    }
-
     @Override
     public Result issue(String fileKey, String contentType, Duration expiration) {
-        if (presigner == null) {
-            throw new IllegalStateException(
-                    "file.s3.region이 설정되지 않았습니다 — AWS_REGION 환경변수를 확인하세요");
-        }
         if (properties.bucket() == null || properties.bucket().isBlank()) {
             throw new IllegalStateException(
                     "file.s3.bucket이 설정되지 않았습니다 — S3_BUCKET 환경변수를 확인하세요 (버킷 확정: 이슈 #18)");
@@ -73,8 +60,6 @@ public class S3PresignedUrlGenerator implements PresignedUrlGenerator {
 
     @PreDestroy
     void close() {
-        if (presigner != null) {
-            presigner.close();
-        }
+        presigner.close();
     }
 }
