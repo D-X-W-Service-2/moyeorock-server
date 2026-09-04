@@ -18,7 +18,6 @@ spring:
     open-in-view: false
 
   jackson:
-    property-naming-strategy: SNAKE_CASE
     default-property-inclusion: non_null
     serialization:
       fail-on-empty-beans: false
