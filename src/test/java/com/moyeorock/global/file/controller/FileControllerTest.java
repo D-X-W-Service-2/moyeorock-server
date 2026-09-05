@@ -3,18 +3,23 @@ package com.moyeorock.global.file.controller;
 import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.service.FileService;
+import com.moyeorock.global.security.UserAuthentication;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,10 +35,23 @@ class FileControllerTest {
     @MockitoBean
     private FileService fileService;
 
+    private static final Long USER_ID = 1L;
+
+    // addFilters = false라 JWT 필터가 돌지 않으므로 @AuthUser 리졸버가 읽을 인증 객체를 직접 넣는다
+    @BeforeEach
+    void authenticate() {
+        SecurityContextHolder.getContext().setAuthentication(new UserAuthentication(USER_ID));
+    }
+
+    @AfterEach
+    void clearAuthentication() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     @DisplayName("POST /v0/files/presigned-url — 정상 요청은 200과 URL·만료 시각을 반환한다")
     void createPresignedUrl() throws Exception {
-        given(fileService.issuePresignedUrl(any(PresignedUrlCreateRequest.class)))
+        given(fileService.issuePresignedUrl(eq(USER_ID), any(PresignedUrlCreateRequest.class)))
                 .willReturn(new PresignedUrlResponse(
                         "https://upload.example.com",
                         "https://file.example.com",

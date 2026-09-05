@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FileServiceTest {
 
     private static final long EXPIRATION_MINUTES = 10;
+    private static final Long USER_ID = 1L;
 
     private RecordingPresignedUrlGenerator generator;
     private FileService fileService;
@@ -75,7 +76,7 @@ class FileServiceTest {
     }
 
     private PresignedUrlResponse issue(FileDomain domain, String fileName) {
-        return fileService.issuePresignedUrl(new PresignedUrlCreateRequest(domain, fileName, "image/png"));
+        return fileService.issuePresignedUrl(USER_ID, new PresignedUrlCreateRequest(domain, fileName, "image/png"));
     }
 
     private static class RecordingPresignedUrlGenerator implements PresignedUrlGenerator {

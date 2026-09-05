@@ -4,6 +4,7 @@ import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.service.FileService;
+import com.moyeorock.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,8 @@ public class FileController {
 
     @Operation(summary = "업로드 presigned URL 발급")
     @PostMapping("/presigned-url")
-    public ApiResponse<PresignedUrlResponse> createPresignedUrl(@Valid @RequestBody PresignedUrlCreateRequest request) {
-        return ApiResponse.success(fileService.issuePresignedUrl(request));
+    public ApiResponse<PresignedUrlResponse> createPresignedUrl(@AuthUser Long userId,
+                                                                @Valid @RequestBody PresignedUrlCreateRequest request) {
+        return ApiResponse.success(fileService.issuePresignedUrl(userId, request));
     }
 }

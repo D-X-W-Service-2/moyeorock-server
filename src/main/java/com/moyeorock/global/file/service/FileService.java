@@ -3,6 +3,7 @@ package com.moyeorock.global.file.service;
 import com.moyeorock.global.file.FileDomain;
 import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -10,6 +11,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Slf4j
 @Service
 public class FileService {
 
@@ -22,11 +24,13 @@ public class FileService {
         this.expiration = Duration.ofMinutes(expirationMinutes);
     }
 
-    public PresignedUrlResponse issuePresignedUrl(PresignedUrlCreateRequest request) {
+    public PresignedUrlResponse issuePresignedUrl(Long userId, PresignedUrlCreateRequest request) {
         String fileKey = createFileKey(request.domain(), request.fileName());
         LocalDateTime expiresAt = LocalDateTime.now().plus(expiration);
         PresignedUrlGenerator.Result result =
                 presignedUrlGenerator.issue(fileKey, request.contentType(), expiration);
+        // 발급 이력을 저장할 테이블이 아직 없어 로그로만 남긴다 — 누가 어떤 키를 받았는지 추적용
+        log.info("presigned URL 발급: userId={}, fileKey={}", userId, fileKey);
         return new PresignedUrlResponse(result.uploadUrl(), result.fileUrl(), expiresAt);
     }
 
