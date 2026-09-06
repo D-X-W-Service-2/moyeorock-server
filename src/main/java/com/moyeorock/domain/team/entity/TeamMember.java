@@ -52,8 +52,6 @@ public class TeamMember {
     @Column(length = 10, nullable = false)
     private TeamRole role;
 
-    // instrument는 ERD상 nullable 여부가 따로 명시되지 않았고(그냥 VARCHAR(20)), 담당 세션을
-    // 아직 안 정한 팀원도 있을 수 있다고 보고 nullable 기본값(true)을 그대로 둔다. -> PR 단계에서 리뷰어랑 상의후 결정하고 ERD에 반영
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private Instrument instrument;
