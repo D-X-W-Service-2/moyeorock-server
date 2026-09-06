@@ -23,8 +23,10 @@ JSON 키는 `camelCase`로 쓴다 (`fieldErrors`, `totalPages`). Jackson 기본 
 | 400 | `VALIDATION_FAILED` |
 | 401 | `UNAUTHORIZED` |
 | 403 | `FORBIDDEN` · `NO_PERMISSION` |
-| 404 | `..._NOT_FOUND` |
+| 404 | `..._NOT_FOUND` · `RESOURCE_NOT_FOUND`(없는 경로) |
+| 405 | `METHOD_NOT_ALLOWED`(경로는 있으나 메서드 미지원) |
 | 409 | 중복 · 상태 충돌 |
+| 415 | `UNSUPPORTED_MEDIA_TYPE`(요청 Content-Type 미지원) |
 
 **204를 쓰지 않는다.** 봉투를 항상 내려주려면 바디가 있어야 한다. 삭제도 200 + `DeleteResponse`.
 
@@ -90,6 +92,11 @@ throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
 | `BusinessException` | `ErrorCode`의 status·code·message |
 | `MethodArgumentNotValidException` | 400 `VALIDATION_FAILED` + `fieldErrors` 채움 |
 | `AccessDeniedException` | 403 `NO_PERMISSION` |
+| `NoResourceFoundException` · `NoHandlerFoundException` | 404 `RESOURCE_NOT_FOUND` (없는 경로) |
+| `MethodArgumentTypeMismatchException` | 400 `VALIDATION_FAILED` + `fieldErrors`에 파라미터명 (타입 변환 실패) |
+| `MissingServletRequestParameterException` | 400 `VALIDATION_FAILED` + `fieldErrors`에 파라미터명 (필수 파라미터 누락) |
+| `HttpRequestMethodNotSupportedException` | 405 `METHOD_NOT_ALLOWED` |
+| `HttpMediaTypeNotSupportedException` | 415 `UNSUPPORTED_MEDIA_TYPE` |
 | `Exception` | 500. 스택트레이스는 로그에만, 응답에 노출 금지 |
 
 **DB 제약 위반을 그대로 흘리지 않는다.** `UNIQUE` 충돌은 사전 검증으로 409를 내린다. 어느 값이 중복인지 클라이언트가 알아야 한다.
