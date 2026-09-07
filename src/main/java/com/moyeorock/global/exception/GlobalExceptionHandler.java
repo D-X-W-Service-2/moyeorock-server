@@ -63,7 +63,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         List<FieldErrorResponse> fieldErrors = List.of(
-                new FieldErrorResponse(e.getName(), String.format("'%s'은(는) 올바른 값이 아닙니다.", e.getValue())));
+                new FieldErrorResponse(e.getName(), "올바른 값이 아닙니다."));
         return toResponse(ErrorCode.VALIDATION_FAILED, ErrorResponse.of(ErrorCode.VALIDATION_FAILED, fieldErrors));
     }
 
