@@ -23,9 +23,9 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
-| UK | `email` | `VARCHAR(255) NULL` | 유일 · 소셜 전용은 NULL |
-|  | `password_hash` | `VARCHAR(255) NULL` |  |
-| UK | `kakao_id` | `VARCHAR(64) NULL` | 유일 · 1.2 |
+| UK | `email` | `VARCHAR(255)` | 유일 · 소셜 전용은 NULL |
+|  | `password_hash` | `VARCHAR(255)` |  |
+| UK | `kakao_id` | `VARCHAR(64)` | 유일 · 1.2 |
 | UK | `nickname` | `VARCHAR(20) NOT NULL` | 유일 |
 |  | `region` | `VARCHAR(50)` |  |
 |  | `genres` | `JSON` | 선호 장르 3.1 |
@@ -36,8 +36,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `is_recommendable` | `TINYINT(1) DEFAULT 1` | 9.1 |
 | ＋ | `is_activity_public` | `TINYINT(1) DEFAULT 1` | 9.2 |
 | ＋ | `privacy_agreed_at` | `DATETIME(6) NOT NULL` | 2.3 |
-| ＋ | `onboarding_completed_at` | `DATETIME(6) NULL` |  |
-|  | `withdrawn_at` | `DATETIME(6) NULL` | 1.1 |
+| ＋ | `onboarding_completed_at` | `DATETIME(6)` |  |
+|  | `withdrawn_at` | `DATETIME(6)` | 1.1 |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
@@ -54,8 +54,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `instrument` | `VARCHAR(20)` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
-| ＋ | `custom_instrument` | `VARCHAR(30) NULL` | 3.2 직접 입력 |
+|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
+| ＋ | `custom_instrument` | `VARCHAR(30) NOT NULL` | 3.2 직접 입력 |
 |  | `level` | `VARCHAR(20)` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
 
 - **유니크** `(user_id, instrument)`
@@ -144,8 +144,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `user_id` | `BIGINT` | → users |
 |  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|... |
 |  | `message` | `VARCHAR(255)` |  |
-| ＋ | `target_type` | `VARCHAR(20) NULL` | 이동 대상 |
-| ＋ | `target_id` | `BIGINT NULL` |  |
+| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 |
+| ＋ | `target_id` | `BIGINT` |  |
 |  | `is_read` | `TINYINT(1) DEFAULT 0` |  |
 |  | `created_at` | `DATETIME(6)` |  |
 
@@ -182,8 +182,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `group_id` | `BIGINT` | → groups NOT NULL |
 |  | `title` | `VARCHAR(100)` |  |
 |  | `description` | `TEXT` |  |
-|  | `performed_at` | `DATETIME(6) NULL` |  |
-|  | `venue` | `VARCHAR(100) NULL` | 7.1.1 필수 X |
+|  | `performed_at` | `DATETIME(6)` |  |
+|  | `venue` | `VARCHAR(100)` | 7.1.1 필수 X |
 |  | `poster_image` | `VARCHAR(500)` | 7.4 |
 |  | `status` | `VARCHAR(20)` | PLANNED\|RECRUITING\|DONE\|CANCELED |
 | FK | `created_by` | `BIGINT` | → users |
@@ -228,12 +228,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `actor_id` | `BIGINT` | → users · 신청/초대한 사람 |
 | FK? | `target_user_id` | `BIGINT` | → users NULL · 9.4 |
 | FK? | `recruit_post_id` | `BIGINT` | → recruit_posts NULL |
-|  | `instrument` | `VARCHAR(20) NULL` | 지원 세션 |
+|  | `instrument` | `VARCHAR(20) NOT NULL` | 지원 세션 |
 |  | `message` | `TEXT` |  |
 |  | `status` | `VARCHAR(10)` | PENDING\|APPROVED\|REJECTED\|CANCELED |
 | FK? | `decided_by` | `BIGINT` | → users NULL |
 |  | `created_at` | `DATETIME(6)` |  |
-|  | `decided_at` | `DATETIME(6) NULL` |  |
+|  | `decided_at` | `DATETIME(6)` |  |
 
 
 ---
@@ -280,7 +280,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `team_id` | `BIGINT` | → teams |
 | FK | `user_id` | `BIGINT` | → users |
 |  | `role` | `VARCHAR(10)` | LEADER\|MEMBER · 위임 가능 |
-|  | `instrument` | `VARCHAR(20)` |  |
+|  | `instrument` | `VARCHAR(20) NOT NULL` |  |
 |  | `status` | `VARCHAR(10)` | ACTIVE\|LEFT\|REMOVED · 7.1.2 |
 |  | `joined_at` | `DATETIME(6)` |  |
 
