@@ -12,7 +12,7 @@ com.moyeorock
 │   │                    AuthUserArgumentResolver, @AuthUser
 │   ├── exception/       GlobalExceptionHandler, ErrorCode, BusinessException
 │   ├── common/
-│   │   ├── entity/      BaseEntity
+│   │   ├── entity/      BaseTimeEntity, BaseEntity
 │   │   ├── dto/         ApiResponse, PageResponse, ErrorResponse, DeleteResponse
 │   │   └── enums/       Instrument, Level, Genre, Region, TargetType …
 │   ├── event/           도메인 간 이벤트 정의
@@ -85,7 +85,10 @@ Service끼리 서로 부르게 되는 상황이면 설계가 잘못된 것이다
 
 ## 5. 엔티티
 
-- `global/common/entity/BaseEntity`를 상속해 `createdAt` `updatedAt`을 얻는다 (`@EnableJpaAuditing` 필요)
+- 타임스탬프는 `erd.md` 해당 테이블 기준으로 상속을 고른다 (`@EnableJpaAuditing` 필요)
+  - `created_at`·`updated_at` 둘 다 있으면 `global/common/entity/BaseEntity`
+  - `created_at`만 있으면 `global/common/entity/BaseTimeEntity`
+  - 둘 다 없으면 상속하지 않는다
 - 연관관계는 **전부 `LAZY`**
 - `CascadeType.REMOVE` · `orphanRemoval` 쓰지 않는다. 삭제는 명시적으로
 - 양방향 연관관계는 꼭 필요할 때만. 기본은 단방향 `@ManyToOne`

@@ -1,6 +1,6 @@
 # 도메인 지도
 
-14개 도메인 · 72개 엔드포인트 · 16개 테이블.
+14개 도메인 · 73개 엔드포인트 · 16개 테이블.
 
 ## 전체
 
@@ -15,7 +15,7 @@
 | `notification` | 3팀 | `notifications` | 2 |
 | `bookmark` | 3팀 | `bookmarks` | 3 |
 | `group` | 4팀 | `groups` `group_members` | 6 |
-| `notice` | 4팀 | `group_notices` | 4 |
+| `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 7 |
 | `song` | 4팀 | `songs` | 2 |
 | `setlist` | 4팀 | `team_songs` | 2 |
@@ -35,7 +35,9 @@
 - 조회 시 `direction` 조건을 항상 포함한다. id 시퀀스를 공유하므로 빠뜨리면 신청 id로 초대 API를 호출하는 게 통과한다
 - **단, 중복 검사에서만 `direction`을 뺀다.** 신청과 초대가 동시에 있으면 가입 경로가 둘 생기므로 양쪽을 같이 봐야 한다
 
-**`notice`는 `group`과 분리한다.** 테이블이 `group_notices`이고 엔티티는 `GroupNotice`. `Post`라는 이름을 쓰지 않는다. 경로는 생성·목록만 `/v0/groups/{id}/notices`이고 수정·삭제는 `/v0/notices/{id}`다.
+**`notice`는 `group`과 분리한다.** 테이블이 `group_notices`이고 엔티티는 `GroupNotice`. `Post`라는 이름을 쓰지 않는다. 경로는 생성·목록만 `/v0/groups/{id}/notices`이고 상세·수정·삭제는 `/v0/notices/{id}`다.
+
+**공지 목록과 상세는 별도 엔드포인트다.** 원래 명세는 목록 조회 하나로 묶여 있었지만(목록 응답에 `body`까지 포함), 팀 결정으로 `GET /v0/notices/{id}` 상세 조회를 분리 추가했다(`docs/specs/api-spec.md` §7, `docs/conventions/dto-naming.md` §8 참고). 목록은 `NoticeSummaryResponse`(`body` 제외), 상세는 `NoticeDetailResponse`(`body` 포함)를 쓴다.
 
 **`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v0/teams/{id}/setlist`와 `PUT /v0/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다.
 
@@ -73,7 +75,7 @@
 | **1팀** | `auth` `user` `file` | 13 |
 | **2팀** | `team` `rehearsal` | 15 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 21 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 22 |
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 

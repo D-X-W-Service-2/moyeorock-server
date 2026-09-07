@@ -10,6 +10,8 @@
   "error": { "code": "TEAM_NOT_FOUND", "message": "존재하지 않는 팀입니다.", "fieldErrors": [] } }
 ```
 
+JSON 키는 `camelCase`로 쓴다 (`fieldErrors`, `totalPages`). Jackson 기본 동작 그대로이며 `spring.jackson.property-naming-strategy`를 설정하지 않는다.
+
 컨트롤러 반환 타입은 `ApiResponse<T>`. `ResponseEntity`는 `Location` 헤더가 필요한 생성 응답에서만 쓴다.
 
 ## 2. 상태 코드

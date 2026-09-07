@@ -1,6 +1,6 @@
 package com.moyeorock.global.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.ErrorResponse;
 import com.moyeorock.global.exception.ErrorCode;

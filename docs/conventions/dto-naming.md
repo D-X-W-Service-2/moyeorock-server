@@ -258,7 +258,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 8. group (10)
+## 8. group (11)
 
 패키지 `domain/group`, 공지는 `domain/notice`
 
@@ -270,9 +270,10 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 모임원 목록 | GET | `/v0/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
 | 모임원 역할 변경 | PATCH | `/v0/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
 | 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v0/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
-| 공지 목록 | GET | `/v0/groups/{id}/notices` | — | `PageResponse<NoticeResponse>` |
-| 공지 작성 | POST | `/v0/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeResponse` |
-| 공지 수정 | PUT | `/v0/notices/{id}` | `NoticeUpdateRequest` | `NoticeResponse` |
+| 공지 목록 | GET | `/v0/groups/{id}/notices` | — | `PageResponse<NoticeSummaryResponse>` |
+| 공지 상세 | GET | `/v0/notices/{id}` | — | `NoticeDetailResponse` |
+| 공지 작성 | POST | `/v0/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
+| 공지 수정 | PUT | `/v0/notices/{id}` | `NoticeUpdateRequest` | `NoticeDetailResponse` |
 | 공지 삭제 | DELETE | `/v0/notices/{id}` | — | `DeleteResponse` |
 
 **보조 DTO**
@@ -283,7 +284,10 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `GroupMemberResponse` | team과 동일 구조(`status`는 `GroupMemberStatus`) — 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
 | `GroupMemberStatusUpdateRequest` | `(GroupMemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `BANNED`(강퇴)만 허용 |
 | `GroupMemberStatusResponse` | `(Long groupId, Long userId, GroupMemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `BANNED` |
-| `NoticeResponse` | 목록에도 `body`를 담는다 — 상세 API를 따로 두지 않았기 때문 |
+| `NoticeSummaryResponse` | 목록 항목. `body` 제외 |
+| `NoticeDetailResponse` | 상세 + 생성·수정 응답(지켜야 할 6가지 #3). `body` 포함 |
+
+목록·상세 분리는 팀 결정으로 추가한 것이다 — 원래 명세는 목록 조회 하나가 `body`까지 포함해 상세 역할을 겸했다(`docs/specs/api-spec.md` §7 ‖).
 
 모임원 역할 변경(모임장 위임)은 원래 표에 없어서 추가한 항목이다. 없으면 모임장이 영구히 탈퇴할 수 없다. `GroupMemberUpdateRequest(GroupRole role)`.
 
@@ -389,12 +393,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 72 |
+| 엔드포인트 | 73 |
 | Request DTO | 34 |
-| Response DTO | 55 |
+| Response DTO | 56 |
 | 전역 공통 | 5 |
 
-요청 DTO가 34개뿐인 이유는 72개 중 **41개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+
+(공지 상세 조회 `GET /v0/notices/{id}` 추가분 반영 — `docs/specs/api-spec.md` §7 ‖)
 
 ### 재사용 상위 5개
 

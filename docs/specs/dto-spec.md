@@ -532,7 +532,25 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-### PageResponse\<NoticeResponse\>
+### PageResponse\<NoticeSummaryResponse\>
+
+목록·상세 분리(팀 결정, `docs/specs/api-spec.md` §7 ‖)로 `body`를 뺀 목록 전용 항목이다. 원본 노션은 이 구조에 `body`까지 포함했다.
+
+```json
+{
+  "id": 8,
+  "groupId": 2,
+  "author": "UserSummary",
+  "title": "3월 정기공연 안내",
+  "isPinned": true,
+  "createdAt": "2026-08-01T09:00:00",
+  "updatedAt": "2026-08-02T11:00:00"
+}
+```
+
+### NoticeDetailResponse
+
+`GET /v0/notices/{id}`, 그리고 생성·수정 응답(`dto-naming.md` 지켜야 할 6가지 #3에 따라 재사용)에도 쓴다. `body`를 포함한 전체 필드.
 
 ```json
 {

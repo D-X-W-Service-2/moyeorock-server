@@ -1,0 +1,34 @@
+# 테스트 전용 설정 — 실제 MySQL 대신 인메모리 H2를 쓴다.
+# 이유: 테스트가 dev DB에 붙으면 .env·Docker 없이 ./gradlew test가 실패하고,
+#       ddl-auto가 ERD에 없는 테스트용 테이블을 dev 스키마에 영구 생성한다.
+spring:
+  application:
+    name: moyeorock
+
+  datasource:
+    url: jdbc:h2:mem:moyeorock;MODE=MySQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100
+    open-in-view: false
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      fail-on-empty-beans: false
+
+# 테스트 전용 더미 JWT 값 — 이 파일이 main의 application.yml을 통째로 대체하므로
+# jwt 섹션이 없으면 JwtProvider 생성자(secretKey().getBytes())가 NPE로 컨텍스트 로드에 실패한다.
+# secret-key는 HS256 최소 키 길이(256비트=32바이트) 이상이어야 한다.
+jwt:
+  secret-key: test-only-secret-key-must-be-at-least-32-bytes-long
+  issuer: moyeorock-test
+  access-token-expiry: 3600000
