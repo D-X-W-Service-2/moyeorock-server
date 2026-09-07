@@ -10,6 +10,7 @@ public class UserAuthentication extends AbstractAuthenticationToken {
     public UserAuthentication(Long userId) {
         super(List.of());
         this.userId = userId;
+        setAuthenticated(true);
     }
 
     @Override
