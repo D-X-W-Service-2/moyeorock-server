@@ -72,6 +72,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("깨진 JSON 바디 — 400 VALIDATION_FAILED")
+    void malformedJson_returns400() throws Exception {
+        mockMvc.perform(post("/probe").contentType(MediaType.APPLICATION_JSON).content("{\"name\": "))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     @DisplayName("미지원 Content-Type — 415 UNSUPPORTED_MEDIA_TYPE")
     void mediaTypeNotSupported_returns415() throws Exception {
         mockMvc.perform(post("/probe").contentType(MediaType.TEXT_PLAIN).content("plain text"))
@@ -80,7 +89,7 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
-    // 테스트 전용 컨트롤러 — GET /probe?id={Long}으로 타입 불일치·누락·405를, JSON 전용 POST /probe로 415를 유도한다
+    // 테스트 전용 컨트롤러 — GET /probe?id={Long}으로 타입 불일치·누락·405를, JSON 전용 POST /probe로 파싱 실패·415를 유도한다
     @RestController
     static class ProbeController {
 
@@ -90,8 +99,10 @@ class GlobalExceptionHandlerTest {
         }
 
         @PostMapping(value = "/probe", consumes = MediaType.APPLICATION_JSON_VALUE)
-        ApiResponse<String> create(@RequestBody String body) {
-            return ApiResponse.success(body);
+        ApiResponse<String> create(@RequestBody ProbeRequest request) {
+            return ApiResponse.success(request.name());
         }
     }
+
+    record ProbeRequest(String name) {}
 }

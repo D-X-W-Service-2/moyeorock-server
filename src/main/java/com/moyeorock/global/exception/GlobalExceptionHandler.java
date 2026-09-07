@@ -8,6 +8,7 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -42,13 +43,20 @@ public class GlobalExceptionHandler {
         return toResponse(ErrorCode.NO_PERMISSION, ErrorResponse.of(ErrorCode.NO_PERMISSION));
     }
 
-    // 아래 5개는 Spring MVC가 기본으로 4xx로 내리던 예외 — catch-all이 가로채면 500이 되므로 원래 상태 코드로 명시한다
+    // 아래 6개는 Spring MVC가 기본으로 4xx로 내리던 예외 — catch-all이 가로채면 500이 되므로 원래 상태 코드로 명시한다
 
     // 없는 경로 — 기본 설정에선 정적 리소스 핸들러가 NoResourceFoundException을,
     // spring.web.resources.add-mappings=false로 끄면 NoHandlerFoundException을 던지므로 둘 다 잡는다
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
     public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(Exception e) {
         return toResponse(ErrorCode.RESOURCE_NOT_FOUND, ErrorResponse.of(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    // 요청 바디 파싱 실패 (깨진 JSON, 존재하지 않는 enum 값)
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("요청 바디 파싱 실패: {}", e.getMessage());
+        return toResponse(ErrorCode.VALIDATION_FAILED, ErrorResponse.of(ErrorCode.VALIDATION_FAILED));
     }
 
     // 쿼리 파라미터·경로 변수 타입 변환 실패 (예: Long 자리에 문자열, 없는 enum 값)

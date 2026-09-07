@@ -91,6 +91,7 @@ throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
 |---|---|
 | `BusinessException` | `ErrorCode`의 status·code·message |
 | `MethodArgumentNotValidException` | 400 `VALIDATION_FAILED` + `fieldErrors` 채움 |
+| `HttpMessageNotReadableException` | 400 `VALIDATION_FAILED` (깨진 JSON · 없는 enum 값 등 바디 파싱 실패) |
 | `AccessDeniedException` | 403 `NO_PERMISSION` |
 | `NoResourceFoundException` · `NoHandlerFoundException` | 404 `RESOURCE_NOT_FOUND` (없는 경로) |
 | `MethodArgumentTypeMismatchException` | 400 `VALIDATION_FAILED` + `fieldErrors`에 파라미터명 (타입 변환 실패) |
