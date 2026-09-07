@@ -55,7 +55,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
 |  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
-| ＋ | `custom_instrument` | `VARCHAR(30) NOT NULL` | 3.2 직접 입력 |
+| ＋ | `custom_instrument` | `VARCHAR(30)` | 3.2 직접 입력 · instrument가 ETC일 때만 입력 |
 |  | `level` | `VARCHAR(20)` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
 
 - **유니크** `(user_id, instrument)`
