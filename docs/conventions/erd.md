@@ -229,7 +229,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `actor_id` | `BIGINT` | → users · 신청/초대한 사람 |
 | FK? | `target_user_id` | `BIGINT` | → users · 9.4 |
 | FK? | `recruit_post_id` | `BIGINT` | → recruit_posts |
-|  | `instrument` | `VARCHAR(20) NOT NULL` | 지원 세션 |
+|  | `instrument` | `VARCHAR(20)` | 지원 세션 · GROUP 신청은 NULL |
 |  | `message` | `TEXT` |  |
 |  | `status` | `VARCHAR(10)` | PENDING\|APPROVED\|REJECTED\|CANCELED |
 | FK? | `decided_by` | `BIGINT` | → users |
