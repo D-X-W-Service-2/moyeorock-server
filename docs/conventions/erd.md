@@ -1,6 +1,7 @@
 # moyeorock DB 테이블 명세 — ERD v3
 대상: MySQL 8.0 · 16 테이블 · PK `BIGINT AUTO_INCREMENT`
 기준: `band_erd_v3_mysql.drawio` 에서 자동 생성
+표기: 타입 칸에 `NOT NULL`만 명시한다. 표기 없으면 NULL 허용.
 
 ## 변경 프로세스
 
@@ -179,7 +180,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
-| FK | `group_id` | `BIGINT` | → groups NOT NULL |
+| FK | `group_id` | `BIGINT NOT NULL` | → groups |
 |  | `title` | `VARCHAR(100)` |  |
 |  | `description` | `TEXT` |  |
 |  | `performed_at` | `DATETIME(6)` |  |
@@ -226,12 +227,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `target_type` | `VARCHAR(10)` | TEAM\|GROUP |
 |  | `target_id` | `BIGINT` | 다형성 · FK 없음 |
 | FK | `actor_id` | `BIGINT` | → users · 신청/초대한 사람 |
-| FK? | `target_user_id` | `BIGINT` | → users NULL · 9.4 |
-| FK? | `recruit_post_id` | `BIGINT` | → recruit_posts NULL |
+| FK? | `target_user_id` | `BIGINT` | → users · 9.4 |
+| FK? | `recruit_post_id` | `BIGINT` | → recruit_posts |
 |  | `instrument` | `VARCHAR(20) NOT NULL` | 지원 세션 |
 |  | `message` | `TEXT` |  |
 |  | `status` | `VARCHAR(10)` | PENDING\|APPROVED\|REJECTED\|CANCELED |
-| FK? | `decided_by` | `BIGINT` | → users NULL |
+| FK? | `decided_by` | `BIGINT` | → users |
 |  | `created_at` | `DATETIME(6)` |  |
 |  | `decided_at` | `DATETIME(6)` |  |
 
@@ -247,7 +248,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
-| FK? | `performance_id` | `BIGINT` | → performances NULL (NULL = 독립 팀) |
+| FK? | `performance_id` | `BIGINT` | → performances (독립 팀) |
 |  | `name` | `VARCHAR(50) NOT NULL` |  |
 |  | `description` | `TEXT` |  |
 |  | `region` | `VARCHAR(50)` |  |
@@ -295,7 +296,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `team_id` | `BIGINT` | → teams |
 | FK | `song_id` | `BIGINT` | → songs |
-| FK? | `performance_id` | `BIGINT` | → performances NULL |
+| FK? | `performance_id` | `BIGINT` | → performances |
 |  | `sort_order` | `INT` | 7.1.3 순서 |
 |  | `progress` | `VARCHAR(20)` | CANDIDATE\|SELECTED\|PRACTICING\|DONE |
 |  | `created_at` | `DATETIME(6)` |  |
