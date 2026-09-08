@@ -53,7 +53,7 @@ public class TeamMember {
     private TeamRole role;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
+    @Column(length = 20, nullable = false)
     private Instrument instrument;
 
     @Enumerated(EnumType.STRING)
