@@ -115,8 +115,9 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 
 ## 5. URL
 
-- 접두사 `/v0/`
-- 리소스는 복수형 (`/teams` `/join-requests`)
+- 접두사 `/v1/` (2026-09-11부터. 단, 합주(rehearsal) 도메인은 `API 초안` 정리 전까지 `/v0/` 유지 — `docs/specs/api-spec.md` §3 참고)
+- `join-request` · `recruit-post`는 예외적으로 단수형이다(`API 초안` 기준, 2026-09-11 확인). 그 외 리소스는 아래 규칙대로 복수형을 쓴다
+- 리소스는 복수형 (`/teams` `/invitations`). 예외: `join-request` · `recruit-post` (단수형, `API 초안` 기준)
 - 상태 전이는 `PATCH /{id}/status` 또는 `PATCH /{id}/{action}`
 - 하위 리소스는 부모 경로 아래 (`/teams/{teamId}/rehearsals`), 단건 조회·수정·삭제는 단독 경로 (`/rehearsals/{id}`)
 - `me` 별칭 지원 — `?authorId=me`
@@ -139,7 +140,7 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 `@AuthUser`로 인증 주체를 주입받는다. `SecurityContextHolder`를 직접 쓰지 않는다.
 
 ```java
-@GetMapping("/v0/users/me")
+@GetMapping("/v1/users/me")
 public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 ```
 

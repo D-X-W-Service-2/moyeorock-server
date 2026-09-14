@@ -1,6 +1,8 @@
 # 도메인 지도
 
-14개 도메인 · 73개 엔드포인트 · 16개 테이블.
+14개 도메인 · 16개 테이블. 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
+
+> **버전**: 전 도메인 `/v1/`. 단, `rehearsal`은 `API 초안` 정리 전까지 `/v0/` 유지(`docs/specs/api-spec.md` §3).
 
 ## 전체
 
@@ -25,25 +27,25 @@
 > 명세에 없으면 **임의로 만들지 말고 요청할 것.** 응답 필드나 에러 코드를 추측해서 채우지 않는다.
 > DTO 이름은 `docs/conventions/dto-naming.md`, 컬럼은 `docs/conventions/erd.md`에 있다.
 
-`global/file`은 도메인이 아니고 엔드포인트 1개를 갖는다. **1팀 담당** — Security와 같은 인프라 성격이고, 1팀(프로필)·4팀(커버·포스터)이 함께 쓴다.
+`global/file`은 도메인이 아니고 엔드포인트 2개(업로드 URL 발급 · 파일 삭제)를 갖는다. **1팀 담당** — Security와 같은 인프라 성격이고, 1팀(프로필)·4팀(커버·포스터)이 함께 쓴다. 파일 삭제(`DELETE /v1/files/{fileId}`)는 `API 초안`에서 2026-09-11에 새로 확인됐다.
 
 ## 헷갈리는 경계
 
-**`join`은 컨트롤러가 2개다.** `JoinRequestController`(`/v0/join-requests`)와 `InvitationController`(`/v0/invitations`). URI와 컨트롤러는 나뉘지만 **엔티티는 `JoinRequest` 하나, 테이블도 `join_requests` 하나**다. `direction`(`APPLY` / `INVITE`)으로 구분한다.
+**`join`은 컨트롤러가 2개다.** `JoinRequestController`(`/v1/join-request`)와 `InvitationController`(`/v1/invitations`). URI와 컨트롤러는 나뉘지만 **엔티티는 `JoinRequest` 하나, 테이블도 `join_requests` 하나**다. `direction`(`APPLY` / `INVITE`)으로 구분한다.
 
 - 별도 `Invitation` 엔티티나 `invitations` 테이블을 **만들지 않는다**
 - 조회 시 `direction` 조건을 항상 포함한다. id 시퀀스를 공유하므로 빠뜨리면 신청 id로 초대 API를 호출하는 게 통과한다
 - **단, 중복 검사에서만 `direction`을 뺀다.** 신청과 초대가 동시에 있으면 가입 경로가 둘 생기므로 양쪽을 같이 봐야 한다
 
-**`notice`는 `group`과 분리한다.** 테이블이 `group_notices`이고 엔티티는 `GroupNotice`. `Post`라는 이름을 쓰지 않는다. 경로는 생성·목록만 `/v0/groups/{id}/notices`이고 상세·수정·삭제는 `/v0/notices/{id}`다.
+**`notice`는 `group`과 분리한다.** 테이블이 `group_notices`이고 엔티티는 `GroupNotice`. `Post`라는 이름을 쓰지 않는다. 경로는 생성·목록만 `/v1/groups/{id}/notices`이고 상세·수정·삭제는 `/v1/notices/{id}`다. `API 초안`은 수정·삭제도 그룹 하위 경로로 적었지만, 이 규칙을 유지하기로 하고 노션도 함께 수정했다(2026-09-11).
 
-**공지 목록과 상세는 별도 엔드포인트다.** 원래 명세는 목록 조회 하나로 묶여 있었지만(목록 응답에 `body`까지 포함), 팀 결정으로 `GET /v0/notices/{id}` 상세 조회를 분리 추가했다(`docs/specs/api-spec.md` §7, `docs/conventions/dto-naming.md` §8 참고). 목록은 `NoticeSummaryResponse`(`body` 제외), 상세는 `NoticeDetailResponse`(`body` 포함)를 쓴다.
+**공지 목록과 상세는 별도 엔드포인트다.** 원래 명세는 목록 조회 하나로 묶여 있었지만(목록 응답에 `body`까지 포함), 팀 결정으로 `GET /v1/notices/{id}` 상세 조회를 분리 추가했다(`docs/specs/api-spec.md` §7, `docs/conventions/dto-naming.md` §8 참고). `API 초안`에도 이 엔드포인트는 없지만 팀 결정을 그대로 유지한다. 목록은 `NoticeSummaryResponse`(`body` 제외), 상세는 `NoticeDetailResponse`(`body` 포함)를 쓴다.
 
-**`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v0/teams/{id}/setlist`와 `PUT /v0/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다.
+**`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v1/teams/{id}/setlist`와 `PUT /v1/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다. `API 초안`은 후자를 공연(performance) 도메인 행으로 적었지만 소유는 바뀌지 않는다(`docs/specs/api-spec.md` §8 참고).
 
 한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistConfirmRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
 
-**`user/me` 경로는 user 도메인이 아니다.** `/v0/users/me/rehearsals`는 `rehearsal`, `/v0/users/me/join-requests`는 `join`, `/v0/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
+**`user/me` 경로는 user 도메인이 아니다.** `/v0/users/me/rehearsals`(합주는 아직 v0, §3 참고)는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
 
 **공연 참가 단위는 팀이다.** 공연자 개별 관리 API는 없다. 공연에서 팀을 빼는 것 = 팀 해체.
 
@@ -89,14 +91,14 @@
 | Security · `@AuthUser` | **1팀 → 전원** | 주입 타입(`Long userId`)을 먼저 확정 |
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가. 3팀이 직접 `team_members`를 만들지 않는다 |
-| 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v0/performances/{id}/teams`가 팀을 만든다 |
+| 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다 |
 | 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지 |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처를 2팀이 먼저 확정하고 공유해야 나머지가 막히지 않는다.
 
-**`PUT /v0/teams/{id}/setlist`는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
+**`PUT /v1/teams/{id}/setlist`는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
 
 **AI 추천 3개는 2팀·4팀에 나뉘어 있다** — 팀원 추천(2팀), 개인 추천곡·팀 셋리스트 추천(4팀). 룰 기반이냐 외부 모델이냐를 **두 팀이 함께 결정해야 한다.** 한쪽만 폴링 방식이 되면 프론트가 두 패턴을 구현하게 된다.
 

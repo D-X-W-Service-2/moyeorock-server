@@ -1,7 +1,9 @@
-# moyeorock DTO 명명 규약 — v0
+# moyeorock DTO 명명 규약
 
-대상: 전체 72개 엔드포인트 · 14 도메인
-기준: API 명세 v0 · ERD v3 (MySQL 8.0)
+대상: 전체 73개 엔드포인트(파일 삭제 신규분 포함, 2026-09-11) · 14 도메인
+기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
+
+**버전**: 전 도메인 `/v1/`. 단, `rehearsal`은 초안 정리 전까지 `/v0/` 유지(`docs/specs/api-spec.md` §3).
 
 ---
 
@@ -73,9 +75,9 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 카카오 회원가입·로그인 | POST | `/v0/auth/kakao` | `UserOAuth2CodeRequest` | `AuthTokenResponse` |
-| 이메일 회원가입 | POST | `/v0/auth/signup` | `UserSignupRequest` | `AuthTokenResponse` |
-| 이메일 로그인 | POST | `/v0/auth/login` | `UserLoginRequest` | `AuthTokenResponse` |
+| 카카오 회원가입·로그인 | POST | `/v1/auth/kakao` | `UserOAuth2CodeRequest` | `AuthTokenResponse` |
+| 이메일 회원가입 | POST | `/v1/auth/signup` | `UserSignupRequest` | `AuthTokenResponse` |
+| 이메일 로그인 | POST | `/v1/auth/login` | `UserLoginRequest` | `AuthTokenResponse` |
 
 요청 3개는 이미 정해둔 이름을 그대로 썼다.
 
@@ -93,15 +95,15 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 내 프로필 조회 | GET | `/v0/users/me` | — | `UserMeResponse` |
-| 프로필·설정 수정 | PUT | `/v0/users/me` | `UserUpdateRequest` | `UserMeResponse` |
-| 탈퇴 | DELETE | `/v0/users/me` | — | `UserWithdrawResponse` |
-| 온보딩 등록 | POST | `/v0/users/me/onboarding` | `OnboardingCreateRequest` | `UserMeResponse` |
-| 세션·실력 수정 | PUT | `/v0/users/me/instruments` | `UserInstrumentUpdateRequest` | `UserInstrumentsResponse` |
-| 내 활동 | GET | `/v0/users/me/activities` | — | `UserActivityResponse` |
-| 닉네임 중복 확인 | GET | `/v0/users/nickname/check` | — | `NicknameCheckResponse` |
-| 사용자 검색 | GET | `/v0/users/search` | — | `PageResponse<UserSummaryResponse>` |
-| 타인 프로필 조회 | GET | `/v0/users/{id}` | — | `UserProfileResponse` |
+| 내 프로필 조회 | GET | `/v1/users/me` | — | `UserMeResponse` |
+| 프로필·설정 수정 | PUT | `/v1/users/me` | `UserUpdateRequest` | `UserMeResponse` |
+| 탈퇴 | DELETE | `/v1/users/me` | — | `UserWithdrawResponse` |
+| 온보딩 등록 | POST | `/v1/users/me/onboarding` | `OnboardingCreateRequest` | `UserMeResponse` |
+| 세션·실력 수정 | PUT | `/v1/users/me/instruments` | `UserInstrumentUpdateRequest` | `UserInstrumentsResponse` |
+| 내 활동 | GET | `/v1/users/me/activities` | — | `UserActivityResponse` |
+| 닉네임 중복 확인 | GET | `/v1/users/nickname/check` | — | `NicknameCheckResponse` |
+| 사용자 검색 | GET | `/v1/users/search` | — | `PageResponse<UserSummaryResponse>` |
+| 타인 프로필 조회 | GET | `/v1/users/{id}` | — | `UserProfileResponse` |
 
 **보조 DTO**
 
@@ -126,15 +128,15 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 팀 생성 | POST | `/v0/teams` | `TeamCreateRequest` | `TeamDetailResponse` |
-| 팀 목록 | GET | `/v0/teams` | — | `PageResponse<TeamSummaryResponse>` |
-| 팀 상세 | GET | `/v0/teams/{id}` | — | `TeamDetailResponse` |
-| 팀 정보 수정 | PUT | `/v0/teams/{id}` | `TeamUpdateRequest` | `TeamDetailResponse` |
-| 팀 해체 | PATCH | `/v0/teams/{id}/status` | `TeamStatusUpdateRequest` | `TeamStatusResponse` |
-| 팀원 목록 | GET | `/v0/teams/{id}/members` | — | `TeamMembersResponse` |
-| 팀원 역할·세션 변경 | PATCH | `/v0/teams/{teamId}/members/{userId}` | `TeamMemberUpdateRequest` | `TeamMemberResponse` |
-| 팀원 상태 변경(탈퇴·강퇴) | PATCH | `/v0/teams/{teamId}/members/{userId}/status` | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` |
-| 팀원 추천 (AI) | GET | `/v0/teams/{id}/members/recommendations` | — | `TeamMemberRecommendationResponse` |
+| 팀 생성 | POST | `/v1/teams` | `TeamCreateRequest` | `TeamDetailResponse` |
+| 팀 목록 | GET | `/v1/teams` | — | `PageResponse<TeamSummaryResponse>` |
+| 팀 상세 | GET | `/v1/teams/{id}` | — | `TeamDetailResponse` |
+| 팀 정보 수정 | PUT | `/v1/teams/{id}` | `TeamUpdateRequest` | `TeamDetailResponse` |
+| 팀 해체 | PATCH | `/v1/teams/{id}/status` | `TeamStatusUpdateRequest` | `TeamStatusResponse` |
+| 팀원 목록 | GET | `/v1/teams/{id}/members` | — | `TeamMembersResponse` |
+| 팀원 역할·세션 변경 | PATCH | `/v1/teams/{teamId}/members/{userId}` | `TeamMemberUpdateRequest` | `TeamMemberResponse` |
+| 팀원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/teams/{teamId}/members/{userId}/status` | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` |
+| 팀원 추천 (AI) | GET | `/v1/teams/{id}/members/recommendations` | — | `TeamMemberRecommendationResponse` |
 
 **보조 DTO**
 
@@ -157,6 +159,8 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 ## 4. rehearsal (6)
 
 패키지 `domain/rehearsal`
+
+**버전 예외**: `API 초안`의 합주 데이터가 정리되지 않아(`docs/specs/api-spec.md` §3) 아래 경로는 이번 갱신에서 제외하고 `/v0/`를 유지한다.
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
@@ -185,13 +189,15 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 패키지 `domain/recruit`
 
+경로가 단수형 `recruit-post`다 — `API 초안`을 신뢰해 반영(2026-09-11, `docs/specs/api-spec.md` §4 참고). `api-conventions.md` §5 "리소스는 복수형" 규칙의 예외다.
+
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 공고 작성 | POST | `/v0/recruit-posts` | `RecruitPostCreateRequest` | `RecruitPostDetailResponse` |
-| 공고 목록 | GET | `/v0/recruit-posts` | — | `PageResponse<RecruitPostSummaryResponse>` |
-| 공고 상세 | GET | `/v0/recruit-posts/{id}` | — | `RecruitPostDetailResponse` |
-| 공고 수정 | PUT | `/v0/recruit-posts/{id}` | `RecruitPostUpdateRequest` | `RecruitPostDetailResponse` |
-| 공고 마감·삭제 | PATCH | `/v0/recruit-posts/{id}/status` | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` |
+| 공고 작성 | POST | `/v1/recruit-post` | `RecruitPostCreateRequest` | `RecruitPostDetailResponse` |
+| 공고 목록 | GET | `/v1/recruit-post` | — | `PageResponse<RecruitPostSummaryResponse>` |
+| 공고 상세 | GET | `/v1/recruit-post/{id}` | — | `RecruitPostDetailResponse` |
+| 공고 수정 | PUT | `/v1/recruit-post/{id}` | `RecruitPostUpdateRequest` | `RecruitPostDetailResponse` |
+| 공고 마감·삭제 | PATCH | `/v1/recruit-post/{id}/status` | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` |
 
 **보조 DTO**
 
@@ -212,14 +218,16 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 패키지 `domain/join` — 컨트롤러는 `JoinRequestController`
 
+경로가 단수형 `join-request`다 — `API 초안`을 신뢰해 반영(2026-09-11, `docs/specs/api-spec.md` §5 참고). `join_requests` 테이블명은 그대로다.
+
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 가입 신청 | POST | `/v0/join-requests` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
-| 받은 신청 목록 | GET | `/v0/join-requests` | — | `PageResponse<JoinRequestResponse>` |
-| 내 신청 목록 | GET | `/v0/users/me/join-requests` | — | `PageResponse<JoinRequestResponse>` |
-| 신청 승인 | PATCH | `/v0/join-requests/{id}/approve` | — | `JoinApprovedResponse` |
-| 신청 거절 | PATCH | `/v0/join-requests/{id}/reject` | — | `JoinDecisionResponse` |
-| 신청 취소 | PATCH | `/v0/join-requests/{id}/cancel` | — | `JoinDecisionResponse` |
+| 가입 신청 | POST | `/v1/join-request` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
+| 받은 신청 목록 | GET | `/v1/join-request` | — | `PageResponse<JoinRequestResponse>` |
+| 내 신청 목록 | GET | `/v1/users/me/join-request` | — | `PageResponse<JoinRequestResponse>` |
+| 신청 승인 | PATCH | `/v1/join-request/{id}/approve` | — | `JoinApprovedResponse` |
+| 신청 거절 | PATCH | `/v1/join-request/{id}/reject` | — | `JoinDecisionResponse` |
+| 신청 취소 | PATCH | `/v1/join-request/{id}/cancel` | — | `JoinDecisionResponse` |
 
 ---
 
@@ -229,12 +237,12 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 초대 보내기 | POST | `/v0/invitations` | `InvitationCreateRequest` | `InvitationResponse` |
-| 보낸 초대 목록 | GET | `/v0/invitations` | — | `PageResponse<InvitationResponse>` |
-| 받은 초대 목록 | GET | `/v0/users/me/invitations` | — | `PageResponse<InvitationResponse>` |
-| 초대 수락 | PATCH | `/v0/invitations/{id}/accept` | — | `JoinApprovedResponse` |
-| 초대 거절 | PATCH | `/v0/invitations/{id}/decline` | — | `JoinDecisionResponse` |
-| 초대 취소 | PATCH | `/v0/invitations/{id}/cancel` | — | `JoinDecisionResponse` |
+| 초대 보내기 | POST | `/v1/invitations` | `InvitationCreateRequest` | `InvitationResponse` |
+| 보낸 초대 목록 | GET | `/v1/invitations` | — | `PageResponse<InvitationResponse>` |
+| 받은 초대 목록 | GET | `/v1/users/me/invitations` | — | `PageResponse<InvitationResponse>` |
+| 초대 수락 | PATCH | `/v1/invitations/{id}/accept` | — | `JoinApprovedResponse` |
+| 초대 거절 | PATCH | `/v1/invitations/{id}/decline` | — | `JoinDecisionResponse` |
+| 초대 취소 | PATCH | `/v1/invitations/{id}/cancel` | — | `JoinDecisionResponse` |
 
 **§6·§7 공용 DTO** — 엔티티가 `JoinRequest` 하나이므로 결과 응답도 공유한다.
 
@@ -264,17 +272,17 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 모임 생성 | POST | `/v0/groups` | `GroupCreateRequest` | `GroupDetailResponse` |
-| 모임 상세 (동아리 홈) | GET | `/v0/groups/{id}` | — | `GroupDetailResponse` |
-| 모임 정보 수정 | PUT | `/v0/groups/{id}` | `GroupUpdateRequest` | `GroupDetailResponse` |
-| 모임원 목록 | GET | `/v0/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
-| 모임원 역할 변경 | PATCH | `/v0/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
-| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v0/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
-| 공지 목록 | GET | `/v0/groups/{id}/notices` | — | `PageResponse<NoticeSummaryResponse>` |
-| 공지 상세 | GET | `/v0/notices/{id}` | — | `NoticeDetailResponse` |
-| 공지 작성 | POST | `/v0/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
-| 공지 수정 | PUT | `/v0/notices/{id}` | `NoticeUpdateRequest` | `NoticeDetailResponse` |
-| 공지 삭제 | DELETE | `/v0/notices/{id}` | — | `DeleteResponse` |
+| 모임 생성 | POST | `/v1/groups` | `GroupCreateRequest` | `GroupDetailResponse` |
+| 모임 상세 (동아리 홈) | GET | `/v1/groups/{id}` | — | `GroupDetailResponse` |
+| 모임 정보 수정 | PUT | `/v1/groups/{id}` | `GroupUpdateRequest` | `GroupDetailResponse` |
+| 모임원 목록 | GET | `/v1/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
+| 모임원 역할 변경 | PATCH | `/v1/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
+| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
+| 공지 목록 | GET | `/v1/groups/{id}/notices` | — | `PageResponse<NoticeSummaryResponse>` |
+| 공지 상세 | GET | `/v1/notices/{id}` | — | `NoticeDetailResponse` |
+| 공지 작성 | POST | `/v1/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
+| 공지 수정 | PUT | `/v1/notices/{id}` | `NoticeUpdateRequest` | `NoticeDetailResponse` |
+| 공지 삭제 | DELETE | `/v1/notices/{id}` | — | `DeleteResponse` |
 
 **보조 DTO**
 
@@ -301,13 +309,13 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 공연 생성 | POST | `/v0/groups/{groupId}/performances` | `PerformanceCreateRequest` | `PerformanceDetailResponse` |
-| 모임 공연 목록 | GET | `/v0/groups/{groupId}/performances` | — | `PageResponse<PerformanceSummaryResponse>` |
-| 공연 상세 | GET | `/v0/performances/{id}` | — | `PerformanceDetailResponse` |
-| 공연 정보 수정 | PUT | `/v0/performances/{id}` | `PerformanceUpdateRequest` | `PerformanceDetailResponse` |
-| 공연 상태 변경 | PATCH | `/v0/performances/{id}/status` | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` |
-| 공연 내 팀 생성 | POST | `/v0/performances/{performanceId}/teams` | `PerformanceTeamCreateRequest` | `TeamDetailResponse` |
-| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
+| 공연 생성 | POST | `/v1/groups/{groupId}/performances` | `PerformanceCreateRequest` | `PerformanceDetailResponse` |
+| 모임 공연 목록 | GET | `/v1/groups/{groupId}/performances` | — | `PageResponse<PerformanceSummaryResponse>` |
+| 공연 상세 | GET | `/v1/performances/{id}` | — | `PerformanceDetailResponse` |
+| 공연 정보 수정 | PUT | `/v1/performances/{id}` | `PerformanceUpdateRequest` | `PerformanceDetailResponse` |
+| 공연 상태 변경 | PATCH | `/v1/performances/{id}/status` | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` |
+| 공연 내 팀 생성 | POST | `/v1/performances/{performanceId}/teams` | `PerformanceTeamCreateRequest` | `TeamDetailResponse` |
+| 공연 셋리스트 확정 | PUT | `/v1/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
 
 이 표의 마지막 행(공연 셋리스트 확정)은 `setlist` 도메인 소유다 — 아래 보조 DTO 설명 참고.
 
@@ -331,11 +339,11 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 곡 검색 | GET | `/v0/songs` | — | `PageResponse<SongResponse>` |
-| 내 취향 추천곡 | GET | `/v0/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
-| 팀 셋리스트 추천 (AI) | GET | `/v0/teams/{id}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
-| 팀 셋리스트 저장 | PUT | `/v0/teams/{id}/setlist` | `TeamSetlistUpdateRequest` | `TeamSetlistResponse` |
-| 공연 셋리스트 확정 | PUT | `/v0/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
+| 곡 검색 | GET | `/v1/songs` | — | `PageResponse<SongResponse>` |
+| 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
+| 팀 셋리스트 추천 (AI) | GET | `/v1/teams/{id}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
+| 팀 셋리스트 저장 | PUT | `/v1/teams/{id}/setlist` | `TeamSetlistUpdateRequest` | `TeamSetlistResponse` |
+| 공연 셋리스트 확정 | PUT | `/v1/performances/{id}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
 
 **보조 DTO**
 
@@ -355,17 +363,20 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 11. notification · bookmark · file · dashboard (6)
+## 11. notification · bookmark · file · dashboard (7)
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 알림 목록 | GET | `/v0/notifications` | — | `NotificationsResponse` |
-| 알림 읽음 | PATCH | `/v0/notifications/read` | `NotificationReadRequest` | `NotificationReadResponse` |
-| 저장 목록 | GET | `/v0/bookmarks` | — | `PageResponse<BookmarkResponse>` |
-| 저장 추가 | POST | `/v0/bookmarks` | `BookmarkCreateRequest` | `BookmarkResponse` |
-| 저장 삭제 | DELETE | `/v0/bookmarks/{id}` | — | `DeleteResponse` |
-| 업로드 URL 발급 | POST | `/v0/files/presigned-url` | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| 대시보드 통합 | GET | `/v0/dashboard` | — | `DashboardResponse` |
+| 알림 목록 | GET | `/v1/notifications` | — | `NotificationsResponse` |
+| 알림 읽음 | PATCH | `/v1/notifications/read` | `NotificationReadRequest` | `NotificationReadResponse` |
+| 저장 목록 | GET | `/v1/bookmarks` | — | `PageResponse<BookmarkResponse>` |
+| 저장 추가 | POST | `/v1/bookmarks` | `BookmarkCreateRequest` | `BookmarkResponse` |
+| 저장 삭제 | DELETE | `/v1/bookmarks/{id}` | — | `DeleteResponse` |
+| 업로드 URL 발급 | POST | `/v1/files/presigned-url` | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
+| 파일 삭제 † | DELETE | `/v1/files/{fileId}` | — | 미정 |
+| 대시보드 통합 | GET | `/v1/dashboard` | — | `DashboardResponse` |
+
+> † `API 초안`에서 2026-09-11 새로 확인된 엔드포인트다. Response DTO 미정 — 착수 전 팀 확인 필요(`docs/specs/api-spec.md` §10).
 
 **보조 DTO**
 
@@ -400,7 +411,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v0/notices/{id}` 추가분 반영 — `docs/specs/api-spec.md` §7 ‖)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10)
 
 ### 재사용 상위 5개
 
