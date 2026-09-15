@@ -209,7 +209,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `title` | `VARCHAR(100)` |  |
 |  | `body` | `TEXT` |  |
 |  | `wanted_slots` | `JSON` | 세션별 인원 |
-|  | `region` | `VARCHAR(50)` |  |
+|  | `region` | `VARCHAR(50)` | 팀/모임 region과 무관 · 작성자가 작성·수정 시 직접 입력하는 독립 값 (동기화 불필요, `docs/plans/recruit-post-region-sync.md`) |
 |  | `status` | `VARCHAR(10)` | OPEN\|CLOSED |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
