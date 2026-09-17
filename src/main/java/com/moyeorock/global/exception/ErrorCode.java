@@ -13,7 +13,11 @@ public enum ErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     NO_PERMISSION(HttpStatus.FORBIDDEN, "권한이 없습니다."),
     INVALID_STATE(HttpStatus.CONFLICT, "처리할 수 없는 상태입니다."),
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다.");
+    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다."),
+
+    // recruit
+    RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
+    NOT_POST_AUTHOR(HttpStatus.FORBIDDEN, "작성자만 가능합니다.");
 
     private final HttpStatus status;
     private final String message;
