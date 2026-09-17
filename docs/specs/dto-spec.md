@@ -24,7 +24,7 @@
 DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3개는 **팀 경계를 넘는 의존의 시작점**이라 착수 전에 정하지 않으면 서로를 블로킹한다.
 
 1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 5종·enums 다음 3순위로 못 박힌 이유.
-2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v0/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v0/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/conventions/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
+2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v1/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v1/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/conventions/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
 3. **`PageResponse<T>` (1팀 소유, global/common)** — 모든 팀의 목록 API가 import하는 클래스. 확정이 늦으면 각 팀이 임시 포장을 만들었다가 갈아엎게 된다. 필드는 이미 dto-naming.md §0에 있으므로 구현만 선행하면 된다.
 
 나머지 요약 객체(`RehearsalSummaryResponse` 등)는 1팀이 의존하지 않으므로 소유 팀 착수 시점에 확정해도 늦지 않다 — 단, 재사용 상위 5개는 변경 시 공유 필수 규칙(`docs/conventions/dto-naming.md` §12)을 따른다.
@@ -108,7 +108,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### UserInstrumentsResponse
 
-`PUT /v0/users/me/instruments`의 응답이다 (`docs/conventions/dto-naming.md` §2).
+`PUT /v1/users/me/instruments`의 응답이다 (`docs/conventions/dto-naming.md` §2).
 
 ```json
 {
@@ -497,7 +497,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### PageResponse\<\> (구 GroupMembersResponse)
 
-`GET /v0/groups/{id}/members`의 응답. Notion 원본 페이지가 2026-08-22에 `GroupMembersResponse` → `PageResponse<>`로 개명됨 — 모임원 목록을 페이지네이션 응답으로 바꾸려는 의도로 추정되나 제네릭(아이템 타입 이름)이 비어 있어 확정 필요. 아래 JSON은 개명 전과 동일한 단일 멤버(아이템) 형태다.
+`GET /v1/groups/{id}/members`의 응답. Notion 원본 페이지가 2026-08-22에 `GroupMembersResponse` → `PageResponse<>`로 개명됨 — 모임원 목록을 페이지네이션 응답으로 바꾸려는 의도로 추정되나 제네릭(아이템 타입 이름)이 비어 있어 확정 필요. 아래 JSON은 개명 전과 동일한 단일 멤버(아이템) 형태다.
 
 ```json
 {
@@ -550,7 +550,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### NoticeDetailResponse
 
-`GET /v0/notices/{id}`, 그리고 생성·수정 응답(`dto-naming.md` 지켜야 할 6가지 #3에 따라 재사용)에도 쓴다. `body`를 포함한 전체 필드.
+`GET /v1/notices/{id}`, 그리고 생성·수정 응답(`dto-naming.md` 지켜야 할 6가지 #3에 따라 재사용)에도 쓴다. `body`를 포함한 전체 필드.
 
 ```json
 {
