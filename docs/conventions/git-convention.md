@@ -126,7 +126,7 @@ Squash Merge 시 커밋 메시지에 `- #PR번호`를 추가한다.
 
 - `main`에 직접 push하지 않는다.
 - PR은 최소 1명 리뷰 승인 후 Merge한다.
-- **CI 필수 체크**: 모듈 경계 검증(`ModularityTests.verify()`)을 포함한 `gradle check`가 통과해야 Merge할 수 있다(`architecture.md` 4-1절). `internal` 경계는 이 게이트로만 강제된다.
+- **CI 필수 체크**: `gradle check`가 통과해야 Merge할 수 있다.
 - Merge 후 작업 브랜치는 삭제한다.
 
 ---
