@@ -14,13 +14,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 
 // @DataJpaTest는 @Configuration을 자동 로드하지 않으므로 auditing 설정을 명시적으로 켠다.
 // 이 클래스의 엔티티(AuditingProbe 등)는 실제 스키마(Flyway 마이그레이션)에 없는 테스트 전용 엔티티라
 // ddl-auto를 이 클래스에서만 create-drop으로 풀고 Flyway를 꺼서 즉석으로 테이블을 만든다.
+// @EntityScan: MoyeorockApplication이 프로덕션 persistence unit을 com.moyeorock.domain으로
+// 제한해뒀기 때문에(테스트 전용 엔티티가 실제 컨텍스트에 새는 걸 막으려고), 이 테스트는 자기
+// 패키지(AuditingProbe 등이 선언된 여기)를 명시적으로 다시 스캔 대상에 넣어야 한다.
 @DataJpaTest
+@EntityScan(basePackages = "com.moyeorock.global.common.entity")
 @Import({JpaAuditingConfig.class, TestcontainersConfig.class})
 @TestPropertySource(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
