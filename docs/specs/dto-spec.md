@@ -347,8 +347,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 {
   "id": 14,
   "targetType": "TEAM",
-  "target": "TeamSummary",
-  "author": "UserSummary",
+  "target": { "id": 5, "name": "무명밴드", "region": "SEOUL", "genres": ["ROCK"] },
+  "author": { "id": 12, "nickname": "김철수" },
   "title": "베이스 1명 구합니다",
   "body": "주 1회 홍대에서 합주합니다.",
   "wantedSlots": [
@@ -358,9 +358,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "status": "OPEN",
   "canEdit": false,
   "myJoinRequest": { "id": 77, "status": "PENDING" },
-  "createdAt": "2026-08-11T15:00:00"
+  "createdAt": "2026-08-11T15:00:00",
+  "updatedAt": "2026-08-11T15:00:00"
 }
 ```
+
+> 2026-09-25 Notion `API 초안` 공고 행과 대조해 반영했다.
+> - `updatedAt`이 추가됐다(작성·상세·수정 응답 공통). 이전 예시에는 `createdAt`만 있었다.
+> - `target`은 `TeamSummary` 자리표시자가 아니라 **recruit 자체 축약형** `{id, name, region, genres}`이다(`docs/conventions/dto-naming.md` §5). `author`는 `UserSummaryResponse`이며 Notion 예시는 `{id, nickname}`만 있어 이 파일 상단 `UserSummaryResponse` 제안(`profileImage` 포함)과 다르다 — 1팀 확정 필요.
+> - `wantedSlots[].appliedCount`는 대기(`PENDING`) 신청 수. 작성 직후 응답 예시는 `0`이다.
+> - `canEdit`은 수정 권한 여부이고 Notion Actor가 `모임장 / 팀장`이다(작성·수정·마감 공통). `myJoinRequest`는 신청 이력이 없으면 `null`이며 Notion에 "상의 필요" 메모가 있다.
+> - 목록 응답(`PageResponse<RecruitPostSummaryResponse>`)과 상태 변경 응답은 변경 없음.
 
 ### RecruitPostUpdateRequest
 
