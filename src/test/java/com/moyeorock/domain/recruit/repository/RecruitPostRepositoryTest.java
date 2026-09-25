@@ -57,19 +57,20 @@ class RecruitPostRepositoryTest {
     }
 
     @Test
-    @DisplayName("search는 targetType·region·status·authorId 조건을 모두 만족하는 공고만 돌려준다")
+    @DisplayName("search는 targetType·region·status 조건을 모두 만족하는 공고만 돌려준다")
     void search_filtersByAllConditions() {
         RecruitPost matching = RecruitPost.create(1L, 5L, null, "일치", "본문",
                 List.of(new WantedSlot(Instrument.BASS, 1)), Region.SEOUL);
         RecruitPost wrongRegion = RecruitPost.create(1L, 5L, null, "지역 다름", "본문",
                 List.of(new WantedSlot(Instrument.BASS, 1)), Region.BUSAN);
-        RecruitPost wrongAuthor = RecruitPost.create(2L, 5L, null, "작성자 다름", "본문",
+        RecruitPost closed = RecruitPost.create(1L, 5L, null, "마감됨", "본문",
                 List.of(new WantedSlot(Instrument.BASS, 1)), Region.SEOUL);
-        recruitPostRepository.saveAll(List.of(matching, wrongRegion, wrongAuthor));
+        closed.close();
+        recruitPostRepository.saveAll(List.of(matching, wrongRegion, closed));
         recruitPostRepository.flush();
 
         Page<RecruitPost> result = recruitPostRepository.search(
-                TargetType.TEAM, Region.SEOUL, RecruitStatus.OPEN, 1L, PageRequest.of(0, 20));
+                TargetType.TEAM, Region.SEOUL, RecruitStatus.OPEN, PageRequest.of(0, 20));
 
         assertThat(result.getContent()).extracting(RecruitPost::getTitle).containsExactly("일치");
     }
@@ -85,7 +86,7 @@ class RecruitPostRepositoryTest {
         recruitPostRepository.flush();
 
         Page<RecruitPost> result = recruitPostRepository.search(
-                TargetType.GROUP, null, null, null, PageRequest.of(0, 20));
+                TargetType.GROUP, null, null, PageRequest.of(0, 20));
 
         assertThat(result.getContent()).extracting(RecruitPost::getTitle).containsExactly("모임 대상");
     }
@@ -100,7 +101,7 @@ class RecruitPostRepositoryTest {
         recruitPostRepository.flush();
 
         Page<RecruitPost> result = recruitPostRepository.search(
-                null, null, null, null, PageRequest.of(0, 20));
+                null, null, null, PageRequest.of(0, 20));
 
         assertThat(result.getTotalElements()).isEqualTo(2);
     }

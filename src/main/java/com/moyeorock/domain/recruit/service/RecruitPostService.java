@@ -49,9 +49,9 @@ public class RecruitPostService {
     }
 
     public PageResponse<RecruitPostSummaryResponse> search(TargetType targetType, Region region,
-            RecruitStatus status, Long authorId, Pageable pageable) {
+            RecruitStatus status, Pageable pageable) {
         Page<RecruitPostSummaryResponse> page = recruitPostRepository
-                .search(targetType, region, status, authorId, pageable)
+                .search(targetType, region, status, pageable)
                 .map(RecruitPostSummaryResponse::from);
         return PageResponse.from(page);
     }

@@ -28,9 +28,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// authorId=me 별칭(api-conventions.md §5)은 아직 처리하지 않는다. Long 파라미터에 "me" 문자열이
-// 오면 타입 불일치로 400이 난다 — me 별칭은 여러 도메인이 똑같이 필요로 하는 공통 관심사라
-// RecruitPostController 안에서만 임시로 풀지 않고, global 레벨 처리 방식이 정해지면 그때 반영한다.
 // 경로가 단수형 recruit-post다 — api-spec.md §4 "경로 표기": `API 초안`을 신뢰해 반영한
 // api-conventions.md §5 "리소스는 복수형" 규칙의 명시적 예외(join-request와 함께 2개뿐).
 @RestController
@@ -53,10 +50,9 @@ public class RecruitPostController {
             @RequestParam(required = false) TargetType targetType,
             @RequestParam(required = false) Region region,
             @RequestParam(required = false) RecruitStatus status,
-            @RequestParam(required = false) Long authorId,
             Pageable pageable) {
         return ApiResponse.success(
-                recruitPostService.search(targetType, region, status, authorId, pageable));
+                recruitPostService.search(targetType, region, status, pageable));
     }
 
     @GetMapping("/{id}")

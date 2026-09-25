@@ -75,7 +75,7 @@
 | PUT | `/v1/recruit-post/{id}` | 공고&nbsp;수정 | `RecruitPostUpdateRequest` | |
 | PATCH | `/v1/recruit-post/{id}/status` | 공고&nbsp;마감·삭제 | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` * |
 
-> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `authorId` (전부 선택).
+> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `page` · `size` (전부 선택). `authorId`는 Notion `API 초안`에 없어 뺐다(2026-09-25 대조).
 > 경로가 단수형 `recruit-post`다 — 상단 "경로 표기" 참고.
 > ⚠️ DTO 이름(`RecruitPostStatusUpdateRequest` 등)은 `API 초안`에 없어 기존 `docs/conventions/dto-naming.md` 정의를 그대로 썼다. 과거 노션 `API 명세서 v0`이 마감·삭제 Request를 `RecruitPostStatusResponse`로 오기했던 문제는 이 표와 무관하다.
 

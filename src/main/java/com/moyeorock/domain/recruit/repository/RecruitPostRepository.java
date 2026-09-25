@@ -12,8 +12,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> {
 
-    // 조건 4개(targetType·region·status·authorId)라 파생 메서드명 대신 @Query로 뺐다
-    // (conventions.md §4 "조건 3개 초과 시 @Query 또는 QueryDSL").
+    // 조건은 targetType·region·status(노션 API 초안 기준, authorId 없음). targetType이 컬럼이
+    // 아니라 두 컬럼의 null 여부로 판별하는 파생 조건이라 파생 메서드명으로는 표현할 수 없어 @Query로 뺐다.
     //
     // targetType은 저장된 컬럼이 아니다(erd.md 2026-09-16 exclusive-arc 전환) — targetTeamId·
     // targetGroupId 중 어느 쪽이 채워져 있는지로 판별한다.
@@ -22,9 +22,8 @@ public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> 
     // MySQL의 JSON_CONTAINS 같은 네이티브 함수가 필요한데, 지금 테스트 DB(H2, MySQL 호환 모드)가
     // 이걸 지원하지 않는다. PR #29(Testcontainers MySQL)가 머지된 뒤 네이티브 쿼리로 추가한다.
     default Page<RecruitPost> search(TargetType targetType, Region region, RecruitStatus status,
-            Long authorId, Pageable pageable) {
-        return searchByTargetTypeName(targetType != null ? targetType.name() : null, region, status, authorId,
-                pageable);
+            Pageable pageable) {
+        return searchByTargetTypeName(targetType != null ? targetType.name() : null, region, status, pageable);
     }
 
     // :targetTypeName을 TargetType.TEAM 같은 완전한 enum 리터럴과 직접 비교했더니 Hibernate가
@@ -41,11 +40,9 @@ public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> 
                    OR (:targetTypeName = 'GROUP' AND r.targetGroupId IS NOT NULL))
               AND (:region IS NULL OR r.region = :region)
               AND (:status IS NULL OR r.status = :status)
-              AND (:authorId IS NULL OR r.authorId = :authorId)
             """)
     Page<RecruitPost> searchByTargetTypeName(@Param("targetTypeName") String targetTypeName,
             @Param("region") Region region,
             @Param("status") RecruitStatus status,
-            @Param("authorId") Long authorId,
             Pageable pageable);
 }
