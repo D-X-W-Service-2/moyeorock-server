@@ -45,13 +45,13 @@ src/main/resources/db/migration/
 
 ### 3-2. 테이블 생성 & FK 제약 금지
 
-- 테이블명은 복수형 snake_case(`groups`, `group_members`) — `erd.md`와 동일.
+- 테이블명은 복수형 snake_case(`groups_`, `group_members`) — `erd.md`와 동일. (`groups`는 MySQL 8.0.2+ 예약어라 `groups_`로 씀, `erd.md` 4번 테이블 참고)
 - 기본 컬럼(`id`, `created_at`)을 포함하고, `updated_at`이 필요한 테이블(`architecture.md` §5 기준)엔 그것도 포함한다.
-- **다른 테이블을 참조하는 컬럼(`group_id`, `user_id` 등)에 `REFERENCES`/`FOREIGN KEY`를 걸지 않는다.** 같은 도메인이 소유한 두 테이블 사이(`groups`↔`group_members`)여도 예외 없다. 참조 무결성은 애플리케이션(Service) 레벨에서 관리하고 DB는 컬럼·인덱스만 둔다.
+- **다른 테이블을 참조하는 컬럼(`group_id`, `user_id` 등)에 `REFERENCES`/`FOREIGN KEY`를 걸지 않는다.** 같은 도메인이 소유한 두 테이블 사이(`groups_`↔`group_members`)여도 예외 없다. 참조 무결성은 애플리케이션(Service) 레벨에서 관리하고 DB는 컬럼·인덱스만 둔다.
 
 ```sql
 -- V1__create_group_tables.sql
-CREATE TABLE groups (
+CREATE TABLE groups_ (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     description TEXT,
@@ -82,7 +82,7 @@ CREATE UNIQUE INDEX uk_group_members_group_id_user_id ON group_members (group_id
 - 운영 데이터가 있는 테이블에 `NOT NULL` 컬럼을 추가할 때는 `DEFAULT`를 지정한다.
 
 ```sql
-ALTER TABLE groups
+ALTER TABLE groups_
     ADD COLUMN member_limit INT NOT NULL DEFAULT 0;
 ```
 
