@@ -2,10 +2,12 @@ package com.moyeorock.global.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.moyeorock.global.logging.MdcKeys;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,6 +24,29 @@ class JwtAuthFilterTest {
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clearContext();
+        MDC.clear();
+    }
+
+    @Test
+    @DisplayName("유효한 토큰이 오면 userId를 MDC에 넣는다")
+    void doFilterInternal_putsUserIdInMdc_whenTokenValid() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + jwtProvider.generateToken(1L));
+
+        jwtAuthFilter.doFilterInternal(request, new MockHttpServletResponse(), (req, res) -> {});
+
+        assertThat(MDC.get(MdcKeys.USER_ID)).isEqualTo("1");
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 토큰이면 userId를 MDC에 넣지 않는다")
+    void doFilterInternal_doesNotPutUserIdInMdc_whenTokenInvalid() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer invalid-token");
+
+        jwtAuthFilter.doFilterInternal(request, new MockHttpServletResponse(), (req, res) -> {});
+
+        assertThat(MDC.get(MdcKeys.USER_ID)).isNull();
     }
 
     @Test

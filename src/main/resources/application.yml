@@ -44,6 +44,8 @@ server:
       force: true
 
 logging:
+  pattern:
+    level: "%5p [%X{requestId:-}][%X{userId:-}]"
   level:
     com.moyeorock: debug
     org.hibernate.SQL: debug
