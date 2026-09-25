@@ -20,7 +20,7 @@ public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> 
     //
     // instrument 필터(api-spec.md §4)는 여기 없다 — wanted_slots가 JSON 컬럼이라
     // MySQL의 JSON_CONTAINS 같은 네이티브 함수가 필요한데, 지금 테스트 DB(H2, MySQL 호환 모드)가
-    // 이걸 지원하지 않는다. PR #29(Testcontainers MySQL)가 머지된 뒤 네이티브 쿼리로 추가한다.
+    // 이걸 지원하지 않는다. MySQL 기반 테스트 환경(Flyway·Testcontainers, PR #50)이 들어온 뒤 네이티브 쿼리로 추가한다.
     default Page<RecruitPost> search(TargetType targetType, Region region, RecruitStatus status,
             Pageable pageable) {
         return searchByTargetTypeName(targetType != null ? targetType.name() : null, region, status, pageable);

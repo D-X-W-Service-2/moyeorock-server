@@ -20,22 +20,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 // target_team_id·target_group_id는 exclusive-arc(erd.md 2026-09-16 전환) — 다형성 target_type+
-// target_id를 대상 타입별 nullable FK로 나눠 실제 FK 무결성을 갖게 한 것. 정확히 하나만 값을
-// 가져야 하고, 지금은 이 불변식을 create()의 Java 방어 검증으로만 지킨다.
-// FK가 실제로 있는 관계지만 @ManyToOne은 안 쓴다 — Group 엔티티가 아직 없어 target_team_id만
-// @ManyToOne으로 하면 비대칭이 되고, PR #29(Flyway·FK 정책)가 Long 매핑 쪽으로 가고 있어
-// 어느 쪽이든 다시 손댈 필요가 없는 선택이다.
-//
-// erd.md의 CHK_RP_TARGET(`(target_team_id IS NOT NULL) + (target_group_id IS NOT NULL) = 1`)은
-// 여기 @Table(check=...)로 넣지 않았다 — 이 식은 MySQL 기준(boolean을 정수로 암묵 변환)이고,
-// 지금 테스트 DB인 H2는 이 변환을 거부한다("Values of types BOOLEAN and INTEGER are not
-// comparable"). ddl-auto:update는 어차피 PR #29(Flyway)가 들어오면 없어질 임시 수단이라, H2용
-// 문법을 따로 맞추기보다 실제 CHECK 제약은 Flyway 마이그레이션에서 (MySQL 문법 그대로) 추가하는
-// 쪽으로 미룬다.
+// target_id를 대상 타입별 컬럼으로 나눈 것. 정확히 하나만 값을 가져야 하고, erd.md 기준으로
+// FK·CHECK 제약은 DB에 걸지 않는다("검증은 애플리케이션에서") — 그래서 이 불변식은 create()의
+// Java 검증이 유일한 강제 수단이다. 참조 컬럼은 전부 @ManyToOne 없이 Long으로 매핑한다.
 @Entity
 @Table(name = "recruit_posts",
-        indexes = @Index(name = "idx_recruit_posts_status_region_created_at",
-                columnList = "status, region, created_at"))
+        indexes = {
+                @Index(name = "idx_recruit_posts_status_region_created_at",
+                        columnList = "status, region, created_at"),
+                @Index(name = "idx_recruit_posts_target_team_id", columnList = "target_team_id"),
+                @Index(name = "idx_recruit_posts_target_group_id", columnList = "target_group_id")
+        })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecruitPost extends BaseEntity {
