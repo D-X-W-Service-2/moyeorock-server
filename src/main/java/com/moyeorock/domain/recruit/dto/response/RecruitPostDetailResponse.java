@@ -21,7 +21,8 @@ public record RecruitPostDetailResponse(
         Region region,
         RecruitStatus status,
         boolean canEdit,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
 ) {
 
     public static RecruitPostDetailResponse of(RecruitPost post, Long viewerId) {
@@ -37,7 +38,8 @@ public record RecruitPostDetailResponse(
                 post.getRegion(),
                 post.getStatus(),
                 viewerId != null && post.isAuthor(viewerId),
-                post.getCreatedAt()
+                post.getCreatedAt(),
+                post.getUpdatedAt()
         );
     }
 }

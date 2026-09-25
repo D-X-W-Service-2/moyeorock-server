@@ -66,6 +66,9 @@ public class RecruitPostService {
         RecruitPost post = findByIdOrThrow(postId);
         validateAuthor(post, userId);
         post.update(request.title(), request.body(), toWantedSlots(request.wantedSlots()), request.region());
+        // updatedAt은 flush 시점(@LastModifiedDate)에 갱신된다. 응답을 커밋 전에 만들기 때문에
+        // 여기서 flush하지 않으면 수정 전 updatedAt이 그대로 내려간다(노션 명세 예시는 수정 후 값).
+        recruitPostRepository.flush();
         return RecruitPostDetailResponse.of(post, userId);
     }
 
