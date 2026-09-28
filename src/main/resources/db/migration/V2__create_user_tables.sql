@@ -27,8 +27,7 @@ CREATE UNIQUE INDEX uk_users_kakao_id ON users (kakao_id);
 CREATE UNIQUE INDEX uk_users_nickname ON users (nickname);
 CREATE INDEX idx_users_status_nickname ON users (status, nickname);   -- 사용자 검색 (ACTIVE + 닉네임 정렬)
 
--- custom_instrument 컬럼은 두지 않는다: 악기 ETC 제거 결정(2026-09-28)으로 직접 입력 세션이 없어짐.
--- erd.md §2의 custom_instrument·3컬럼 유니크 갱신은 별도 이슈.
+-- custom_instrument 컬럼은 두지 않는다: 악기 ETC 제거 결정(2026-09-28)으로 직접 입력 세션이 없어짐 (erd.md §2 같은 PR에서 갱신).
 CREATE TABLE user_instruments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,                 -- FK 아님, 인덱스만
