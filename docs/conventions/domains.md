@@ -16,7 +16,7 @@
 | `join` | 3팀 | `join_requests` | 12 |
 | `notification` | 3팀 | `notifications` | 2 |
 | `bookmark` | 3팀 | `bookmarks` | 3 |
-| `group` | 4팀 | `groups` `group_members` | 6 |
+| `group` | 4팀 | `groups_` `group_members` | 6 |
 | `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 7 |
 | `song` | 4팀 | `songs` | 2 |
@@ -58,7 +58,7 @@
 | `Instrument` | `user_instruments` `team_members` `join_requests` `recruit_posts` |
 | `Level` | `user_instruments` `songs.difficulty` |
 | `Genre` | `users` `teams` `songs` |
-| `Region` | `users` `teams` `groups` `recruit_posts` |
+| `Region` | `users` `teams` `groups_` `recruit_posts` |
 | `TargetType` | `recruit_posts` `join_requests` (`TEAM` `GROUP`) |
 
 **값이 다르면 공유하지 않는다.**

@@ -38,9 +38,8 @@ public class Team extends BaseEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "performance_id")
-    private Performance performance;
+    @Column(name = "performance_id")
+    private Long performanceId;
 
     @Enumerated(EnumType.STRING)
     private TeamStatus status;
@@ -54,6 +53,7 @@ public class Team extends BaseEntity {
 ```
 
 - PK는 `BIGINT AUTO_INCREMENT` → `IDENTITY`
+- **다른 테이블 참조 컬럼은 `@ManyToOne` 대신 `Long` 필드로 둔다** — `performance` 도메인이 다른 팀 소유든, 같은 도메인 소유든 예외 없다. DB에도 FK를 안 건다(`docs/conventions/flyway-migration.md` §3-2, `architecture.md` §5). 필요한 값은 `PerformanceService`처럼 소유 도메인의 Service를 호출해서 받는다
 - enum은 **반드시 `@Enumerated(EnumType.STRING)`**. `ORDINAL`은 값 순서가 바뀌면 데이터가 깨진다
 - 컬럼이 `VARCHAR`로 정의돼 있으므로 DB에는 문자열이 들어간다
 - JSON 컬럼(`users.genres` `recruit_posts.wanted_slots` `songs.difficulty`)은 컨버터로 매핑
@@ -83,7 +83,7 @@ public class TeamService {
 
 - `JpaRepository<Team, Long>` 상속
 - 메서드 이름이 길어지면(조건 3개 초과) `@Query` 또는 QueryDSL. **QueryDSL은 아직 도입 안 함**
-- N+1이 예상되는 조회는 `@EntityGraph` 또는 `join fetch`
+- 연관관계 매핑을 안 쓰므로 `@EntityGraph`/`join fetch`로 N+1을 풀 일이 없다. 대신 여러 건의 참조 ID를 한 번에 다른 도메인 Service에 넘겨 일괄 조회하는 방식으로 N+1을 피한다(예: `UserService.getSummaries(List<Long> userIds)`) — 단건씩 반복 호출하지 않는다
 - 팀 조회 메서드에는 `status = ACTIVE` 조건을 넣는다 (`docs/conventions/architecture.md` §6)
 
 ## 5. 네이밍
@@ -100,9 +100,7 @@ public class TeamService {
 
 ## 6. 패키지 접근
 
-같은 도메인 안에서는 제한 없다. 다른 도메인에서 import할 수 있는 것은 **Service와 응답 DTO뿐**이다. Entity·Repository·요청 DTO를 import하고 있으면 잘못된 것이다.
-
-단, 엔티티 필드의 `@ManyToOne` 연관관계로 다른 도메인 엔티티 타입을 참조하는 것은 예외다 (`docs/conventions/architecture.md` §3 참고).
+같은 도메인 안에서는 제한 없다. 다른 도메인에서 import할 수 있는 것은 **Service와 응답 DTO뿐**이다. Entity·Repository·요청 DTO를 import하고 있으면 잘못된 것이다. **예외 없음** — 이전엔 `@ManyToOne` 연관관계로 다른 도메인 엔티티를 참조하는 것을 예외로 허용했지만, 연관관계 매핑 자체를 안 쓰기로 하면서(`architecture.md` §5) 이 예외도 사라졌다.
 
 ## 7. 테스트
 

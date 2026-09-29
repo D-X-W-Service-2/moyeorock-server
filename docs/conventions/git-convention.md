@@ -154,3 +154,16 @@ PR 머지 → main push → deploy-dev.yml → dev 배포·검증
 ```
 이슈 생성 → 브랜치 생성 (이슈번호 포함) → 작업·커밋 → PR 생성 (이슈 연결) → 리뷰 → Merge → 브랜치 삭제
 ```
+
+### 5-1. 이슈 제목 규칙
+```
+[{Type}] {설명}
+```
+
+- **Type**: 커밋 type 첫 글자 대문자 (`Feat`, `Fix`, `Refactor`, `Docs`, `Test`, `Chore`, `Init`)
+- **설명**: 한글로 간략히
+
+```
+[Feat] 사물함 신청 API 추가
+[Fix] 대여 반납일 검증 누락 수정
+```
