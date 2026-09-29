@@ -4,19 +4,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.global.security.JwtProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 // 실제 필터 체인 순서를 검증한다: RequestLoggingFilter -> Security(JwtAuthFilter 포함) -> 디스패처.
 // 단위 테스트는 필터 하나만 돌려서 이 순서 관계는 증명하지 못한다.
+// @Import(TestcontainersConfig.class): PR #50부터 테스트 DB가 H2 -> Testcontainers MySQL로
+// 바뀌어서, @SpringBootTest가 datasource를 얻으려면 이 컨테이너가 필요하다(리뷰 반영).
 @SpringBootTest
 @AutoConfigureMockMvc
+@Import(TestcontainersConfig.class)
 class RequestLoggingFlowTest {
 
     @Autowired
