@@ -3,33 +3,26 @@ package com.moyeorock.domain.team.entity;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.domain.team.enums.MemberStatus;
 import com.moyeorock.domain.team.enums.TeamRole;
-// import com.moyeorock.domain.user.entity.User;
-// → 1팀의 User 엔티티가 아직 없어서 주석 처리. Performance와 동일한 방식으로,
-//   User가 생기면 이 import와 아래 필드·생성자 파라미터 주석만 풀면 되게 맞춰뒀다.
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-// import jakarta.persistence.UniqueConstraint;
-// → 유니크 제약 (team_id, user_id)도 user 필드와 함께 주석 처리(아래 @Table 설명 참고).
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+// team_id·user_id는 CLAUDE.md 절대 규칙 6에 따라 Long으로 매핑한다 — 같은 도메인 내부 참조도
+// 예외 없음(team 필드는 원래 @ManyToOne Team이었으나 규칙 6 확정 후 미반영 상태였다).
+// user_id는 1팀 User 엔티티가 없어 계속 비워둔 채였는데, 이번에 User가 생겨서 채운다.
 @Entity
-// @Table에 uniqueConstraints = (team_id, user_id)를 원래는 넣어야 하지만(ERD "유니크
-// (team_id, user_id)"), user 필드를 아직 매핑 안 해서 user_id 컬럼 자체가 존재하지 않는다.
-// application.yml이 ddl-auto: update라 없는 컬럼을 제약 대상으로 지정하면 스키마 생성이 실패한다.
-// 그래서 User 엔티티가 생겨서 user 필드를 되살릴 때 이 유니크 제약도 같이 추가한다.
-@Table(name = "team_members")
+@Table(name = "team_members",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"team_id", "user_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TeamMember {
@@ -38,15 +31,11 @@ public class TeamMember {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "team_id", nullable = false)
-    private Team team;
+    @Column(name = "team_id", nullable = false)
+    private Long teamId;
 
-    // --- user 연관관계는 User 엔티티가 없어서 임시로 주석 처리 ---
-    // 원래 형태: @ManyToOne(fetch = LAZY) @JoinColumn(name = "user_id", nullable = false) User user;
-    // @ManyToOne(fetch = FetchType.LAZY)
-    // @JoinColumn(name = "user_id", nullable = false)
-    // private User user;
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10, nullable = false)
@@ -63,12 +52,10 @@ public class TeamMember {
     @Column(nullable = false)
     private LocalDateTime joinedAt;
 
-    // 정적 팩토리. user 파라미터는 User 엔티티가 생기면 (Team team, User user, TeamRole role,
-    // Instrument instrument) 형태로 추가한다. 지금은 team만 필수로 받는다.
-    public static TeamMember create(Team team, TeamRole role, Instrument instrument) {
+    public static TeamMember create(Long teamId, Long userId, TeamRole role, Instrument instrument) {
         TeamMember member = new TeamMember();
-        member.team = team;
-        // member.user = user; // User 엔티티 생기면 채운다.
+        member.teamId = teamId;
+        member.userId = userId;
         member.role = role;
         member.instrument = instrument;
         // 새로 합류하는 팀원은 항상 ACTIVE. LEFT·REMOVED는 나중에 별도 메서드로만 바뀌는 상태라
