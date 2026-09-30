@@ -18,7 +18,16 @@ repositories {
     mavenCentral()
 }
 
+dependencyManagement {
+    imports {
+        mavenBom "software.amazon.awssdk:bom:2.54.15"
+    }
+}
+
 dependencies {
+    // file.storage.type=s3일 때만 쓰인다(S3FileStorageClient). 기본값은 local이라
+    // 이 의존성이 있어도 AWS 자격증명 없이 부팅된다
+    implementation 'software.amazon.awssdk:s3'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
