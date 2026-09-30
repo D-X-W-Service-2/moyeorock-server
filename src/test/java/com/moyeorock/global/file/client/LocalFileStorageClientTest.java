@@ -1,6 +1,7 @@
 package com.moyeorock.global.file.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -63,5 +64,16 @@ class LocalFileStorageClientTest {
         LocalFileStorageClient client = client(tempDir);
 
         client.delete("profile/never-existed.png");
+    }
+
+    @Test
+    @DisplayName("fileKey에 \"..\"가 있어 basePath를 벗어나려 하면 예외를 던진다")
+    void write_throws_whenFileKeyEscapesBasePath() {
+        // fileKey는 지금 항상 서버가 생성하지만, 방어적으로 containment check가 실제로 동작하는지 검증한다.
+        LocalFileStorageClient client = client(tempDir);
+
+        assertThatThrownBy(() -> client.write("../outside.png", new ByteArrayInputStream(new byte[]{1})))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(Files.exists(tempDir.resolveSibling("outside.png"))).isFalse();
     }
 }
