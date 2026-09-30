@@ -55,11 +55,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
-| ＋ | `custom_instrument` | `VARCHAR(30)` | 3.2 직접 입력 · instrument가 ETC일 때만 입력 |
+|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY |
 |  | `level` | `VARCHAR(20)` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
 
-- **유니크** `(user_id, instrument, custom_instrument)` — `instrument=ETC`인 사용자가 `custom_instrument`만 다른 세션을 여러 개 등록할 수 있게 확장(2026-09-16, 기존 `(user_id, instrument)`는 ETC 중복 등록을 막아버리는 버그였음)
+- **유니크** `(user_id, instrument)`
+
+> ETC(직접 입력 세션)·`custom_instrument` 컬럼 제거 (2026-09-28 팀 결정, 기타 악기 등록 불가). 2026-09-16의 3컬럼 유니크 확장은 ETC 복수 등록용이었으므로 함께 되돌림. 공용 enum `Instrument`에서도 ETC 삭제 — team_members·join_requests·공고 wantedSlots가 같은 enum을 쓴다.
 
 
 ---
