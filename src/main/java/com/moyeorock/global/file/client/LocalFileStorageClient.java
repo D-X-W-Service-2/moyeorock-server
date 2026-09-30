@@ -20,8 +20,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LocalFileStorageClient implements FileStorageClient {
 
-    private static final String LOCAL_UPLOAD_PATH = "/v1/files/local-upload/";
-    private static final String LOCAL_SERVE_PATH = "/v1/files/local/";
+    // FileController가 이 경로들로 실제 업로드 수신·서빙 엔드포인트를 매핑한다 — 두 클래스가
+    // 각자 하드코딩해서 어긋나는 걸 막기 위해 여기 하나만 정의하고 컨트롤러는 이 상수를 참조한다.
+    public static final String LOCAL_UPLOAD_PATH = "/v1/files/local-upload/";
+    public static final String LOCAL_SERVE_PATH = "/v1/files/local/";
 
     private final LocalFileStorageProperties properties;
 
@@ -62,7 +64,14 @@ public class LocalFileStorageClient implements FileStorageClient {
         }
     }
 
+    // fileKey는 현재 항상 서버가 generateFileKey로 만든 값만 쓰이지만(FileService), 방어적으로
+    // basePath 하위를 벗어나는 경로(예: "../../etc/passwd")는 여기서 한 번 더 막는다.
     private Path resolvePath(String fileKey) {
-        return Path.of(properties.basePath()).resolve(fileKey).normalize();
+        Path base = Path.of(properties.basePath()).normalize();
+        Path resolved = base.resolve(fileKey).normalize();
+        if (!resolved.startsWith(base)) {
+            throw new IllegalArgumentException("잘못된 파일 경로입니다: " + fileKey);
+        }
+        return resolved;
     }
 }

@@ -2,6 +2,7 @@ package com.moyeorock.global.file.controller;
 
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.DeleteResponse;
+import com.moyeorock.global.file.client.LocalFileStorageClient;
 import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.service.FileService;
@@ -9,8 +10,10 @@ import com.moyeorock.global.security.AuthUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
+import java.io.InputStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,8 +30,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class FileController {
 
-    private static final String LOCAL_UPLOAD_PATH = "/v1/files/local-upload/";
-    private static final String LOCAL_SERVE_PATH = "/v1/files/local/";
+    // LocalFileStorageClient가 presigned URL을 발급할 때 쓰는 경로와 같은 값이어야 한다 — 상수를
+    // 여기 따로 두면 한쪽만 바뀌었을 때 조용히 깨지므로 그 클래스의 상수를 그대로 참조한다.
+    private static final String LOCAL_UPLOAD_PATH = LocalFileStorageClient.LOCAL_UPLOAD_PATH;
+    private static final String LOCAL_SERVE_PATH = LocalFileStorageClient.LOCAL_SERVE_PATH;
 
     private final FileService fileService;
 
@@ -68,9 +73,30 @@ public class FileController {
     public ResponseEntity<InputStreamResource> serveLocal(HttpServletRequest request) {
         String fileKey = extractFileKey(request, LOCAL_SERVE_PATH);
         FileService.FileContent content = fileService.readLocalFile(fileKey);
+        MediaType mediaType = parseMediaTypeOrClose(content);
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(content.contentType()))
+                .contentType(mediaType)
                 .body(new InputStreamResource(content.content()));
+    }
+
+    // contentType은 issuePresignedUrl 시점에 화이트리스트로 검증되지만, 그 이전에 발급된 값이나
+    // 향후 검증 로직 변경에 대비해 파싱 실패 시 이미 열려 있는 스트림을 여기서 반드시 닫는다 —
+    // 안 닫으면 인증 없는 이 엔드포인트를 반복 호출해 파일 디스크립터를 고갈시킬 수 있다.
+    private MediaType parseMediaTypeOrClose(FileService.FileContent content) {
+        try {
+            return MediaType.parseMediaType(content.contentType());
+        } catch (InvalidMediaTypeException e) {
+            closeQuietly(content.content());
+            throw e;
+        }
+    }
+
+    private void closeQuietly(InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+            // 닫기 실패는 무시 — 이미 예외 처리 경로라 원래 예외를 그대로 전파한다.
+        }
     }
 
     private String extractFileKey(HttpServletRequest request, String prefix) {
