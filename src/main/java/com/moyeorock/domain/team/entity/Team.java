@@ -3,9 +3,6 @@ package com.moyeorock.domain.team.entity;
 import com.moyeorock.global.common.entity.BaseEntity;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.domain.team.enums.TeamStatus;
-// import com.moyeorock.domain.performance.entity.Performance;
-// → 4팀의 Performance 엔티티가 아직 없어서 주석 처리. @ManyToOne 필드 자체는 미리 적어 두고,
-//   Performance 클래스가 생기면 이 import와 아래 필드의 주석만 풀면 되게 해뒀다.
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -28,14 +25,8 @@ public class Team extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // --- performance 연관관계는 Performance 엔티티가 없어서 임시로 주석 처리 ---
-    // @ManyToOne(fetch = LAZY): architecture.md §5 "연관관계는 전부 LAZY" 규칙.
-    //   EAGER로 두면 Team을 조회할 때마다 필요 없어도 performances를 매번 조인해서 가져온다.
-    // @JoinColumn(name = "performance_id"): FK 컬럼명을 ERD와 맞춤. nullable 기본값 true라
-    //   "NULL = 독립 팀"이라는 ERD 규칙을 그대로 만족한다(따로 nullable=false 안 붙임).
-    // @ManyToOne(fetch = FetchType.LAZY)
-    // @JoinColumn(name = "performance_id")
-    // private Performance performance;
+    @Column(name = "performance_id")
+    private Long performanceId;
 
     @Column(nullable = false, length = 50)
     private String name;
@@ -56,6 +47,15 @@ public class Team extends BaseEntity {
         team.name = name;
         team.region = region;
         team.status = TeamStatus.ACTIVE;
+        return team;
+    }
+
+    // 공연 내 팀 생성(dto-naming.md §9 PerformanceTeamCreateRequest, 7.1) — 4팀 performance
+    // 도메인이 이 TeamService 메서드를 호출해서 만드는 팀. performanceId가 있으면 "공연 팀",
+    // 없으면(위 create()) "독립 팀"이다(erd.md §12).
+    public static Team createForPerformance(Long performanceId, String name, Region region) {
+        Team team = create(name, region);
+        team.performanceId = performanceId;
         return team;
     }
 
