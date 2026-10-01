@@ -18,11 +18,12 @@ public class SongDifficultyConverter implements AttributeConverter<Map<Instrumen
 
     @Override
     public String convertToDatabaseColumn(Map<Instrument, Level> attribute) {
-        return OBJECT_MAPPER.writeValueAsString(attribute);
+        return attribute == null ? null : OBJECT_MAPPER.writeValueAsString(attribute);
     }
 
     @Override
     public Map<Instrument, Level> convertToEntityAttribute(String dbData) {
-        return OBJECT_MAPPER.readValue(dbData, DIFFICULTY_TYPE);
+        // difficulty는 nullable이다(erd.md §8) — Jackson readValue(null)은 예외를 던진다.
+        return dbData == null ? null : OBJECT_MAPPER.readValue(dbData, DIFFICULTY_TYPE);
     }
 }

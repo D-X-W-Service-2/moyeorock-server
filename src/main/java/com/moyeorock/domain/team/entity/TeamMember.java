@@ -17,9 +17,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// team_id·user_id는 CLAUDE.md 절대 규칙 6에 따라 Long으로 매핑한다 — 같은 도메인 내부 참조도
-// 예외 없음(team 필드는 원래 @ManyToOne Team이었으나 규칙 6 확정 후 미반영 상태였다).
-// user_id는 1팀 User 엔티티가 없어 계속 비워둔 채였는데, 이번에 User가 생겨서 채운다.
 @Entity
 @Table(name = "team_members",
         uniqueConstraints = @UniqueConstraint(columnNames = {"team_id", "user_id"}))

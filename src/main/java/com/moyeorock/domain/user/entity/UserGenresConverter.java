@@ -19,11 +19,12 @@ public class UserGenresConverter implements AttributeConverter<List<Genre>, Stri
 
     @Override
     public String convertToDatabaseColumn(List<Genre> attribute) {
-        return OBJECT_MAPPER.writeValueAsString(attribute);
+        return attribute == null ? null : OBJECT_MAPPER.writeValueAsString(attribute);
     }
 
     @Override
     public List<Genre> convertToEntityAttribute(String dbData) {
-        return OBJECT_MAPPER.readValue(dbData, GENRES_TYPE);
+        // users.genres는 온보딩 전까지 NULL이다 — Jackson readValue(null)은 예외를 던진다.
+        return dbData == null ? null : OBJECT_MAPPER.readValue(dbData, GENRES_TYPE);
     }
 }

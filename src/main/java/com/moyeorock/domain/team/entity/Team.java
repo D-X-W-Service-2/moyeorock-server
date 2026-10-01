@@ -25,7 +25,6 @@ public class Team extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // FK 아님(CLAUDE.md 절대 규칙 6) — Long으로만 참조. NULL = 독립 팀(erd.md §12).
     @Column(name = "performance_id")
     private Long performanceId;
 
