@@ -32,8 +32,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `genres` | `JSON` | 선호 장르 3.1 |
 |  | `bio` | `TEXT` |  |
 |  | `profile_image` | `VARCHAR(500)` |  |
-|  | `platform_role` | `VARCHAR(10)` | USER\|SUPER · 2.2 |
-|  | `status` | `VARCHAR(20)` | ACTIVE\|WITHDRAWN\|SUSPENDED |
+|  | `platform_role` | `VARCHAR(10) NOT NULL` | USER\|SUPER · 2.2 |
+|  | `status` | `VARCHAR(20) NOT NULL` | ACTIVE\|WITHDRAWN\|SUSPENDED |
 |  | `is_recommendable` | `TINYINT(1) DEFAULT 1` | 9.1 |
 | ＋ | `is_activity_public` | `TINYINT(1) DEFAULT 1` | 9.2 |
 | ＋ | `privacy_agreed_at` | `DATETIME(6) NOT NULL` | 2.3 |
@@ -55,11 +55,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
-| ＋ | `custom_instrument` | `VARCHAR(30)` | 3.2 직접 입력 · instrument가 ETC일 때만 입력 |
-|  | `level` | `VARCHAR(20)` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
+|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY |
+|  | `level` | `VARCHAR(20) NOT NULL` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
 
-- **유니크** `(user_id, instrument, custom_instrument)` — `instrument=ETC`인 사용자가 `custom_instrument`만 다른 세션을 여러 개 등록할 수 있게 확장(2026-09-16, 기존 `(user_id, instrument)`는 ETC 중복 등록을 막아버리는 버그였음)
+- **유니크** `(user_id, instrument)`
+
+> 악기 `ETC`(직접 입력) 및 `custom_instrument` 컬럼은 2026-09-28 대면 회의에서 폐지했다. 유니크도 `(user_id, instrument)`로 되돌렸다.
 
 
 ---

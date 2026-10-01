@@ -32,19 +32,14 @@ public class UserInstrument {
     @Column(length = 20, nullable = false)
     private Instrument instrument;
 
-    // instrument가 ETC일 때만 값을 가진다 (erd.md 3.2)
-    @Column(name = "custom_instrument", length = 30)
-    private String customInstrument;
-
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
+    @Column(length = 20, nullable = false)
     private Level level;
 
-    public static UserInstrument create(Long userId, Instrument instrument, String customInstrument, Level level) {
+    public static UserInstrument create(Long userId, Instrument instrument, Level level) {
         UserInstrument userInstrument = new UserInstrument();
         userInstrument.userId = userId;
         userInstrument.instrument = instrument;
-        userInstrument.customInstrument = customInstrument;
         userInstrument.level = level;
         return userInstrument;
     }

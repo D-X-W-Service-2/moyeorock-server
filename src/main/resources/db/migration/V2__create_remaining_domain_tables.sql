@@ -13,8 +13,8 @@ CREATE TABLE users (
     genres JSON,
     bio TEXT,
     profile_image VARCHAR(500),
-    platform_role VARCHAR(10),
-    status VARCHAR(20),
+    platform_role VARCHAR(10) NOT NULL,
+    status VARCHAR(20) NOT NULL,
     is_recommendable TINYINT(1) NOT NULL DEFAULT 1,
     is_activity_public TINYINT(1) NOT NULL DEFAULT 1,
     privacy_agreed_at DATETIME(6) NOT NULL,
@@ -27,19 +27,18 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uk_users_email ON users (email);
 CREATE UNIQUE INDEX uk_users_kakao_id ON users (kakao_id);
 CREATE UNIQUE INDEX uk_users_nickname ON users (nickname);
+-- 사용자 검색 API(ACTIVE 필터 + 닉네임 정렬)에서 쓴다.
+CREATE INDEX idx_users_status_nickname ON users (status, nickname);
 
 -- 2. user_instruments ----------------------------------------------------
 CREATE TABLE user_instruments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,   -- FK 아님, 인덱스만
     instrument VARCHAR(20) NOT NULL,
-    custom_instrument VARCHAR(30),
-    level VARCHAR(20)
+    level VARCHAR(20) NOT NULL
 );
 
--- instrument=ETC인 사용자가 custom_instrument만 다른 세션을 여러 개 등록할 수 있다(2026-09-16 확장).
-CREATE UNIQUE INDEX uk_user_instruments_user_id_instrument_custom_instrument
-    ON user_instruments (user_id, instrument, custom_instrument);
+CREATE UNIQUE INDEX uk_user_instruments_user_id_instrument ON user_instruments (user_id, instrument);
 
 -- 3. bookmarks -------------------------------------------------------------
 CREATE TABLE bookmarks (

@@ -1,5 +1,6 @@
 package com.moyeorock.domain.user.entity;
 
+import com.moyeorock.domain.user.enums.LoginType;
 import com.moyeorock.domain.user.enums.PlatformRole;
 import com.moyeorock.domain.user.enums.UserStatus;
 import com.moyeorock.global.common.entity.BaseEntity;
@@ -57,11 +58,11 @@ public class User extends BaseEntity {
     private String profileImage;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "platform_role", length = 10)
+    @Column(name = "platform_role", length = 10, nullable = false)
     private PlatformRole platformRole;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20)
+    @Column(length = 20, nullable = false)
     private UserStatus status;
 
     @Column(name = "is_recommendable")
@@ -79,7 +80,8 @@ public class User extends BaseEntity {
     @Column(name = "withdrawn_at")
     private LocalDateTime withdrawnAt;
 
-    public static User signupWithEmail(String email, String passwordHash, String nickname) {
+    public static User signupWithEmail(String email, String passwordHash, String nickname,
+            LocalDateTime privacyAgreedAt) {
         User user = new User();
         user.email = email;
         user.passwordHash = passwordHash;
@@ -88,11 +90,11 @@ public class User extends BaseEntity {
         user.status = UserStatus.ACTIVE;
         user.isRecommendable = true;
         user.isActivityPublic = true;
-        user.privacyAgreedAt = LocalDateTime.now();
+        user.privacyAgreedAt = privacyAgreedAt;
         return user;
     }
 
-    public static User signupWithKakao(String kakaoId, String nickname) {
+    public static User signupWithKakao(String kakaoId, String nickname, LocalDateTime privacyAgreedAt) {
         User user = new User();
         user.kakaoId = kakaoId;
         user.nickname = nickname;
@@ -100,7 +102,7 @@ public class User extends BaseEntity {
         user.status = UserStatus.ACTIVE;
         user.isRecommendable = true;
         user.isActivityPublic = true;
-        user.privacyAgreedAt = LocalDateTime.now();
+        user.privacyAgreedAt = privacyAgreedAt;
         return user;
     }
 
@@ -108,15 +110,39 @@ public class User extends BaseEntity {
         this.nickname = nickname;
         this.region = region;
         this.genres = genres;
-        this.onboardingCompletedAt = LocalDateTime.now();
+        // 온보딩 재호출은 멱등(200)이다 — 이미 완료된 사용자가 다시 불러도 최초 완료 시각은 그대로 둔다.
+        if (this.onboardingCompletedAt == null) {
+            this.onboardingCompletedAt = LocalDateTime.now();
+        }
     }
 
     public boolean isOnboardingCompleted() {
         return onboardingCompletedAt != null;
     }
 
+    public void updateProfile(String nickname, Region region, List<Genre> genres, String bio,
+            String profileImage, boolean recommendable, boolean activityPublic) {
+        this.nickname = nickname;
+        this.region = region;
+        this.genres = genres;
+        this.bio = bio;
+        this.profileImage = profileImage;
+        this.isRecommendable = recommendable;
+        this.isActivityPublic = activityPublic;
+    }
+
+    public LoginType loginType() {
+        return kakaoId != null ? LoginType.KAKAO : LoginType.EMAIL;
+    }
+
+    // email·kakaoId·passwordHash는 전부 UNIQUE라 null로 비우지 않으면 같은 계정으로 재가입이
+    // 영구히 막힌다. nickname도 UNIQUE라 비워둘 수 없어 식별자로 대체한다(탈퇴자 개인정보 제거).
     public void withdraw() {
         this.status = UserStatus.WITHDRAWN;
         this.withdrawnAt = LocalDateTime.now();
+        this.email = null;
+        this.kakaoId = null;
+        this.passwordHash = null;
+        this.nickname = "탈퇴회원_" + this.id;
     }
 }
