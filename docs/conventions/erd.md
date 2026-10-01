@@ -1,5 +1,5 @@
 # moyeorock DB 테이블 명세 — ERD v3
-대상: MySQL 8.0 · 16 테이블 · PK `BIGINT AUTO_INCREMENT`
+대상: MySQL 8.0 · 17 테이블 · PK `BIGINT AUTO_INCREMENT`
 기준: `band_erd_v3_mysql.drawio` 에서 자동 생성
 표기: 타입 칸에 `NOT NULL`만 명시한다. 표기 없으면 NULL 허용.
 
@@ -332,6 +332,28 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 - **인덱스** `(team_id, starts_at)`
 
+
+---
+
+## 파일
+
+### 17. `files`
+
+업로드된 파일 메타데이터 (`global/file` — 도메인 아님, 1팀 담당. 1팀 프로필·4팀 커버·포스터가 같이 씀)
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+|  | `file_key` | `VARCHAR(255) NOT NULL` | 스토리지 상 실제 경로(`{도메인}/{uuid}.{확장자}`) |
+|  | `domain` | `VARCHAR(20) NOT NULL` | PROFILE_IMAGE\|GROUP_COVER\|PERFORMANCE_POSTER |
+|  | `original_name` | `VARCHAR(255) NOT NULL` |  |
+|  | `content_type` | `VARCHAR(100) NOT NULL` |  |
+|  | `uploader_id` | `BIGINT NOT NULL` | → users · FK 아님, 인덱스만(CLAUDE.md 절대 규칙 6) |
+|  | `created_at` | `DATETIME(6)` |  |
+
+- **인덱스** `(uploader_id)`
+
+> 2026-09-30 신규. `users.profile_image`·`groups_.cover_image`·`performances.poster_image`는 이 테이블을 참조하지 않고 여전히 URL 문자열을 직접 저장한다 — `files`는 발급·삭제 이력 관리용이고, 실제 참조는 URL 문자열로 한다(각 도메인이 `fileId`를 몰라도 되게). 상세: `docs/plans/file-upload-presigned-url.md`.
 
 ---
 
