@@ -127,9 +127,11 @@
 | PUT | `/v1/groups/{id}` | 모임&nbsp;정보&nbsp;수정 | `GroupUpdateRequest` | | |
 | GET | `/v1/groups/{id}/members` | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
 | PATCH | `/v1/groups/{groupId}/members/{userId}` | 모임원&nbsp;역할&nbsp;변경&nbsp;(모임장&nbsp;위임) | `GroupMemberUpdateRequest` | | 모임장 |
-| PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` * | |
+| PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | — | — (`data: null`) * | |
 
 > `API 초안`에서도 원래 역할 변경과 같은 경로(`/members/{userId}`)를 공유하고 있었으나, `docs/conventions/api-conventions.md` §5 규칙(상태 전이는 `/status`)에 맞춰 내보내기·탈퇴 경로에 `/status`를 붙이고 노션도 함께 수정했다(2026-09-11). 과거 "DELETE → PATCH 전환 미완" 문제는 해소됐다.
+> \* **2026-10-05 대조**: 내보내기·탈퇴는 `API 초안`(2026-09-23) 기준으로 **요청·응답 바디가 모두 없다**. 이 문서의 이전 스냅샷(2026-09-14)에 있던 `GroupMemberStatusUpdateRequest`·`GroupMemberStatusResponse`를 걷었다 — 더 최신 문서를 따른 것이다. 상태값은 서버가 판단한다(요청자 == 대상 → `LEFT`, 모임장이 타인 → `BANNED`).
+> 모임원 목록 항목(`GroupMemberResponse`)도 같은 날 `API 초안` 기준으로 평탄화 구조로 교체했다(`docs/specs/dto-spec.md` §7).
 > § 원본 DTO 페이지 `GroupMembersResponse`가 `PageResponse<>`로 개명된 이력이 있다(2026-08-22). 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조. `API 초안`에는 DTO 정보가 없어 이 이력은 갱신되지 않았다.
 
 ### notice
@@ -147,6 +149,7 @@
 > \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 팀 확인 필요.
 > ‖ `API 초안`에도 이 엔드포인트는 없다. **팀 결정으로 목록·상세를 분리해 신규 추가한 엔드포인트**로, 기존 문서의 결정을 그대로 유지한다 — 목록은 `body`를 뺀 `NoticeSummaryResponse`, 상세는 전체 필드를 담는 `NoticeDetailResponse`다(`docs/specs/dto-spec.md` §7).
 > `API 초안`은 공지 수정·삭제를 `/groups/{id}/notices/{id}`(그룹 하위 경로)로 적었으나, 기존 컨벤션(단독 경로 `/notices/{id}`)을 유지하기로 하고 노션도 함께 수정했다(2026-09-11). 생성·목록은 그대로 `/groups/{id}/notices` 아래에 둔다.
+> **2026-10-05 결정** — ① 공지 상세는 `API 초안`에 없던 엔드포인트였는데 이번에 노션에도 페이지를 만들어 양쪽을 맞췄다. ② **공지 응답에 작성자(`author`)를 담지 않는다** — 작성·수정·삭제 권한이 현재 모임장으로 고정이라 구분할 이유가 없다. ③ **공지 권한은 "현재 모임장"이다** — 작성자가 전 모임장이어도 현 모임장만 수정·삭제한다.
 
 ---
 

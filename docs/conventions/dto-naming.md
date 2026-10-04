@@ -277,7 +277,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 모임 정보 수정 | PUT | `/v1/groups/{id}` | `GroupUpdateRequest` | `GroupDetailResponse` |
 | 모임원 목록 | GET | `/v1/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
 | 모임원 역할 변경 | PATCH | `/v1/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
-| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
+| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | — | — (`data: null`) |
 | 공지 목록 | GET | `/v1/groups/{id}/notices` | — | `PageResponse<NoticeSummaryResponse>` |
 | 공지 상세 | GET | `/v1/notices/{id}` | — | `NoticeDetailResponse` |
 | 공지 작성 | POST | `/v1/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
@@ -289,15 +289,21 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 클래스 | 설명 |
 |---|---|
 | `GroupSummaryResponse` | `UserActivityResponse`에서 재사용 |
-| `GroupMemberResponse` | team과 동일 구조(`status`는 `GroupMemberStatus`) — 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
-| `GroupMemberStatusUpdateRequest` | `(GroupMemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `BANNED`(강퇴)만 허용 |
-| `GroupMemberStatusResponse` | `(Long groupId, Long userId, GroupMemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `BANNED` |
+| `GroupMemberResponse` | `(Long userId, String nickname, String profileImage, List<UserInstrumentResponse> instruments, GroupRole role, LocalDateTime joinedAt)` — 평탄화 구조. 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
 | `NoticeSummaryResponse` | 목록 항목. `body` 제외 |
 | `NoticeDetailResponse` | 상세 + 생성·수정 응답(지켜야 할 6가지 #3). `body` 포함 |
 
 목록·상세 분리는 팀 결정으로 추가한 것이다 — 원래 명세는 목록 조회 하나가 `body`까지 포함해 상세 역할을 겸했다(`docs/specs/api-spec.md` §7 ‖).
 
 모임원 역할 변경(모임장 위임)은 원래 표에 없어서 추가한 항목이다. 없으면 모임장이 영구히 탈퇴할 수 없다. `GroupMemberUpdateRequest(GroupRole role)`.
+
+**2026-10-05 확정 사항** — Notion `API 초안`(2026-09-23)이 이 문서의 모임 절(2026-09-14)보다 최신이라 아래를 Notion 기준으로 맞췄다.
+
+- `GroupMemberResponse`는 `user`를 중첩하지 않고 **평탄화**한다(`userId`·`nickname`·`profileImage`). `instruments[]`를 함께 담고, `status`는 담지 않는다 — 목록이 `ACTIVE`만 조회하므로 의미가 없다. `instruments[]` 항목은 `(id, instrument, level)`이고 `customInstrument`는 없다(ETC 폐지, 2026-10-01이 더 최신)
+- 모임원 상태 변경(탈퇴·강퇴)은 **요청 바디가 없다.** 서버가 판단한다 — 요청자 == 대상이면 `LEFT`(본인 탈퇴), 모임장이 타인에게 하면 `BANNED`(강퇴). 그래서 `GroupMemberStatusUpdateRequest`·`GroupMemberStatusResponse`를 쓰지 않는다
+- **공지 응답에 작성자(`author`)를 담지 않는다.** 작성·수정·삭제 권한이 현재 모임장으로 고정이라 화면에서 작성자를 구분할 이유가 없다. `group_notices.author_id` 컬럼은 이력용으로 유지하고 저장 시에만 채운다
+- **공지 권한은 "현재 모임장"이다.** 작성자가 전 모임장이어도 현 모임장만 수정·삭제할 수 있다 — `GroupNotice.isAuthor()`를 권한 판별에 쓰지 않는다
+- `GroupRole`에 `MANAGER`를 추가했다. **값만 있고 권한은 없다**(`MEMBER`와 동일 취급) — `erd.md` §5 참고
 
 `GroupDetailResponse`는 동아리 홈 화면이므로 `notices`(고정 공지 몇 건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
 
