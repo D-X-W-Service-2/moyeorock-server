@@ -282,7 +282,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 공지 상세 | GET | `/v1/notices/{id}` | — | `NoticeDetailResponse` |
 | 공지 작성 | POST | `/v1/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
 | 공지 수정 | PUT | `/v1/notices/{id}` | `NoticeUpdateRequest` | `NoticeDetailResponse` |
-| 공지 삭제 | DELETE | `/v1/notices/{id}` | — | `DeleteResponse` |
+| 공지 삭제 | DELETE | `/v1/notices/{id}` | — | — (`data: null`) |
 
 **보조 DTO**
 
