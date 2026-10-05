@@ -6,7 +6,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
+import com.moyeorock.global.logging.MdcKeys;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -28,6 +30,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             try {
                 JwtPayload payload = jwtProvider.parseToken(token);
                 SecurityContextHolder.getContext().setAuthentication(new UserAuthentication(payload.userId()));
+                // 정리는 바깥의 RequestLoggingFilter가 finally에서 MDC.clear()로 한다.
+                MDC.put(MdcKeys.USER_ID, String.valueOf(payload.userId()));
             } catch (InvalidTokenException e) {
                 log.debug("JWT 검증 실패: {}", e.getMessage());
                 SecurityContextHolder.clearContext();

@@ -16,25 +16,18 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/**
- * 사용자 (erd.md §1 users). created_at·updated_at 둘 다 있으므로 BaseEntity 상속.
- * 가입(행 생성)은 auth 도메인이 담당한다 — Phase 1에는 생성용 정적 팩토리가 없고,
- * 테스트 픽스처만 private 생성자의 @Builder를 쓴다 (conventions.md §1).
- */
 @Entity
 @Table(name = "users")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
 
-    /** 탈퇴 시 치환되는 닉네임 접두사. 일반 닉네임에는 예약어로 금지한다. */
+    // 탈퇴 시 치환되는 닉네임 접두사. 일반 닉네임에는 예약어로 금지한다.
     public static final String WITHDRAWN_NICKNAME_PREFIX = "탈퇴회원";
     public static final int NICKNAME_MAX_LENGTH = 20;
 
@@ -51,15 +44,14 @@ public class User extends BaseEntity {
     @Column(name = "kakao_id", length = 64)
     private String kakaoId;
 
-    @Column(nullable = false, length = NICKNAME_MAX_LENGTH)
+    @Column(length = NICKNAME_MAX_LENGTH, nullable = false)
     private String nickname;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 50)
     private Region region;
 
-    // JSON 컬럼. columnDefinition을 적어야 ddl-auto: validate가 varchar 대신 json으로 대조한다.
-    @Convert(converter = GenreListConverter.class)
+    @Convert(converter = UserGenresConverter.class)
     @Column(columnDefinition = "json")
     private List<Genre> genres;
 
@@ -70,18 +62,18 @@ public class User extends BaseEntity {
     private String profileImage;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "platform_role", nullable = false, length = 10)
+    @Column(name = "platform_role", length = 10, nullable = false)
     private PlatformRole platformRole;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(length = 20, nullable = false)
     private UserStatus status;
 
-    @Column(name = "is_recommendable", nullable = false)
-    private boolean recommendable;
+    @Column(name = "is_recommendable")
+    private boolean isRecommendable;
 
-    @Column(name = "is_activity_public", nullable = false)
-    private boolean activityPublic;
+    @Column(name = "is_activity_public")
+    private boolean isActivityPublic;
 
     @Column(name = "privacy_agreed_at", nullable = false)
     private LocalDateTime privacyAgreedAt;
@@ -92,73 +84,69 @@ public class User extends BaseEntity {
     @Column(name = "withdrawn_at")
     private LocalDateTime withdrawnAt;
 
-    // 테스트 픽스처 전용. 프로덕션 생성은 auth 도메인의 정적 팩토리(추가 예정)로만 한다.
-    @Builder
-    private User(String email, String passwordHash, String kakaoId, String nickname, Region region,
-                 List<Genre> genres, String bio, String profileImage, PlatformRole platformRole,
-                 UserStatus status, Boolean recommendable, Boolean activityPublic,
-                 LocalDateTime privacyAgreedAt, LocalDateTime onboardingCompletedAt) {
-        this.email = email;
-        this.passwordHash = passwordHash;
-        this.kakaoId = kakaoId;
-        this.nickname = nickname;
-        this.region = region;
-        this.genres = genres == null ? null : new ArrayList<>(genres);
-        this.bio = bio;
-        this.profileImage = profileImage;
-        this.platformRole = platformRole == null ? PlatformRole.USER : platformRole;
-        this.status = status == null ? UserStatus.ACTIVE : status;
-        this.recommendable = recommendable == null || recommendable;
-        this.activityPublic = activityPublic == null || activityPublic;
-        this.privacyAgreedAt = privacyAgreedAt == null ? LocalDateTime.now() : privacyAgreedAt;
-        this.onboardingCompletedAt = onboardingCompletedAt;
+    public static User signupWithEmail(String email, String passwordHash, String nickname,
+            LocalDateTime privacyAgreedAt) {
+        User user = new User();
+        user.email = email;
+        user.passwordHash = passwordHash;
+        user.nickname = nickname;
+        user.platformRole = PlatformRole.USER;
+        user.status = UserStatus.ACTIVE;
+        user.isRecommendable = true;
+        user.isActivityPublic = true;
+        user.privacyAgreedAt = privacyAgreedAt;
+        return user;
     }
 
-    /** PUT /users/me — 전체 교체. 선택 필드는 null이 오면 null로 덮어쓴다 (명세). 세션은 여기서 바꾸지 않는다. */
-    public void updateProfile(String nickname, Region region, List<Genre> genres, String bio,
-                              String profileImage, boolean recommendable, boolean activityPublic) {
-        this.nickname = nickname;
-        this.region = region;
-        this.genres = genres == null ? null : new ArrayList<>(genres);
-        this.bio = bio;
-        this.profileImage = profileImage;
-        this.recommendable = recommendable;
-        this.activityPublic = activityPublic;
+    public static User signupWithKakao(String kakaoId, String nickname, LocalDateTime privacyAgreedAt) {
+        User user = new User();
+        user.kakaoId = kakaoId;
+        user.nickname = nickname;
+        user.platformRole = PlatformRole.USER;
+        user.status = UserStatus.ACTIVE;
+        user.isRecommendable = true;
+        user.isActivityPublic = true;
+        user.privacyAgreedAt = privacyAgreedAt;
+        return user;
     }
 
-    /** POST /users/me/onboarding — 재호출은 값만 덮어쓰고(멱등), 완료 시각은 처음 한 번만 찍는다. */
-    public void completeOnboarding(String nickname, Region region, List<Genre> genres, LocalDateTime now) {
+    public void completeOnboarding(String nickname, Region region, List<Genre> genres) {
         this.nickname = nickname;
         this.region = region;
-        this.genres = new ArrayList<>(GenreListConverter.emptyIfNull(genres));
+        this.genres = genres;
+        // 온보딩 재호출은 멱등(200)이다 — 이미 완료된 사용자가 다시 불러도 최초 완료 시각은 그대로 둔다.
         if (this.onboardingCompletedAt == null) {
-            this.onboardingCompletedAt = now;
+            this.onboardingCompletedAt = LocalDateTime.now();
         }
-    }
-
-    /**
-     * DELETE /users/me — 소프트 삭제. 행은 남기되 개인정보(email·kakaoId·passwordHash)는 비워
-     * 같은 이메일·카카오 계정으로 재가입할 수 있게 한다 (2026-09-28 결정, user-api-초안-검토 LB-4).
-     * 닉네임은 "탈퇴회원_{id}"로 치환해 다른 회원이 원래 닉네임을 쓸 수 있게 한다 (A-6).
-     */
-    public void withdraw(LocalDateTime now) {
-        this.status = UserStatus.WITHDRAWN;
-        this.withdrawnAt = now;
-        this.nickname = WITHDRAWN_NICKNAME_PREFIX + "_" + id;
-        this.email = null;
-        this.kakaoId = null;
-        this.passwordHash = null;
-    }
-
-    public LoginType loginType() {
-        return kakaoId != null ? LoginType.KAKAO : LoginType.EMAIL;
     }
 
     public boolean isOnboardingCompleted() {
         return onboardingCompletedAt != null;
     }
 
-    public boolean isActive() {
-        return status == UserStatus.ACTIVE;
+    public void updateProfile(String nickname, Region region, List<Genre> genres, String bio,
+            String profileImage, boolean recommendable, boolean activityPublic) {
+        this.nickname = nickname;
+        this.region = region;
+        this.genres = genres;
+        this.bio = bio;
+        this.profileImage = profileImage;
+        this.isRecommendable = recommendable;
+        this.isActivityPublic = activityPublic;
+    }
+
+    public LoginType loginType() {
+        return kakaoId != null ? LoginType.KAKAO : LoginType.EMAIL;
+    }
+
+    // email·kakaoId·passwordHash는 전부 UNIQUE라 null로 비우지 않으면 같은 계정으로 재가입이
+    // 영구히 막힌다. nickname도 UNIQUE라 비워둘 수 없어 식별자로 대체한다(탈퇴자 개인정보 제거).
+    public void withdraw() {
+        this.status = UserStatus.WITHDRAWN;
+        this.withdrawnAt = LocalDateTime.now();
+        this.email = null;
+        this.kakaoId = null;
+        this.passwordHash = null;
+        this.nickname = WITHDRAWN_NICKNAME_PREFIX + "_" + this.id;
     }
 }

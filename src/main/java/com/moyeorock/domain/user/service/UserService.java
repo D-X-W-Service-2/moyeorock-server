@@ -18,7 +18,6 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
-import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,7 +30,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class UserService {
 
     /** 사용자 검색 정렬은 닉네임 오름차순 고정. 클라이언트 sort 파라미터는 무시한다 (명세). */
@@ -40,9 +38,11 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserInstrumentRepository userInstrumentRepository;
 
+    // 사용자 + 세션 목록을 쿼리 2번으로 모은다 → 스냅샷 필요
+    @Transactional(readOnly = true)
     public UserMeResponse getMe(Long userId) {
         User user = getActiveUser(userId);
-        return UserMeResponse.from(user, findInstruments(userId));
+        return UserMeResponse.of(user, findInstruments(userId));
     }
 
     @Transactional
@@ -52,15 +52,14 @@ public class UserService {
         ensureNicknameAvailable(user, request.nickname());
         user.updateProfile(request.nickname(), request.region(), request.genres(), request.bio(),
                 request.profileImage(), request.isRecommendable(), request.isActivityPublic());
-        return UserMeResponse.from(user, findInstruments(userId));
+        return UserMeResponse.of(user, findInstruments(userId));
     }
 
     @Transactional
     public UserWithdrawResponse withdraw(Long userId) {
         User user = getActiveUser(userId);
-        LocalDateTime now = LocalDateTime.now();
-        user.withdraw(now);
-        return new UserWithdrawResponse(now);
+        user.withdraw();
+        return new UserWithdrawResponse(user.getWithdrawnAt());
     }
 
     /** 재호출은 거부하지 않고 값만 갱신한다(멱등). 세션 교체가 UNIQUE에 걸리지 않도록 잠금 조회로 직렬화한다. */
@@ -70,9 +69,9 @@ public class UserService {
         validateNicknameFormat(request.nickname());
         ensureNicknameAvailable(user, request.nickname());
         validateNoDuplicateInstrument(request.instruments());
-        user.completeOnboarding(request.nickname(), request.region(), request.genres(), LocalDateTime.now());
+        user.completeOnboarding(request.nickname(), request.region(), request.genres());
         List<UserInstrument> instruments = replaceInstruments(userId, request.instruments());
-        return UserMeResponse.from(user, instruments);
+        return UserMeResponse.of(user, instruments);
     }
 
     @Transactional

@@ -30,7 +30,7 @@ public record UserMeResponse(
         LocalDateTime createdAt
 ) {
 
-    public static UserMeResponse from(User user, List<UserInstrument> instruments) {
+    public static UserMeResponse of(User user, List<UserInstrument> instruments) {
         return new UserMeResponse(
                 user.getId(),
                 user.getEmail(),

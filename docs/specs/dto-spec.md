@@ -51,7 +51,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "platformRole": "USER",
   "loginType": "EMAIL",
   "instruments": [
-    { "id": 3, "instrument": "BASS", "level": "INTERMEDIATE" }
+    { "id": 3, "instrument": "BASS", "level": "INTERMEDIATE" },
+    { "id": 4, "instrument": "DRUM", "level": "BEGINNER" }
   ],
   "isRecommendable": true,
   "isActivityPublic": true,
@@ -88,7 +89,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "region": "SEOUL",
   "genres": ["ROCK", "INDIE"],
   "instruments": [
-    { "instrument": "BASS", "level": "INTERMEDIATE" }
+    { "instrument": "BASS", "level": "INTERMEDIATE" },
+    { "instrument": "DRUM", "level": "BEGINNER" }
   ]
 }
 ```

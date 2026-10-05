@@ -61,12 +61,13 @@ class UserServiceTest {
     UserService userService;
 
     private User activeUser(String nickname) {
-        User user = User.builder()
-                .email("seojun@example.com")
-                .nickname(nickname)
-                .region(Region.SEOUL)
-                .genres(List.of(Genre.ROCK))
-                .build();
+        User user = newUser(nickname);
+        user.updateProfile(nickname, Region.SEOUL, List.of(Genre.ROCK), null, null, true, true);
+        return user;
+    }
+
+    private User newUser(String nickname) {
+        User user = User.signupWithEmail("seojun@example.com", "hash", nickname, LocalDateTime.now());
         ReflectionTestUtils.setField(user, "id", USER_ID);
         return user;
     }
@@ -219,8 +220,7 @@ class UserServiceTest {
         @Test
         @DisplayName("잠금 조회 후 프로필을 채우고 세션을 전체 교체한다")
         void completes_onboarding() {
-            User user = User.builder().nickname("임시").build();
-            ReflectionTestUtils.setField(user, "id", USER_ID);
+            User user = newUser("임시");
             givenActiveForUpdate(user);
             given(userRepository.existsByNickname("서준")).willReturn(false);
             given(userInstrumentRepository.saveAll(anyList())).willAnswer(inv -> inv.getArgument(0));
@@ -240,9 +240,9 @@ class UserServiceTest {
         @Test
         @DisplayName("재호출해도 거부하지 않고 값만 갱신하며 완료 시각은 유지된다")
         void recall_is_idempotent() {
-            LocalDateTime first = LocalDateTime.of(2026, 9, 1, 10, 0);
-            User user = User.builder().nickname("서준").onboardingCompletedAt(first).build();
-            ReflectionTestUtils.setField(user, "id", USER_ID);
+            User user = newUser("서준");
+            user.completeOnboarding("서준", Region.SEOUL, List.of(Genre.ROCK));
+            LocalDateTime first = user.getOnboardingCompletedAt();
             givenActiveForUpdate(user);
             given(userInstrumentRepository.saveAll(anyList())).willAnswer(inv -> inv.getArgument(0));
 

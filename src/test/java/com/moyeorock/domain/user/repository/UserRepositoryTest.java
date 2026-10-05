@@ -24,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 // 실제 MySQL(Testcontainers) + Flyway V2 위에서 돈다. 컨텍스트가 뜨는 것 자체가
 // ddl-auto: validate(엔티티 ↔ V2 스키마 정합) 검증이다 — genres json, TINYINT(1) boolean 포함.
@@ -38,22 +39,24 @@ class UserRepositoryTest {
     @Autowired
     UserInstrumentRepository userInstrumentRepository;
 
+    private User newUser(String nickname) {
+        return User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
+    }
+
     private User saveUser(String nickname, UserStatus status) {
-        return entityManager.persistAndFlush(User.builder()
-                .email(nickname + "@example.com")
-                .nickname(nickname)
-                .status(status)
-                .build());
+        User user = newUser(nickname);
+        if (status != null) {
+            ReflectionTestUtils.setField(user, "status", status);
+        }
+        return entityManager.persistAndFlush(user);
     }
 
     @Test
     @DisplayName("genres는 JSON 배열 문자열로 저장되고 List<Genre>로 복원된다")
     void genres_round_trip_as_json_array() {
-        User saved = entityManager.persistAndFlush(User.builder()
-                .nickname("서준")
-                .region(Region.SEOUL)
-                .genres(List.of(Genre.ROCK, Genre.INDIE))
-                .build());
+        User user = newUser("서준");
+        user.completeOnboarding("서준", Region.SEOUL, List.of(Genre.ROCK, Genre.INDIE));
+        User saved = entityManager.persistAndFlush(user);
         entityManager.clear();
 
         User found = userRepository.findById(saved.getId()).orElseThrow();
@@ -69,8 +72,10 @@ class UserRepositoryTest {
     @Test
     @DisplayName("genres가 null이면 null로, 빈 배열이면 빈 리스트로 복원된다")
     void genres_null_and_empty() {
-        User nullGenres = entityManager.persistAndFlush(User.builder().nickname("a").build());
-        User emptyGenres = entityManager.persistAndFlush(User.builder().nickname("b").genres(List.of()).build());
+        User nullGenres = entityManager.persistAndFlush(newUser("a"));
+        User withEmptyGenres = newUser("b");
+        withEmptyGenres.completeOnboarding("b", Region.SEOUL, List.of());
+        User emptyGenres = entityManager.persistAndFlush(withEmptyGenres);
         entityManager.clear();
 
         assertThat(userRepository.findById(nullGenres.getId()).orElseThrow().getGenres()).isNull();
@@ -160,25 +165,38 @@ class UserRepositoryTest {
     }
 
     @Test
-    @DisplayName("탈퇴하면 상태·시각·닉네임 치환에 더해 email·kakaoId·passwordHash가 비워진다")
+    @DisplayName("이메일 회원이 탈퇴하면 상태·시각·닉네임 치환에 더해 email·passwordHash가 비워진다")
     void withdraw_clears_personal_data_and_frees_nickname() {
-        User user = entityManager.persistAndFlush(User.builder()
-                .email("seojun@example.com").passwordHash("hash").kakaoId("k-1").nickname("서준").build());
-        LocalDateTime now = LocalDateTime.of(2026, 9, 28, 12, 0);
+        User user = entityManager.persistAndFlush(newUser("서준"));
 
-        user.withdraw(now);
+        user.withdraw();
         entityManager.flush();
         entityManager.clear();
 
         User found = userRepository.findById(user.getId()).orElseThrow();
         assertThat(found.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
-        assertThat(found.getWithdrawnAt()).isEqualTo(now);
+        assertThat(found.getWithdrawnAt()).isNotNull();
         assertThat(found.getNickname()).isEqualTo("탈퇴회원_" + user.getId());
         assertThat(found.getEmail()).isNull();
         assertThat(found.getKakaoId()).isNull();
         assertThat(found.getPasswordHash()).isNull();
         // 원래 닉네임·이메일이 풀려 재사용 가능
         assertThat(userRepository.existsByNickname("서준")).isFalse();
-        entityManager.persistAndFlush(User.builder().email("seojun@example.com").nickname("서준").build());
+        entityManager.persistAndFlush(newUser("서준"));
+    }
+
+    @Test
+    @DisplayName("카카오 회원이 탈퇴하면 kakaoId가 비워져 같은 카카오 계정으로 재가입할 수 있다")
+    void withdraw_clears_kakao_id_and_allows_rejoin() {
+        User user = entityManager.persistAndFlush(User.signupWithKakao("k-1", "서준", LocalDateTime.now()));
+
+        user.withdraw();
+        entityManager.flush();
+        entityManager.clear();
+
+        User found = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(found.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(found.getKakaoId()).isNull();
+        entityManager.persistAndFlush(User.signupWithKakao("k-1", "서준", LocalDateTime.now()));
     }
 }

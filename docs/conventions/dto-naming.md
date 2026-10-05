@@ -109,7 +109,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 클래스 | 설명 |
 |---|---|
-| `UserInstrumentRequest` | `(Instrument instrument, Level level)` — 온보딩·세션수정 요청 양쪽에서 재사용. `customInstrument`는 악기 ETC 제거(2026-09-28)로 없음 |
+| `UserInstrumentRequest` | `(Instrument instrument, Level level)` — 온보딩·세션수정 요청 양쪽에서 재사용. `customInstrument`는 2026-09-28 ETC 폐지로 제거 |
 | `UserInstrumentResponse` | 위에 `id` 추가된 응답형 |
 | `UserInstrumentsResponse` | `(List<UserInstrumentResponse> instruments)` |
 | `UserSummaryResponse` | **최다 재사용.** team·join·invitation·recruit 전부에서 참조 |

@@ -10,21 +10,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-/**
- * 연주 세션 + 실력 (erd.md §2 user_instruments). 타임스탬프 컬럼이 없어 상속하지 않는다.
- * user 참조는 @ManyToOne이 아니라 Long userId (architecture.md §5, DB FK 없음).
- * customInstrument는 없다 — 악기 ETC 제거 결정(2026-09-28).
- */
+// erd.md §2: created_at·updated_at 없음 — BaseEntity/BaseTimeEntity 상속 없음(conventions.md 상속 규칙).
 @Entity
-@Table(name = "user_instruments",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_user_instruments_user_id_instrument",
-                columnNames = {"user_id", "instrument"}))
+@Table(name = "user_instruments")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserInstrument {
@@ -37,11 +29,11 @@ public class UserInstrument {
     private Long userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(length = 20, nullable = false)
     private Instrument instrument;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(length = 20, nullable = false)
     private Level level;
 
     public static UserInstrument create(Long userId, Instrument instrument, Level level) {
@@ -50,5 +42,9 @@ public class UserInstrument {
         userInstrument.instrument = instrument;
         userInstrument.level = level;
         return userInstrument;
+    }
+
+    public void changeLevel(Level level) {
+        this.level = level;
     }
 }
