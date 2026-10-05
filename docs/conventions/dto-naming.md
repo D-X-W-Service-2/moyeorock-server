@@ -3,7 +3,7 @@
 대상: 전체 73개 엔드포인트(파일 삭제 신규분 포함, 2026-09-11) · 14 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
-**버전**: 전 도메인 `/v1/`. 단, `rehearsal`은 초안 정리 전까지 `/v0/` 유지(`docs/specs/api-spec.md` §3).
+**버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
 
 ---
 
@@ -160,16 +160,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 패키지 `domain/rehearsal`
 
-**버전 예외**: `API 초안`의 합주 데이터가 정리되지 않아(`docs/specs/api-spec.md` §3) 아래 경로는 이번 갱신에서 제외하고 `/v0/`를 유지한다.
-
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 합주 생성 | POST | `/v0/teams/{teamId}/rehearsals` | `RehearsalCreateRequest` | `RehearsalDetailResponse` |
-| 팀 합주 목록 | GET | `/v0/teams/{teamId}/rehearsals` | — | `RehearsalsResponse` |
-| 합주 상세 | GET | `/v0/rehearsals/{id}` | — | `RehearsalDetailResponse` |
-| 합주 수정 | PUT | `/v0/rehearsals/{id}` | `RehearsalUpdateRequest` | `RehearsalDetailResponse` |
-| 합주 삭제 | DELETE | `/v0/rehearsals/{id}` | — | `DeleteResponse` |
-| 내 합주 일정 | GET | `/v0/users/me/rehearsals` | — | `RehearsalsResponse` |
+| 합주 생성 | POST | `/v1/teams/{teamId}/rehearsals` | `RehearsalCreateRequest` | `RehearsalDetailResponse` |
+| 팀 합주 목록 | GET | `/v1/teams/{teamId}/rehearsals` | — | `RehearsalsResponse` |
+| 합주 상세 | GET | `/v1/rehearsals/{id}` | — | `RehearsalDetailResponse` |
+| 합주 수정 | PUT | `/v1/rehearsals/{id}` | `RehearsalUpdateRequest` | `RehearsalDetailResponse` |
+| 합주 삭제 | DELETE | `/v1/rehearsals/{id}` | — | `DeleteResponse` |
+| 내 합주 일정 | GET | `/v1/users/me/rehearsals` | — | `RehearsalsResponse` |
 
 **보조 DTO**
 
