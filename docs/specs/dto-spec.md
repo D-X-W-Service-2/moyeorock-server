@@ -838,13 +838,63 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## §11. 로그인 (auth)
 
+2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
+
 ### UserOAuth2CodeRequest
 
-Body가 아니라 **Query 파라미터**다.
+Body가 아니라 **Query 파라미터**다. 프론트가 카카오 로그인 리다이렉트로 받은 인가 코드를 그대로 넘긴다.
 
 ```
-http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
+POST /v1/auth/kakao?code=abc123exampleAuthCode
 ```
+
+`code`는 필수. 누락·공백이면 400 `VALIDATION_FAILED`. 인가 코드는 1회용이다.
+
+### KakaoAuthResponse
+
+카카오 인증 응답. 이 API는 계정을 만들지 않는다. `kakao_id`가 이미 있으면 `auth`에 로그인 토큰을, 없으면 `signupToken`과 `kakaoNickname`을 채운다.
+
+기존 회원 (로그인 완료):
+
+```json
+{
+  "isNewUser": false,
+  "auth": {
+    "accessToken": "string",
+    "userId": 12,
+    "nickname": "string",
+    "onboardingCompleted": true
+  }
+}
+```
+
+신규 (가입 필요):
+
+```json
+{
+  "isNewUser": true,
+  "signupToken": "string",
+  "kakaoNickname": "string"
+}
+```
+
+| 필드 | Nullable | 설명 |
+|---|---|---|
+| `isNewUser` | X | true면 신규(가입 필요), false면 기존 회원(로그인 완료) |
+| `auth` | O | 기존 회원일 때만. `AuthTokenResponse`. 신규면 null |
+| `signupToken` | O | 신규일 때만. 서버가 서명한 가입용 토큰(10분 만료, `kakao_id`·카카오 닉네임 포함). `POST /v1/auth/kakao/signup`에 그대로 전달 |
+| `kakaoNickname` | O | 신규일 때만. 카카오 프로필 닉네임(약관 화면 표시용) |
+
+### KakaoSignupRequest
+
+```json
+{
+  "signupToken": "string",
+  "privacyAgreed": true
+}
+```
+
+> 이 요청에서 계정이 생성된다. `signupToken`은 카카오 인증 응답 값 그대로(10분 만료). `privacyAgreed`는 true만 허용하고 false·누락이면 400. `privacy_agreed_at`은 서버 시각으로 저장한다.
 
 ### UserSignupRequest
 
@@ -852,12 +902,15 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
 {
   "email": "string",
   "password": "string",
-  "name": "string"
+  "name": "string",
+  "privacyAgreed": true
 }
 ```
 
-> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 로그인도 프로필 name을 같은 방식으로 사용.
-> 미결: `nickname` UNIQUE라 동명 가입자 충돌 시 처리(임시 닉네임 suffix 등) 확정 필요.
+> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 가입도 프로필 닉네임을 같은 방식으로 사용.
+> **임시 닉네임 충돌 (2026-09-28 확정)**: `nickname`이 UNIQUE라 이미 쓰는 닉네임이면 서버가 `_`+영숫자 4자를 붙여 저장한다(예: `서준_a3f9`, 20자 이내). 중복 때문에 가입이 실패하지 않는다.
+> **비밀번호 규칙 (2026-09-28 확정)**: 8~64자, 영문·숫자·특수문자를 각각 1자 이상 포함, 공백 불가. 위반 시 400. 가입에서만 검사한다.
+> `privacyAgreed`는 true만 허용하고 false·누락이면 400. 서버가 동의 시각을 `privacy_agreed_at`에 저장한다.
 
 ### UserLoginRequest
 
@@ -867,3 +920,20 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
   "password": "string"
 }
 ```
+
+> 로그인에서는 비밀번호 규칙을 검사하지 않고(빈 값만 400) 일치 여부만 본다.
+
+### AuthTokenResponse
+
+카카오 가입 완료·이메일 가입·이메일 로그인이 공용으로 쓰고, `KakaoAuthResponse.auth`에도 담긴다. 리프레시 토큰은 없다.
+
+```json
+{
+  "accessToken": "string",
+  "userId": 12,
+  "nickname": "string",
+  "onboardingCompleted": false
+}
+```
+
+> 가입 응답의 `nickname`은 임시 닉네임이고 `onboardingCompleted`는 항상 false다. 로그인에서는 `onboardingCompleted`가 false면 온보딩 화면, true면 대시보드로 보낸다.

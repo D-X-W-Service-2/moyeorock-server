@@ -3,7 +3,7 @@
 - **원본**: Notion `API 명세서 수정안` 페이지의 `API 초안` 데이터베이스 (2026-09-11 대조 완료)
 - **버전**: 전 도메인 `/v1/`. **예외 없다.** 합주(rehearsal, §3)만 초안 정리 전까지 `/v0/`를 유지했는데, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 반영했다.
 - **절 번호**: 이 파일과 `docs/specs/dto-spec.md`에서만 쓰는 좌표다
-- **인증**: 모든 API는 유저 인증 필요. 예외(auth 3개)는 §11에 별도 표기
+- **인증**: 모든 API는 유저 인증 필요. 예외(auth 4개)는 §11에 별도 표기
 - **DTO 필드 정의**: `docs/specs/dto-spec.md` 참조. `API 초안`에는 DTO 정보가 없어 DTO 이름은 기존 `docs/conventions/dto-naming.md` 정의를 그대로 따른다. `*` 표시 Response는 원본 표에 비어 있으나 DTO 페이지의 이름·태그로 매칭한 것이다
 - **경로 표기**: 초안은 가입 신청·공고를 단수형(`join-request` · `recruit-post`)으로 적었다. `docs/conventions/api-conventions.md` §5 "리소스는 복수형" 규칙과 어긋나지만, 초안 값을 그대로 신뢰해 반영하기로 했다(2026-09-11 팀 확인). 다른 리소스(`teams` `groups` `invitations` `bookmarks` 등)는 여전히 복수형이다 — `join-request` · `recruit-post` 2개만 예외다
 
@@ -234,15 +234,29 @@
 
 ## §11. 로그인 (auth) — 1팀
 
-인증이 필요 없는 유일한 그룹. 응답 코드는 원본 기재 그대로.
+인증이 필요 없는 유일한 그룹. 2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
 
 | 메서드 | 경로 | 기능 | Request | Response | 응답 코드 | 비고 |
 |---|---|---|---|---|---|---|
-| POST | `/v1/auth/kakao` | 카카오&nbsp;회원가입/로그인 | `UserOAuth2CodeRequest` | `AuthTokenResponse` † | 200, 400 | 이메일 회원과 중복 X |
-| POST | `/v1/auth/signup` | 이메일&nbsp;회원가입 | `UserSignupRequest` | `AuthTokenResponse` † | 201, 400, 409 | 카카오 회원과 중복 X |
-| POST | `/v1/auth/login` | 이메일&nbsp;로그인 | `UserLoginRequest` | `AuthTokenResponse` † | 200, 400, 401 | |
+| POST | `/v1/auth/kakao?code=` | 카카오&nbsp;인증 (로그인&nbsp;/&nbsp;신규&nbsp;판별) | `UserOAuth2CodeRequest` (Query) | `KakaoAuthResponse` | 200, 400 | 계정을 만들지 않는다. 기존 회원이면 로그인 토큰, 신규면 `signupToken` |
+| POST | `/v1/auth/kakao/signup` | 카카오&nbsp;가입&nbsp;완료 (약관&nbsp;동의) | `KakaoSignupRequest` | `AuthTokenResponse` | 201, 400, 401, 409 | 이 요청에서 계정이 생성된다 |
+| POST | `/v1/auth/signup` | 이메일&nbsp;회원가입 | `UserSignupRequest` | `AuthTokenResponse` | 201, 400, 409 | 카카오 회원과 중복 X (카카오 계정은 `email`이 null) |
+| POST | `/v1/auth/login` | 이메일&nbsp;로그인 | `UserLoginRequest` | `AuthTokenResponse` | 200, 400, 401 | |
 
-> † 원본 표에는 Response가 없다. `docs/conventions/dto-naming.md` §1 정의 — `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 3곳 공유, 리프레시 토큰 없음.
+> `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 카카오 가입 완료·이메일 가입·이메일 로그인 3곳이 공유하고, 카카오 인증은 `KakaoAuthResponse.auth`에 같은 객체를 담는다. 리프레시 토큰 없음 (`docs/conventions/dto-naming.md` §1).
+
+> **2026-09-28 결정: 카카오 가입 2단계 분리 (3건 → 4건).** 가입 전에 개인정보 처리방침 동의를 받아야 하는데 카카오 인가 코드는 1회용이라, 동의 후 같은 코드로 다시 호출할 수 없다. 그래서 카카오 인증은 계정을 만들지 않고 신규 회원에게 서버가 서명한 `signupToken`(10분 만료)을 내려주며, 프론트가 약관 동의 후 `POST /v1/auth/kakao/signup`으로 가입을 완료한다.
+
+**에러 코드**
+
+| 코드 | 상태 | 발생 |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | 4건 공통. `code` 누락·공백, 이메일 형식 오류, 비밀번호 규칙 위반(가입만), 빈 이름, `privacyAgreed`가 true가 아님, `signupToken` 누락 |
+| `OAUTH_FAILED` | 400 | 카카오 인증. 인가 코드 만료·오류로 토큰 교환이나 사용자 조회에 실패 |
+| `LOGIN_FAILED` | 401 | 이메일 로그인. 이메일 없음·비밀번호 불일치·카카오 전용 계정·탈퇴/정지 계정을 전부 같은 코드로 응답 (계정 존재 여부 비노출) |
+| `INVALID_SIGNUP_TOKEN` | 401 | 카카오 가입 완료. 가입용 토큰 만료·위조 |
+| `EMAIL_DUPLICATED` | 409 | 이메일 회원가입. 이미 가입된 이메일 |
+| `ALREADY_REGISTERED` | 409 | 카카오 가입 완료. 토큰 안의 `kakao_id`로 이미 가입됨 (같은 토큰 재사용 등) |
 
 ---
 
