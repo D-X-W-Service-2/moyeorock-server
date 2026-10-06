@@ -69,13 +69,14 @@
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/recruit-post` | 공고&nbsp;작성 | `RecruitPostCreateRequest` | |
+| POST | `/v1/recruit-post` | 공고&nbsp;작성 | `RecruitPostCreateRequest` | `RecruitPostDetailResponse` |
 | GET | `/v1/recruit-post` ¶ | 공고&nbsp;목록 | | `PageResponse<RecruitPostSummaryResponse>` |
 | GET | `/v1/recruit-post/{id}` | 공고&nbsp;상세 | | `RecruitPostDetailResponse` |
-| PUT | `/v1/recruit-post/{id}` | 공고&nbsp;수정 | `RecruitPostUpdateRequest` | |
+| PUT | `/v1/recruit-post/{id}` | 공고&nbsp;수정 | `RecruitPostUpdateRequest` | `RecruitPostDetailResponse` |
 | PATCH | `/v1/recruit-post/{id}/status` | 공고&nbsp;마감·삭제 | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` * |
 
-> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `authorId` (전부 선택).
+> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `page` · `size` (전부 선택). `authorId`는 Notion `API 초안`에 없어 뺐다(2026-09-25 대조). 정렬 파라미터는 없고 최신순 고정이다.
+> Actor(Notion `API 초안`): 작성·수정·마감은 `모임장 / 팀장`, 목록·상세는 공통. 팀장·모임장 검증은 2팀 `TeamService`·4팀 `GroupService`가 머지된 뒤 붙이고, 그 전까지 구현은 "수정·마감은 작성자 본인만, 작성은 로그인만"이다.
 > 경로가 단수형 `recruit-post`다 — 상단 "경로 표기" 참고.
 > ⚠️ DTO 이름(`RecruitPostStatusUpdateRequest` 등)은 `API 초안`에 없어 기존 `docs/conventions/dto-naming.md` 정의를 그대로 썼다. 과거 노션 `API 명세서 v0`이 마감·삭제 Request를 `RecruitPostStatusResponse`로 오기했던 문제는 이 표와 무관하다.
 
