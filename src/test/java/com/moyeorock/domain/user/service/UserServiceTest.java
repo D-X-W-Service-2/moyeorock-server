@@ -151,6 +151,21 @@ class UserServiceTest {
         }
 
         @Test
+        @DisplayName("앞뒤 공백은 지운 값으로 중복 확인하고 저장한다")
+        void strips_nickname_before_check_and_save() {
+            User user = activeUser("서준");
+            givenActiveForUpdate(user);
+            given(userRepository.existsByNickname("소붕이밴드")).willReturn(false);
+            given(userInstrumentRepository.findAllByUserIdOrderByIdAsc(USER_ID)).willReturn(List.of());
+
+            UserMeResponse response = userService.updateMe(USER_ID, request("\u3000 소붕이밴드 "));
+
+            assertThat(response.nickname()).isEqualTo("소붕이밴드");
+            assertThat(user.getNickname()).isEqualTo("소붕이밴드");
+            verify(userRepository, never()).existsByNickname("\u3000 소붕이밴드 ");
+        }
+
+        @Test
         @DisplayName("본인 닉네임을 그대로 보내면 중복 검사를 건너뛴다")
         void same_nickname_skips_duplicate_check() {
             User user = activeUser("서준");
@@ -337,18 +352,19 @@ class UserServiceTest {
             given(userRepository.existsByNickname("서준")).willReturn(true);
             given(userRepository.existsByNickname("새닉네임")).willReturn(false);
 
-            NicknameCheckResponse taken = userService.checkNickname("서준");
+            NicknameCheckResponse taken = userService.checkNickname(" 서준 ");
             NicknameCheckResponse free = userService.checkNickname("새닉네임");
 
             assertThat(taken.available()).isFalse();
             assertThat(taken.nickname()).isEqualTo("서준");
             assertThat(free.available()).isTrue();
+            verify(userRepository, never()).existsByNickname(" 서준 ");
         }
 
         @Test
-        @DisplayName("공백·20자 초과·예약 접두사는 VALIDATION_FAILED")
+        @DisplayName("공백·20자 초과·예약 접두사(앞 공백을 붙여도)는 VALIDATION_FAILED")
         void invalid_format_throws() {
-            for (String invalid : List.of(" ", "가".repeat(21), "탈퇴회원_3")) {
+            for (String invalid : List.of(" ", "가".repeat(21), "탈퇴회원_3", " 탈퇴회원_3")) {
                 assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(
                         () -> userService.checkNickname(invalid)), ErrorCode.VALIDATION_FAILED);
             }
@@ -361,14 +377,14 @@ class UserServiceTest {
     class Search {
 
         @Test
-        @DisplayName("ACTIVE만, 닉네임 오름차순 고정 정렬로 조회하고 요약 DTO로 매핑한다")
+        @DisplayName("ACTIVE만, 검색어 앞뒤 공백을 지우고, 닉네임 오름차순 고정 정렬로 조회해 요약 DTO로 매핑한다")
         void searches_with_fixed_sort() {
             User user = activeUser("서준");
             ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
             given(userRepository.findByStatusAndNicknameContaining(eq(UserStatus.ACTIVE), eq("서준"), pageableCaptor.capture()))
                     .willReturn(new PageImpl<>(List.of(user), PageRequest.of(0, 20), 1));
 
-            PageResponse<UserSummaryResponse> response = userService.search("서준",
+            PageResponse<UserSummaryResponse> response = userService.search(" 서준 ",
                     PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "createdAt")));
 
             assertThat(pageableCaptor.getValue().getSort()).isEqualTo(Sort.by(Sort.Direction.ASC, "nickname"));
