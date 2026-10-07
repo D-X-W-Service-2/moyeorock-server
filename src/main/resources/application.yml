@@ -31,6 +31,17 @@ jwt:
   issuer: ${JWT_ISSUER}
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY}
 
+# file.storage.type을 안 정하면 local이 기본값이다(FileStorageClient 구현체들의
+# @ConditionalOnProperty matchIfMissing=true). S3로 전환할 땐 FILE_STORAGE_TYPE=s3 +
+# file.storage.s3.bucket/region을 추가로 설정한다 — 코드 변경은 필요 없다.
+file:
+  storage:
+    type: ${FILE_STORAGE_TYPE:local}
+    local:
+      base-path: ${FILE_LOCAL_BASE_PATH:./uploads}
+      base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
+      upload-url-expiry-seconds: 600
+
 springdoc:
   api-docs:
     path: /v3/api-docs
