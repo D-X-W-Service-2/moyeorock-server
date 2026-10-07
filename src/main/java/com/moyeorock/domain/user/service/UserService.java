@@ -46,8 +46,9 @@ public class UserService {
     }
 
     @Transactional
+    /** 잠금 조회. 잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush(전 컬럼 UPDATE)가 탈퇴를 되돌린다(PR #57 리뷰). withdraw도 같은 이유. */
     public UserMeResponse updateMe(Long userId, UserUpdateRequest request) {
-        User user = getActiveUser(userId);
+        User user = getActiveUserForUpdate(userId);
         validateNicknameFormat(request.nickname());
         ensureNicknameAvailable(user, request.nickname());
         user.updateProfile(request.nickname(), request.region(), request.genres(), request.bio(),
@@ -57,7 +58,7 @@ public class UserService {
 
     @Transactional
     public UserWithdrawResponse withdraw(Long userId) {
-        User user = getActiveUser(userId);
+        User user = getActiveUserForUpdate(userId);
         user.withdraw();
         return new UserWithdrawResponse(user.getWithdrawnAt());
     }

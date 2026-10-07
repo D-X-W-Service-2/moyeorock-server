@@ -135,7 +135,7 @@ class UserServiceTest {
         @DisplayName("전체 필드를 덮어쓰고 수정 후 프로필을 돌려준다")
         void updates_all_fields() {
             User user = activeUser("서준");
-            givenActive(user);
+            givenActiveForUpdate(user);
             given(userRepository.existsByNickname("소붕이밴드")).willReturn(false);
             given(userInstrumentRepository.findAllByUserIdOrderByIdAsc(USER_ID)).willReturn(List.of());
 
@@ -152,7 +152,7 @@ class UserServiceTest {
         @DisplayName("본인 닉네임을 그대로 보내면 중복 검사를 건너뛴다")
         void same_nickname_skips_duplicate_check() {
             User user = activeUser("서준");
-            givenActive(user);
+            givenActiveForUpdate(user);
             given(userInstrumentRepository.findAllByUserIdOrderByIdAsc(USER_ID)).willReturn(List.of());
 
             userService.updateMe(USER_ID, request("서준"));
@@ -163,7 +163,7 @@ class UserServiceTest {
         @Test
         @DisplayName("다른 사람이 쓰는 닉네임이면 NICKNAME_DUPLICATED")
         void duplicated_nickname_throws() {
-            givenActive(activeUser("서준"));
+            givenActiveForUpdate(activeUser("서준"));
             given(userRepository.existsByNickname("민서")).willReturn(true);
 
             assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(
@@ -173,7 +173,7 @@ class UserServiceTest {
         @Test
         @DisplayName("'탈퇴회원' 접두사 닉네임은 VALIDATION_FAILED")
         void reserved_prefix_throws() {
-            givenActive(activeUser("서준"));
+            givenActiveForUpdate(activeUser("서준"));
 
             assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(
                     () -> userService.updateMe(USER_ID, request("탈퇴회원_1"))), ErrorCode.VALIDATION_FAILED);
@@ -188,7 +188,7 @@ class UserServiceTest {
         @DisplayName("상태를 WITHDRAWN으로 바꾸고 탈퇴 시각을 돌려준다")
         void withdraws() {
             User user = activeUser("서준");
-            givenActive(user);
+            givenActiveForUpdate(user);
 
             UserWithdrawResponse response = userService.withdraw(USER_ID);
 
@@ -201,7 +201,7 @@ class UserServiceTest {
         @Test
         @DisplayName("이미 탈퇴한 사용자는 활성 조회에 실패해 USER_NOT_FOUND")
         void already_withdrawn_throws() {
-            given(userRepository.findByIdAndStatus(USER_ID, UserStatus.ACTIVE)).willReturn(Optional.empty());
+            given(userRepository.findByIdAndStatusForUpdate(USER_ID, UserStatus.ACTIVE)).willReturn(Optional.empty());
 
             assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(() -> userService.withdraw(USER_ID)),
                     ErrorCode.USER_NOT_FOUND);
