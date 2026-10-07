@@ -2,7 +2,7 @@
 
 14개 도메인 · 16개 테이블. 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
 
-> **버전**: 전 도메인 `/v1/`. 단, `rehearsal`은 `API 초안` 정리 전까지 `/v0/` 유지(`docs/specs/api-spec.md` §3).
+> **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
 
 ## 전체
 
@@ -45,7 +45,7 @@
 
 한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistConfirmRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
 
-**`user/me` 경로는 user 도메인이 아니다.** `/v0/users/me/rehearsals`(합주는 아직 v0, §3 참고)는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
+**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
 
 **공연 참가 단위는 팀이다.** 공연자 개별 관리 API는 없다. 공연에서 팀을 빼는 것 = 팀 해체.
 
