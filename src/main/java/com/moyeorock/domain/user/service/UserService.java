@@ -20,7 +20,9 @@ import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -97,6 +99,18 @@ public class UserService {
         return PageResponse.from(userRepository
                 .findByStatusAndNicknameContaining(UserStatus.ACTIVE, nickname.trim(), fixedSort)
                 .map(UserSummaryResponse::from));
+    }
+
+    /**
+     * 다른 도메인이 팀원·작성자 등을 채울 때 쓰는 일괄 조회(conventions.md §4). IN 쿼리 1번.
+     * 탈퇴 회원은 제외한다(PR #57 2팀 요청). 존재하지 않는 id와 탈퇴한 id는 결과 Map에서 빠진다.
+     */
+    public Map<Long, UserSummaryResponse> getSummaries(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIdInAndStatusNot(new HashSet<>(userIds), UserStatus.WITHDRAWN).stream()
+                .collect(Collectors.toMap(User::getId, UserSummaryResponse::from));
     }
 
     private User getActiveUser(Long userId) {

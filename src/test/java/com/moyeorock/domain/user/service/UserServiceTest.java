@@ -32,7 +32,9 @@ import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -381,6 +383,43 @@ class UserServiceTest {
             assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(
                     () -> userService.search("  ", PageRequest.of(0, 20))), ErrorCode.VALIDATION_FAILED);
             verify(userRepository, never()).findByStatusAndNicknameContaining(any(), any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("getSummaries")
+    class GetSummaries {
+
+        @Test
+        @DisplayName("중복을 뺀 id로 탈퇴 제외 IN 조회 1번을 하고, id별 요약을 돌려준다 (없는 id는 빠진다)")
+        void returns_summaries_by_id_excluding_withdrawn() {
+            User active = userWithId(10L, "서준");
+            User suspended = userWithId(20L, "현빈");
+            ReflectionTestUtils.setField(suspended, "status", UserStatus.SUSPENDED);
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
+            given(userRepository.findAllByIdInAndStatusNot(idsCaptor.capture(), eq(UserStatus.WITHDRAWN)))
+                    .willReturn(List.of(active, suspended));
+
+            Map<Long, UserSummaryResponse> result = userService.getSummaries(List.of(10L, 20L, 10L, 999L));
+
+            assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L, 999L);
+            assertThat(result).containsOnlyKeys(10L, 20L);
+            assertThat(result.get(10L).nickname()).isEqualTo("서준");
+            assertThat(result.get(20L).nickname()).isEqualTo("현빈");
+        }
+
+        @Test
+        @DisplayName("빈 목록이면 조회 없이 빈 Map")
+        void empty_ids_returns_empty_map() {
+            assertThat(userService.getSummaries(List.of())).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
+        }
+
+        private User userWithId(Long id, String nickname) {
+            User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
+            ReflectionTestUtils.setField(user, "id", id);
+            return user;
         }
     }
 }

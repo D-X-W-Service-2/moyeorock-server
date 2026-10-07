@@ -3,6 +3,8 @@ package com.moyeorock.domain.user.repository;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.enums.UserStatus;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,4 +28,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByNickname(String nickname);
 
     Page<User> findByStatusAndNicknameContaining(UserStatus status, String nickname, Pageable pageable);
+
+    /** 타 도메인 일괄 요약 조회용(UserService.getSummaries). IN 1번, 지정 상태(탈퇴)만 제외. */
+    List<User> findAllByIdInAndStatusNot(Collection<Long> ids, UserStatus status);
 }

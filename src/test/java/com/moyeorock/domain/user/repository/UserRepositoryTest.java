@@ -199,4 +199,20 @@ class UserRepositoryTest {
         assertThat(found.getKakaoId()).isNull();
         entityManager.persistAndFlush(User.signupWithKakao("k-1", "서준", LocalDateTime.now()));
     }
+
+    @Test
+    @DisplayName("findAllByIdInAndStatusNot은 탈퇴 사용자만 빼고 정지 사용자는 돌려준다")
+    void find_all_by_id_in_excluding_withdrawn() {
+        User active = saveUser("서준", null);
+        User suspended = saveUser("현빈", UserStatus.SUSPENDED);
+        User withdrawn = saveUser("준호", null);
+        withdrawn.withdraw();
+        entityManager.flush();
+        entityManager.clear();
+
+        List<User> found = userRepository.findAllByIdInAndStatusNot(
+                List.of(active.getId(), suspended.getId(), withdrawn.getId(), 999_999L), UserStatus.WITHDRAWN);
+
+        assertThat(found).extracting(User::getId).containsExactlyInAnyOrder(active.getId(), suspended.getId());
+    }
 }
