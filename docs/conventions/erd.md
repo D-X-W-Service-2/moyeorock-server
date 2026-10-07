@@ -113,11 +113,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `group_id` | `BIGINT` | → groups_ |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `role` | `VARCHAR(10)` | OWNER\|MEMBER |
+|  | `role` | `VARCHAR(10)` | OWNER\|MANAGER\|MEMBER |
 |  | `status` | `VARCHAR(10)` | ACTIVE\|LEFT\|BANNED |
 |  | `joined_at` | `DATETIME(6)` |  |
 
 - **유니크** `(group_id, user_id)`
+- `MANAGER`는 2026-10-05에 값만 추가했다. **지금은 권한이 없고 `MEMBER`와 동일하게 취급한다** — 임원진 전용 동작이 필요해지는 시점에 권한을 붙인다. 컬럼 타입(`VARCHAR(10)`)이 그대로라 마이그레이션은 필요 없다
 
 ### 6. `group_notices`
 

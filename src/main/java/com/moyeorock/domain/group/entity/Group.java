@@ -53,9 +53,11 @@ public class Group extends BaseEntity {
         return group;
     }
 
-    public void update(String name, String description, Region region, String coverImage) {
+    // PUT /v1/groups/{id}의 요청 바디가 type까지 필수라 함께 받는다(PR #59에서 빠져 있던 파라미터).
+    public void update(String name, String description, GroupType type, Region region, String coverImage) {
         this.name = name;
         this.description = description;
+        this.type = type;
         this.region = region;
         this.coverImage = coverImage;
     }

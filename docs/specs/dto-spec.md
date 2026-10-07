@@ -495,18 +495,26 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-### PageResponse\<\> (구 GroupMembersResponse)
+### PageResponse\<GroupMemberResponse\>
 
-`GET /v1/groups/{id}/members`의 응답. Notion 원본 페이지가 2026-08-22에 `GroupMembersResponse` → `PageResponse<>`로 개명됨 — 모임원 목록을 페이지네이션 응답으로 바꾸려는 의도로 추정되나 제네릭(아이템 타입 이름)이 비어 있어 확정 필요. 아래 JSON은 개명 전과 동일한 단일 멤버(아이템) 형태다.
+`GET /v1/groups/{id}/members?keyword=&page=&size=`의 응답 항목. **2026-10-05에 Notion `API 초안`(2026-09-23) 기준으로 교체**했다 — 이전 스냅샷은 `user`를 중첩하고 `status`를 담는 형태였다.
 
 ```json
 {
-  "user": "UserSummary",
+  "userId": 12,
+  "nickname": "서준",
+  "profileImage": "https://.../a.jpg",
+  "instruments": [
+    { "id": 3, "instrument": "BASS", "level": "INTERMEDIATE" }
+  ],
   "role": "OWNER",
-  "status": "ACTIVE",
   "joinedAt": "2026-07-10T12:00:00"
 }
 ```
+
+- `status`는 담지 않는다 — 목록이 `ACTIVE`만 조회하므로 전부 같은 값이다
+- `instruments[]`에 `customInstrument`가 없다. Notion 예시에는 남아 있으나 **ETC·`custom_instrument` 폐지(2026-10-01)가 더 최신**이다
+- `nickname`·`profileImage`·`instruments`는 user 도메인 소유라 `UserService`를 통해 채운다
 
 ### GroupMemberUpdateRequest
 
@@ -514,11 +522,13 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "role": "OWNER" }
 ```
 
-### GroupMemberRemoveResponse
+`role`은 `OWNER`·`MANAGER`·`MEMBER`. `MANAGER`는 값만 있고 권한은 없다(`erd.md` §5).
 
-```json
-{ "groupId": 2, "userId": 30, "status": "BANNED" }
-```
+### 모임원 상태 변경 (탈퇴·강퇴)
+
+`PATCH /v1/groups/{groupId}/members/{userId}/status` — **요청 바디·응답 바디가 모두 없다**(`data: null`). 2026-10-05에 Notion 기준으로 확정했고, 이전 스냅샷에 있던 `GroupMemberRemoveResponse`는 걷었다.
+
+상태값은 서버가 판단한다 — 요청자 == 대상이면 `LEFT`(본인 탈퇴), 모임장이 타인에게 하면 `BANNED`(강퇴).
 
 ### NoticeCreateRequest / NoticeUpdateRequest
 
@@ -540,7 +550,6 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 {
   "id": 8,
   "groupId": 2,
-  "author": "UserSummary",
   "title": "3월 정기공연 안내",
   "isPinned": true,
   "createdAt": "2026-08-01T09:00:00",
@@ -556,7 +565,6 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 {
   "id": 8,
   "groupId": 2,
-  "author": "UserSummary",
   "title": "3월 정기공연 안내",
   "body": "3월 22일 롤링홀에서 정기공연을 진행합니다. 참가 신청은...",
   "isPinned": true,
@@ -564,6 +572,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "updatedAt": "2026-08-02T11:00:00"
 }
 ```
+
+**작성자(`author`)를 담지 않는다** (2026-10-05 결정). 공지 작성·수정·삭제 권한이 현재 모임장으로 고정되어 있어 화면에서 작성자를 구분할 이유가 없다. `group_notices.author_id` 컬럼은 이력 추적용으로 유지하고 저장 시에만 채운다 — 나중에 노출이 필요해지면 응답에만 다시 더하면 된다.
 
 ## §8. 공연 (performance)
 
