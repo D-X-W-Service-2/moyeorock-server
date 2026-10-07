@@ -1,7 +1,7 @@
 # API 명세 — 전 도메인 통합
 
 - **원본**: Notion `API 명세서 수정안` 페이지의 `API 초안` 데이터베이스 (2026-09-11 대조 완료)
-- **버전**: 전 도메인 `/v1/`로 통일했다. **단, 합주(rehearsal, §3)는 초안 쪽 데이터가 아직 정리되지 않아 이번 반영에서 제외 — 기존 `/v0/` 그대로 유지**한다. 초안이 정리되면 별도로 반영한다.
+- **버전**: 전 도메인 `/v1/`. **예외 없다.** 합주(rehearsal, §3)만 초안 정리 전까지 `/v0/`를 유지했는데, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 반영했다.
 - **절 번호**: 이 파일과 `docs/specs/dto-spec.md`에서만 쓰는 좌표다
 - **인증**: 모든 API는 유저 인증 필요. 예외(auth 3개)는 §11에 별도 표기
 - **DTO 필드 정의**: `docs/specs/dto-spec.md` 참조. `API 초안`에는 DTO 정보가 없어 DTO 이름은 기존 `docs/conventions/dto-naming.md` 정의를 그대로 따른다. `*` 표시 Response는 원본 표에 비어 있으나 DTO 페이지의 이름·태그로 매칭한 것이다
@@ -52,16 +52,16 @@
 
 ## §3. 합주 (rehearsal) — 2팀
 
-**이번 업데이트에서 제외.** `API 초안`의 합주 도메인 행은 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로로 되어 있고 일부는 엔드포인트가 비어 있어(2026-09-11 확인), 팀 정리 전까지는 기존 `/v0/` 명세를 그대로 유지한다.
+2026-09-11 대조 때는 `API 초안`의 합주 행이 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로였고 일부는 비어 있어 이 절만 `/v0/`를 유지했다. **2026-10-05 재대조에서 6개 전부 `/v1/`로 정리된 것을 확인해 반영했다** — 경로만 바뀌었고 기능·DTO는 그대로다. 합주 구현체는 아직 없어 코드 영향은 없다.
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| GET | `/v0/teams/{teamId}/rehearsals?from=&to=` | 팀&nbsp;합주&nbsp;일정&nbsp;목록 | | `RehearsalsResponse` |
-| POST | `/v0/teams/{teamId}/rehearsals` | 합주&nbsp;일정&nbsp;생성 | `RehearsalCreateRequest` | |
-| GET | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;상세 | | `RehearsalDetailResponse` |
-| PUT | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;수정 | `RehearsalUpdateRequest` | |
-| DELETE | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;삭제 | | |
-| GET | `/v0/users/me/rehearsals?from=&to=` | 내&nbsp;합주&nbsp;일정 | | `RehearsalsResponse` |
+| GET | `/v1/teams/{teamId}/rehearsals?from=&to=` | 팀&nbsp;합주&nbsp;일정&nbsp;목록 | | `RehearsalsResponse` |
+| POST | `/v1/teams/{teamId}/rehearsals` | 합주&nbsp;일정&nbsp;생성 | `RehearsalCreateRequest` | |
+| GET | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;상세 | | `RehearsalDetailResponse` |
+| PUT | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;수정 | `RehearsalUpdateRequest` | |
+| DELETE | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;삭제 | | |
+| GET | `/v1/users/me/rehearsals?from=&to=` | 내&nbsp;합주&nbsp;일정 | | `RehearsalsResponse` |
 
 ---
 
@@ -125,12 +125,13 @@
 | POST | `/v1/groups` | 모임&nbsp;생성 | `GroupCreateRequest` | | |
 | GET | `/v1/groups/{id}` | 모임&nbsp;상세&nbsp;(동아리&nbsp;홈) | | `GroupDetailResponse` | |
 | PUT | `/v1/groups/{id}` | 모임&nbsp;정보&nbsp;수정 | `GroupUpdateRequest` | | |
-| GET | `/v1/groups/{id}/members` | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
+| GET | `/v1/groups/{id}/members?keyword=&page=&size=` ¶ | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
 | PATCH | `/v1/groups/{groupId}/members/{userId}` | 모임원&nbsp;역할&nbsp;변경&nbsp;(모임장&nbsp;위임) | `GroupMemberUpdateRequest` | | 모임장 |
 | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` * | |
 
 > `API 초안`에서도 원래 역할 변경과 같은 경로(`/members/{userId}`)를 공유하고 있었으나, `docs/conventions/api-conventions.md` §5 규칙(상태 전이는 `/status`)에 맞춰 내보내기·탈퇴 경로에 `/status`를 붙이고 노션도 함께 수정했다(2026-09-11). 과거 "DELETE → PATCH 전환 미완" 문제는 해소됐다.
 > § 원본 DTO 페이지 `GroupMembersResponse`가 `PageResponse<>`로 개명된 이력이 있다(2026-08-22). 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조. `API 초안`에는 DTO 정보가 없어 이 이력은 갱신되지 않았다.
+> ¶ 모임원 목록의 쿼리 파라미터: `keyword`(닉네임 검색) · `page` · `size` (전부 선택) — `API 초안`에서 확인됐으나 이번 반영(2026-09-11) 당시 누락됐던 것을 2026-09-30 대조로 뒤늦게 확인해 추가했다.
 
 ### notice
 
