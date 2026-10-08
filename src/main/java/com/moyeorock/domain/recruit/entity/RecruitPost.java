@@ -61,7 +61,7 @@ public class RecruitPost extends BaseEntity {
     private List<WantedSlot> wantedSlots;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 50)
+    @Column(length = 50, nullable = false)
     private Region region;
 
     @Enumerated(EnumType.STRING)
