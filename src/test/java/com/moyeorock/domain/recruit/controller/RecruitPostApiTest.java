@@ -100,6 +100,27 @@ class RecruitPostApiTest {
     }
 
     @Test
+    @DisplayName("작성·수정 모두 같은 직군이 두 번 오면 400 VALIDATION_FAILED다")
+    void duplicateInstrumentInWantedSlots_returns400() throws Exception {
+        createPost(AUTHOR_ID, """
+                {"targetType":"TEAM","targetId":5,"title":"t","body":"b",
+                 "wantedSlots":[{"instrument":"BASS","count":1},{"instrument":"BASS","count":2}],"region":"SEOUL"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"t","body":"b","region":"SEOUL",
+                                 "wantedSlots":[{"instrument":"DRUM","count":1},{"instrument":"DRUM","count":1}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     @DisplayName("존재하지 않는 악기 값(폐지된 ETC 포함)은 400이다")
     void create_withUnknownInstrument_returns400() throws Exception {
         createPost(AUTHOR_ID, """

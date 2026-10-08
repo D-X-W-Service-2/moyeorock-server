@@ -13,10 +13,13 @@ import com.moyeorock.domain.recruit.entity.WantedSlot;
 import com.moyeorock.domain.recruit.enums.RecruitStatus;
 import com.moyeorock.domain.recruit.repository.RecruitPostRepository;
 import com.moyeorock.global.common.dto.PageResponse;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.TargetType;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -99,6 +102,17 @@ public class RecruitPostService {
     }
 
     private List<WantedSlot> toWantedSlots(List<WantedSlotRequest> requests) {
+        ensureNoDuplicateInstrument(requests);
         return requests.stream().map(r -> new WantedSlot(r.instrument(), r.count())).toList();
+    }
+
+    /** 같은 직군이 두 줄이면 집계·마감 기준이 모호해진다(예: BASS 1명 + BASS 2명). UI가 막아도 서버에서 한 번 더 막는다. */
+    private void ensureNoDuplicateInstrument(List<WantedSlotRequest> requests) {
+        Set<Instrument> seen = new HashSet<>();
+        for (WantedSlotRequest request : requests) {
+            if (!seen.add(request.instrument())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            }
+        }
     }
 }

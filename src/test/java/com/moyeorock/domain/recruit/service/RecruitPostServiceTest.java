@@ -3,6 +3,7 @@ package com.moyeorock.domain.recruit.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -182,6 +183,33 @@ class RecruitPostServiceTest {
                 .satisfies(slot -> assertThat(slot.instrument()).isEqualTo(Instrument.DRUM));
         assertThat(response.targetType()).isEqualTo(TargetType.TEAM);
         assertThat(response.target().id()).isEqualTo(5L);
+    }
+
+    @Test
+    @DisplayName("작성 시 모집 슬롯에 같은 직군이 두 번 있으면 VALIDATION_FAILED이고 저장하지 않는다")
+    void create_fails_whenWantedSlotsHaveDuplicateInstrument() {
+        RecruitPostCreateRequest request = new RecruitPostCreateRequest(TargetType.TEAM, 5L, "제목", "본문",
+                List.of(new WantedSlotRequest(Instrument.BASS, 1), new WantedSlotRequest(Instrument.BASS, 2)),
+                Region.SEOUL);
+
+        assertThat(thrownBy(() -> recruitPostService.create(AUTHOR_ID, request)).getErrorCode())
+                .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        verify(recruitPostRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("수정 시 모집 슬롯에 같은 직군이 두 번 있으면 VALIDATION_FAILED이고 기존 슬롯은 그대로다")
+    void update_fails_whenWantedSlotsHaveDuplicateInstrument() {
+        RecruitPost post = existingPost(RecruitStatus.OPEN);
+        stubFind(post);
+        RecruitPostUpdateRequest request = new RecruitPostUpdateRequest("수정", "수정 본문",
+                List.of(new WantedSlotRequest(Instrument.DRUM, 1), new WantedSlotRequest(Instrument.DRUM, 1)),
+                Region.SEOUL);
+
+        assertThat(thrownBy(() -> recruitPostService.update(AUTHOR_ID, 10L, request)).getErrorCode())
+                .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(post.getWantedSlots()).singleElement()
+                .satisfies(slot -> assertThat(slot.instrument()).isEqualTo(Instrument.BASS));
     }
 
     @Test
