@@ -1,0 +1,179 @@
+package com.moyeorock.domain.user.service;
+
+import com.moyeorock.domain.user.dto.request.OnboardingCreateRequest;
+import com.moyeorock.domain.user.dto.request.UserInstrumentRequest;
+import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
+import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
+import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
+import com.moyeorock.domain.user.dto.response.UserMeResponse;
+import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
+import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
+import com.moyeorock.domain.user.entity.User;
+import com.moyeorock.domain.user.entity.UserInstrument;
+import com.moyeorock.domain.user.enums.UserStatus;
+import com.moyeorock.domain.user.repository.UserInstrumentRepository;
+import com.moyeorock.domain.user.repository.UserRepository;
+import com.moyeorock.global.common.dto.PageResponse;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@RequiredArgsConstructor
+public class UserService {
+
+    /** 사용자 검색 정렬은 닉네임 오름차순 고정. 클라이언트 sort 파라미터는 무시한다 (명세). */
+    private static final Sort SEARCH_SORT = Sort.by(Sort.Direction.ASC, "nickname");
+
+    private final UserRepository userRepository;
+    private final UserInstrumentRepository userInstrumentRepository;
+
+    // 사용자 + 세션 목록을 쿼리 2번으로 모은다 → 스냅샷 필요
+    @Transactional(readOnly = true)
+    public UserMeResponse getMe(Long userId) {
+        User user = getActiveUser(userId);
+        return UserMeResponse.of(user, findInstruments(userId));
+    }
+
+    @Transactional
+    /** 잠금 조회. 잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush(전 컬럼 UPDATE)가 탈퇴를 되돌린다(PR #57 리뷰). withdraw도 같은 이유. */
+    public UserMeResponse updateMe(Long userId, UserUpdateRequest request) {
+        User user = getActiveUserForUpdate(userId);
+        String nickname = normalizeAndValidateNickname(request.nickname());
+        ensureNicknameAvailable(user, nickname);
+        user.updateProfile(nickname, request.region(), request.genres(), request.bio(),
+                request.profileImage(), request.isRecommendable(), request.isActivityPublic());
+        return UserMeResponse.of(user, findInstruments(userId));
+    }
+
+    @Transactional
+    public UserWithdrawResponse withdraw(Long userId) {
+        User user = getActiveUserForUpdate(userId);
+        user.withdraw();
+        return new UserWithdrawResponse(user.getWithdrawnAt());
+    }
+
+    /** 재호출은 거부하지 않고 값만 갱신한다(멱등). 세션 교체가 UNIQUE에 걸리지 않도록 잠금 조회로 직렬화한다. */
+    @Transactional
+    public UserMeResponse completeOnboarding(Long userId, OnboardingCreateRequest request) {
+        User user = getActiveUserForUpdate(userId);
+        String nickname = normalizeAndValidateNickname(request.nickname());
+        ensureNicknameAvailable(user, nickname);
+        validateNoDuplicateInstrument(request.instruments());
+        user.completeOnboarding(nickname, request.region(), request.genres());
+        List<UserInstrument> instruments = replaceInstruments(userId, request.instruments());
+        return UserMeResponse.of(user, instruments);
+    }
+
+    @Transactional
+    public UserInstrumentsResponse updateInstruments(Long userId, UserInstrumentUpdateRequest request) {
+        getActiveUserForUpdate(userId);
+        validateNoDuplicateInstrument(request.instruments());
+        return UserInstrumentsResponse.from(replaceInstruments(userId, request.instruments()));
+    }
+
+    /**
+     * 저장하지 않고 사용 가능 여부만. 탈퇴 사용자의 닉네임은 이미 "탈퇴회원_{id}"로 치환돼 있어 원래 닉네임은 풀려 있다.
+     * 응답의 nickname은 정규화된 값이다(저장될 값을 프론트가 그대로 알 수 있게).
+     */
+    public NicknameCheckResponse checkNickname(String nickname) {
+        String normalized = normalizeAndValidateNickname(nickname);
+        return new NicknameCheckResponse(normalized, !userRepository.existsByNickname(normalized));
+    }
+
+    /** ACTIVE 회원만, 닉네임 부분 일치. 검색어가 비면 400 (전체 회원 목록 조회 경로를 열지 않는다). */
+    public PageResponse<UserSummaryResponse> search(String nickname, Pageable pageable) {
+        String keyword = normalizeNickname(nickname);
+        if (keyword == null || keyword.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        Pageable fixedSort = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), SEARCH_SORT);
+        return PageResponse.from(userRepository
+                .findByStatusAndNicknameContaining(UserStatus.ACTIVE, keyword, fixedSort)
+                .map(UserSummaryResponse::from));
+    }
+
+    /**
+     * 다른 도메인이 팀원·작성자 등을 채울 때 쓰는 일괄 조회(conventions.md §4). IN 쿼리 1번.
+     * 탈퇴 회원은 제외한다(PR #57 2팀 요청). 존재하지 않는 id와 탈퇴한 id는 결과 Map에서 빠진다.
+     */
+    public Map<Long, UserSummaryResponse> getSummaries(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIdInAndStatusNot(new HashSet<>(userIds), UserStatus.WITHDRAWN).stream()
+                .collect(Collectors.toMap(User::getId, UserSummaryResponse::from));
+    }
+
+    private User getActiveUser(Long userId) {
+        return userRepository.findByIdAndStatus(userId, UserStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private User getActiveUserForUpdate(Long userId) {
+        return userRepository.findByIdAndStatusForUpdate(userId, UserStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private List<UserInstrument> findInstruments(Long userId) {
+        return userInstrumentRepository.findAllByUserIdOrderByIdAsc(userId);
+    }
+
+    /** 본인 닉네임을 그대로 보내면 중복 검사를 건너뛴다. */
+    private void ensureNicknameAvailable(User user, String nickname) {
+        if (!nickname.equals(user.getNickname()) && userRepository.existsByNickname(nickname)) {
+            throw new BusinessException(ErrorCode.NICKNAME_DUPLICATED);
+        }
+    }
+
+    /**
+     * 앞뒤 공백(유니코드 공백 포함)을 지운 값을 돌려준다. 검증·중복 확인·저장·검색이 전부 이 값을 쓴다.
+     * 경로마다 다르면 " 서준"이 "서준"과 별개 닉네임으로 저장되고 예약 접두사 검사도 비껴간다(PR #57 리뷰).
+     * MySQL 8 기본 콜레이션은 NO PAD라 DB UNIQUE도 공백 차이를 막아 주지 않는다.
+     */
+    private String normalizeNickname(String nickname) {
+        return nickname == null ? null : nickname.strip();
+    }
+
+    /** 정규화 후 공백·20자 초과·"탈퇴회원" 접두사(탈퇴 치환용 예약어)는 400. @Valid를 거치지 않는 쿼리 파라미터 경로도 같은 규칙. */
+    private String normalizeAndValidateNickname(String nickname) {
+        String normalized = normalizeNickname(nickname);
+        if (normalized == null || normalized.isEmpty()
+                || normalized.length() > User.NICKNAME_MAX_LENGTH
+                || normalized.startsWith(User.WITHDRAWN_NICKNAME_PREFIX)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        return normalized;
+    }
+
+    /** 한 요청 안의 같은 instrument는 서버 상태 충돌(409)이 아니라 입력 오류(400). 흘리면 UNIQUE 위반으로 500이 된다. */
+    private void validateNoDuplicateInstrument(List<UserInstrumentRequest> instruments) {
+        Set<Instrument> seen = new HashSet<>();
+        for (UserInstrumentRequest item : instruments) {
+            if (!seen.add(item.instrument())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            }
+        }
+    }
+
+    /** 전체 교체: 벌크 DELETE(즉시 실행) 후 요청 순서대로 재삽입. id는 매번 새로 발급된다. */
+    private List<UserInstrument> replaceInstruments(Long userId, List<UserInstrumentRequest> instruments) {
+        userInstrumentRepository.deleteAllByUserId(userId);
+        List<UserInstrument> entities = instruments.stream()
+                .map(item -> UserInstrument.create(userId, item.instrument(), item.level()))
+                .toList();
+        return userInstrumentRepository.saveAll(entities);
+    }
+}
