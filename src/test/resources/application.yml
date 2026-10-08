@@ -35,3 +35,11 @@ jwt:
   secret-key: test-only-secret-key-must-be-at-least-32-bytes-long
   issuer: moyeorock-test
   access-token-expiry: 3600000
+
+# 카카오 더미 값 — KakaoProperties 바인딩용. 실제 호출은 테스트에서 전부 스텁/모킹한다.
+kakao:
+  client-id: test-kakao-client-id
+  client-secret: ""
+  redirect-uri: http://localhost:3000/login/oauth2/code/kakao
+  token-uri: http://localhost/kakao/oauth/token
+  user-info-uri: http://localhost/kakao/v2/user/me

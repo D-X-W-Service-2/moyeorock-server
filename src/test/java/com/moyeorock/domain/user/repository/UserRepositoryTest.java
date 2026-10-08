@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.entity.UserInstrument;
+import com.moyeorock.domain.user.enums.LoginType;
 import com.moyeorock.domain.user.enums.UserStatus;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
@@ -214,5 +215,32 @@ class UserRepositoryTest {
                 List.of(active.getId(), suspended.getId(), withdrawn.getId(), 999_999L), UserStatus.WITHDRAWN);
 
         assertThat(found).extracting(User::getId).containsExactlyInAnyOrder(active.getId(), suspended.getId());
+    }
+
+    @Test
+    @DisplayName("signupWithEmail·signupWithKakao로 만든 사용자는 ACTIVE·공개 기본값으로 저장되고 email/kakaoId로 조회된다")
+    void signup_factories_and_lookup_by_email_or_kakao_id() {
+        LocalDateTime agreedAt = LocalDateTime.of(2026, 9, 29, 10, 0);
+        User byEmail = entityManager.persistAndFlush(User.signupWithEmail("seojun@example.com", "hash", "서준", agreedAt));
+        User byKakao = entityManager.persistAndFlush(User.signupWithKakao("kakao-123", "민서", agreedAt));
+        entityManager.clear();
+
+        User foundEmail = userRepository.findByEmail("seojun@example.com").orElseThrow();
+        assertThat(foundEmail.getId()).isEqualTo(byEmail.getId());
+        assertThat(foundEmail.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(foundEmail.getPrivacyAgreedAt()).isEqualTo(agreedAt);
+        assertThat(foundEmail.isRecommendable()).isTrue();
+        assertThat(foundEmail.isOnboardingCompleted()).isFalse();
+        assertThat(foundEmail.loginType()).isEqualTo(LoginType.EMAIL);
+
+        User foundKakao = userRepository.findByKakaoId("kakao-123").orElseThrow();
+        assertThat(foundKakao.getId()).isEqualTo(byKakao.getId());
+        assertThat(foundKakao.getEmail()).isNull();
+        assertThat(foundKakao.getPasswordHash()).isNull();
+        assertThat(foundKakao.loginType()).isEqualTo(LoginType.KAKAO);
+
+        assertThat(userRepository.existsByEmail("seojun@example.com")).isTrue();
+        assertThat(userRepository.existsByEmail("none@example.com")).isFalse();
+        assertThat(userRepository.findByKakaoId("none")).isEmpty();
     }
 }

@@ -1,6 +1,6 @@
 # moyeorock DTO 명명 규약
 
-대상: 전체 73개 엔드포인트(파일 삭제 신규분 포함, 2026-09-11) · 14 도메인
+대상: 전체 74개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28 포함) · 14 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
 **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
@@ -69,19 +69,22 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 1. auth (3)
+## 1. auth (4)
 
 패키지 `domain/auth`
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 카카오 회원가입·로그인 | POST | `/v1/auth/kakao` | `UserOAuth2CodeRequest` | `AuthTokenResponse` |
+| 카카오 인증 (로그인 / 신규 판별) | POST | `/v1/auth/kakao?code=` | `UserOAuth2CodeRequest` (Query) | `KakaoAuthResponse` |
+| 카카오 가입 완료 (약관 동의) | POST | `/v1/auth/kakao/signup` | `KakaoSignupRequest` | `AuthTokenResponse` |
 | 이메일 회원가입 | POST | `/v1/auth/signup` | `UserSignupRequest` | `AuthTokenResponse` |
 | 이메일 로그인 | POST | `/v1/auth/login` | `UserLoginRequest` | `AuthTokenResponse` |
 
-요청 3개는 이미 정해둔 이름을 그대로 썼다.
+요청 3개(`UserOAuth2CodeRequest` `UserSignupRequest` `UserLoginRequest`)는 이미 정해둔 이름을 그대로 썼고, `KakaoSignupRequest`와 `KakaoAuthResponse`는 카카오 가입을 2단계로 나누면서(2026-09-28) 추가했다. `UserOAuth2CodeRequest`는 쿼리 파라미터 `code` 하나라 클래스를 만들지 않고 `@RequestParam`으로 받는다.
 
-`AuthTokenResponse(String accessToken, Long userId, String nickname, boolean onboardingCompleted)` 하나를 세 곳에서 공유한다. 회원가입 직후 바로 로그인 상태로 넘기는 전제이고, 가입만 하고 로그인 화면으로 되돌릴 거면 `UserSignupResponse`를 따로 둬야 한다.
+`KakaoAuthResponse(boolean isNewUser, AuthTokenResponse auth, String signupToken, String kakaoNickname)`는 카카오 인증 한 번에 "기존 회원 로그인"과 "신규 가입 필요" 두 경우를 담는다. 인가 코드가 1회용이라 신규 판정 뒤 다시 호출할 수 없어서 한 응답 타입으로 묶었다. 기존 회원이면 `auth`만, 신규면 `signupToken`·`kakaoNickname`만 채운다.
+
+`AuthTokenResponse(String accessToken, Long userId, String nickname, boolean onboardingCompleted)` 하나를 세 곳(카카오 가입 완료·이메일 가입·이메일 로그인)에서 공유하고, `KakaoAuthResponse.auth`에도 같은 객체를 담는다. 회원가입 직후 바로 로그인 상태로 넘기는 전제이고, 가입만 하고 로그인 화면으로 되돌릴 거면 `UserSignupResponse`를 따로 둬야 한다.
 
 `onboardingCompleted`를 여기 넣은 이유는 로그인 직후 온보딩 화면으로 보낼지 대시보드로 보낼지를 프론트가 추가 호출 없이 판단하게 하려는 것이다.
 
@@ -402,14 +405,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 73 |
-| Request DTO | 34 |
-| Response DTO | 56 |
+| 엔드포인트 | 74 |
+| Request DTO | 35 |
+| Response DTO | 57 |
 | 전역 공통 | 5 |
 
-요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 35개뿐인 이유는 74개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11)
 
 ### 재사용 상위 5개
 
