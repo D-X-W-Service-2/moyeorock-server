@@ -186,6 +186,31 @@ class RecruitPostServiceTest {
     }
 
     @Test
+    @DisplayName("마감된 공고는 작성자도 수정할 수 없다 — INVALID_STATE이고 내용은 그대로다")
+    void update_fails_whenPostIsClosed() {
+        RecruitPost post = existingPost(RecruitStatus.CLOSED);
+        stubFind(post);
+        RecruitPostUpdateRequest request = new RecruitPostUpdateRequest("수정", "수정 본문",
+                List.of(new WantedSlotRequest(Instrument.DRUM, 1)), Region.BUSAN);
+
+        assertThat(thrownBy(() -> recruitPostService.update(AUTHOR_ID, 10L, request)).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        assertThat(post.getTitle()).isEqualTo("제목");
+        assertThat(post.getRegion()).isEqualTo(Region.SEOUL);
+    }
+
+    @Test
+    @DisplayName("마감된 공고라도 작성자가 아니면 상태가 아니라 권한(NOT_POST_AUTHOR)으로 거절한다")
+    void update_checksAuthorBeforeClosedState() {
+        stubFind(existingPost(RecruitStatus.CLOSED));
+        RecruitPostUpdateRequest request = new RecruitPostUpdateRequest("수정", "수정 본문",
+                List.of(new WantedSlotRequest(Instrument.DRUM, 1)), Region.SEOUL);
+
+        assertThat(thrownBy(() -> recruitPostService.update(OTHER_USER_ID, 10L, request)).getErrorCode())
+                .isEqualTo(ErrorCode.NOT_POST_AUTHOR);
+    }
+
+    @Test
     @DisplayName("작성 시 모집 슬롯에 같은 직군이 두 번 있으면 VALIDATION_FAILED이고 저장하지 않는다")
     void create_fails_whenWantedSlotsHaveDuplicateInstrument() {
         RecruitPostCreateRequest request = new RecruitPostCreateRequest(TargetType.TEAM, 5L, "제목", "본문",

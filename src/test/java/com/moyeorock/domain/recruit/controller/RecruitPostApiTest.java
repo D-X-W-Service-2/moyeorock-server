@@ -205,6 +205,26 @@ class RecruitPostApiTest {
     }
 
     @Test
+    @DisplayName("수정: 마감된 공고는 작성자도 409 INVALID_STATE를 받고 내용은 그대로다")
+    void update_closedPost_returns409() throws Exception {
+        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(AUTHOR_ID))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"CLOSED\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"수정 시도","body":"b","wantedSlots":[{"instrument":"DRUM","count":1}],"region":"BUSAN"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("INVALID_STATE"));
+
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID)))
+                .andExpect(jsonPath("$.data.title").value(org.hamcrest.Matchers.not("수정 시도")));
+    }
+
+    @Test
     @DisplayName("마감: 작성자가 CLOSED로 바꾸면 200, 같은 요청을 또 하면 409 INVALID_STATE다")
     void close_thenCloseAgain_returns409() throws Exception {
         long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);

@@ -71,6 +71,11 @@ public class RecruitPostService {
     public RecruitPostDetailResponse update(Long userId, Long postId, RecruitPostUpdateRequest request) {
         RecruitPost post = getPostOrThrow(postId);
         ensureAuthor(post, userId);
+        // 마감된 공고는 고칠 수 없다 — 마감 뒤에 모집 세션·인원이 바뀌면 이미 들어온 신청과 어긋난다.
+        // 권한 검사를 먼저 해서 작성자가 아닌 사람에게는 공고 상태를 드러내지 않는다.
+        if (post.getStatus() == RecruitStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
         post.update(request.title(), request.body(), toWantedSlots(request.wantedSlots()), request.region());
         // updatedAt(@LastModifiedDate)은 flush 때 갱신된다. 응답이 커밋보다 먼저 만들어지므로 여기서
         // flush하지 않으면 수정 전 updatedAt이 그대로 내려간다(Notion 예시는 수정 후 값).
