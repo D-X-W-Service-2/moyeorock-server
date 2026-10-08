@@ -1,6 +1,7 @@
 package com.moyeorock.domain.recruit.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.recruit.entity.RecruitPost;
@@ -10,12 +11,16 @@ import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.common.enums.TargetType;
 import com.moyeorock.global.config.JpaAuditingConfig;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceException;
+import java.sql.SQLException;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
@@ -32,6 +37,9 @@ class RecruitPostRepositoryTest {
     @Autowired
     private RecruitPostRepository recruitPostRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     private RecruitPost teamPost(String title, Region region, WantedSlot... slots) {
         return RecruitPost.create(1L, 5L, null, title, "본문", List.of(slots), region);
     }
@@ -42,6 +50,26 @@ class RecruitPostRepositoryTest {
 
     private static WantedSlot slot(Instrument instrument) {
         return new WantedSlot(instrument, 1);
+    }
+
+    @Test
+    @DisplayName("region이 NULL인 공고는 저장 경로(JPA)에서도 DataIntegrityViolationException으로 거절된다")
+    void save_withNullRegion_isRejected() {
+        RecruitPost post = teamPost("지역 없음", null, slot(Instrument.BASS));
+
+        assertThatThrownBy(() -> recruitPostRepository.saveAndFlush(post))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("region이 NULL인 행은 엔티티를 거치지 않는 직접 INSERT도 DB가 거절한다 (V4 NOT NULL)")
+    void insert_withNullRegion_isRejectedByDatabase() {
+        assertThatThrownBy(() -> entityManager.createNativeQuery(
+                        "insert into recruit_posts (target_team_id, author_id, title, body, wanted_slots, region, status)"
+                                + " values (5, 1, 't', 'b', '[]', null, 'OPEN')")
+                .executeUpdate())
+                .isInstanceOf(PersistenceException.class)
+                .hasRootCauseInstanceOf(SQLException.class);
     }
 
     @Test
