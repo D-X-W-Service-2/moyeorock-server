@@ -151,7 +151,7 @@ public class TeamService {
 
 - `JpaRepository<Team, Long>` 상속
 - 메서드 이름이 길어지면(조건 3개 초과) `@Query` 또는 QueryDSL. **QueryDSL은 아직 도입 안 함**
-- 연관관계 매핑을 안 쓰므로 `@EntityGraph`/`join fetch`로 N+1을 풀 일이 없다. 대신 여러 건의 참조 ID를 한 번에 다른 도메인 Service에 넘겨 일괄 조회하는 방식으로 N+1을 피한다(예: `UserService.getSummaries(List<Long> userIds)`) — 단건씩 반복 호출하지 않는다
+- 연관관계 매핑을 안 쓰므로 `@EntityGraph`/`join fetch`로 N+1을 풀 일이 없다. 대신 여러 건의 참조 ID를 한 번에 다른 도메인 Service에 넘겨 일괄 조회하는 방식으로 N+1을 피한다(예: `UserService.getSummaries(List<Long> userIds)` · `getInstruments(Collection<Long> userIds)` · 자기 범위 안에서 닉네임으로 거르는 `filterByNickname(Collection<Long> userIds, String keyword)`) — 단건씩 반복 호출하지 않는다
 - 팀 조회 메서드에는 `status = ACTIVE` 조건을 넣는다 (`docs/conventions/architecture.md` §6)
 
 ## 5. 네이밍
