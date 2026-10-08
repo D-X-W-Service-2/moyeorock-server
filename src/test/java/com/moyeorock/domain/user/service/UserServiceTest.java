@@ -14,6 +14,7 @@ import com.moyeorock.domain.user.dto.request.UserInstrumentRequest;
 import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
 import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
@@ -36,6 +37,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -436,6 +438,85 @@ class UserServiceTest {
             User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
             ReflectionTestUtils.setField(user, "id", id);
             return user;
+        }
+    }
+
+    @Nested
+    @DisplayName("getInstruments")
+    class GetInstruments {
+
+        private UserInstrument instrumentOf(Long id, Long userId, Instrument instrument, Level level) {
+            UserInstrument entity = UserInstrument.create(userId, instrument, level);
+            ReflectionTestUtils.setField(entity, "id", id);
+            return entity;
+        }
+
+        @Test
+        @DisplayName("중복을 뺀 id로 IN 조회 1번을 하고, userId별로 세션 목록을 조회 순서대로 묶는다 (세션 없는 id는 키가 없다)")
+        void groups_instruments_by_user_id() {
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
+            given(userInstrumentRepository.findAllByUserIdInOrderByUserIdAscIdAsc(idsCaptor.capture()))
+                    .willReturn(List.of(
+                            instrumentOf(1L, 10L, Instrument.BASS, Level.INTERMEDIATE),
+                            instrumentOf(2L, 10L, Instrument.KEY, Level.NOVICE),
+                            instrumentOf(3L, 20L, Instrument.DRUM, Level.ADVANCED)));
+
+            Map<Long, List<UserInstrumentResponse>> result = userService.getInstruments(List.of(10L, 20L, 10L, 30L));
+
+            assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L, 30L);
+            assertThat(result).containsOnlyKeys(10L, 20L);
+            assertThat(result.get(10L)).extracting(UserInstrumentResponse::instrument)
+                    .containsExactly(Instrument.BASS, Instrument.KEY);
+            assertThat(result.get(10L).get(0).id()).isEqualTo(1L);
+            assertThat(result.get(20L)).extracting(UserInstrumentResponse::level).containsExactly(Level.ADVANCED);
+            assertThat(result.getOrDefault(30L, List.of())).isEmpty();
+        }
+
+        @Test
+        @DisplayName("빈 목록이면 조회 없이 빈 Map")
+        void empty_ids_returns_empty_map() {
+            assertThat(userService.getInstruments(List.of())).isEmpty();
+            assertThat(userService.getInstruments(null)).isEmpty();
+            verify(userInstrumentRepository, never()).findAllByUserIdInOrderByUserIdAscIdAsc(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("filterByNickname")
+    class FilterByNickname {
+
+        @Test
+        @DisplayName("검색어 앞뒤 공백을 지우고, 넘긴 id 범위 안에서 ACTIVE·부분 일치 조회 1번을 해 id 집합을 돌려준다")
+        void filters_within_given_ids() {
+            User matched = User.signupWithEmail("a@example.com", "hash", "서준밴드", LocalDateTime.now());
+            ReflectionTestUtils.setField(matched, "id", 10L);
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
+            given(userRepository.findAllByIdInAndStatusAndNicknameContaining(
+                    idsCaptor.capture(), eq(UserStatus.ACTIVE), eq("서준")))
+                    .willReturn(List.of(matched));
+
+            Set<Long> result = userService.filterByNickname(List.of(10L, 20L, 10L), " 서준 ");
+
+            assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L);
+            assertThat(result).containsExactly(10L);
+        }
+
+        @Test
+        @DisplayName("검색어가 비면 조회 없이 빈 Set (조건 없음을 전부로 읽지 않는다)")
+        void blank_keyword_returns_empty_without_query() {
+            assertThat(userService.filterByNickname(List.of(10L), "  ")).isEmpty();
+            assertThat(userService.filterByNickname(List.of(10L), null)).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusAndNicknameContaining(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("id 범위가 비면 조회 없이 빈 Set")
+        void empty_ids_returns_empty_without_query() {
+            assertThat(userService.filterByNickname(List.of(), "서준")).isEmpty();
+            assertThat(userService.filterByNickname(null, "서준")).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusAndNicknameContaining(any(), any(), any());
         }
     }
 }

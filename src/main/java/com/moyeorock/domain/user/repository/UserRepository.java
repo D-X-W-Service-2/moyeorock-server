@@ -31,4 +31,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     /** 타 도메인 일괄 요약 조회용(UserService.getSummaries). IN 1번, 지정 상태(탈퇴)만 제외. */
     List<User> findAllByIdInAndStatusNot(Collection<Long> ids, UserStatus status);
+
+    /**
+     * 타 도메인이 자기 범위(모임원 등) 안에서 닉네임으로 거를 때(UserService.filterByNickname). IN 1번.
+     * 부분 일치의 %·_는 Spring Data 파생 쿼리가 이스케이프하므로 검색어에 들어 있어도 와일드카드로 풀리지 않는다.
+     */
+    List<User> findAllByIdInAndStatusAndNicknameContaining(Collection<Long> ids, UserStatus status, String nickname);
 }
