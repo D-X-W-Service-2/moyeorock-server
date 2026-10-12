@@ -5,6 +5,7 @@ import com.moyeorock.domain.user.dto.request.UserInstrumentRequest;
 import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
 import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
@@ -18,7 +19,9 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -115,6 +118,38 @@ public class UserService {
         }
         return userRepository.findAllByIdInAndStatusNot(new HashSet<>(userIds), UserStatus.WITHDRAWN).stream()
                 .collect(Collectors.toMap(User::getId, UserSummaryResponse::from));
+    }
+
+    /**
+     * 타 도메인이 자기 범위(모임원 등)의 사용자 세션 목록을 채울 때 쓰는 일괄 조회(conventions.md §4, 이슈 #73). IN 쿼리 1번.
+     * 세션이 없는 사용자와 존재하지 않는 id는 Map에 키가 없다 — 호출자는 getOrDefault(id, List.of())로 읽는다.
+     * 사용자 상태는 보지 않는다. 탈퇴 제외는 getSummaries가 담당하므로 호출자가 두 결과를 합치면서 거른다.
+     */
+    public Map<Long, List<UserInstrumentResponse>> getInstruments(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userInstrumentRepository.findAllByUserIdInOrderByUserIdAscIdAsc(new HashSet<>(userIds)).stream()
+                .collect(Collectors.groupingBy(UserInstrument::getUserId, LinkedHashMap::new,
+                        Collectors.mapping(UserInstrumentResponse::from, Collectors.toList())));
+    }
+
+    /**
+     * 호출자가 넘긴 id 범위(모임원 등) 안에서 닉네임이 keyword를 부분 포함하는 ACTIVE 사용자 id만 돌려준다(이슈 #73). IN 쿼리 1번.
+     * 전체 회원을 훑지 않으므로 결과가 입력 크기를 넘지 않는다 — search처럼 상한 없는 닉네임 검색 경로를 열지 않기 위한 설계다.
+     * keyword는 search와 같이 앞뒤 공백을 지우고, 비면 조회 없이 빈 Set이다("조건 없음 = 전부"로 읽히지 않게).
+     * 조건 없는 목록은 호출자가 이 메서드를 거치지 않으면 된다.
+     */
+    public Set<Long> filterByNickname(Collection<Long> userIds, String keyword) {
+        String normalized = normalizeNickname(keyword);
+        if (userIds == null || userIds.isEmpty() || normalized == null || normalized.isEmpty()) {
+            return Set.of();
+        }
+        return userRepository
+                .findAllByIdInAndStatusAndNicknameContaining(new HashSet<>(userIds), UserStatus.ACTIVE, normalized)
+                .stream()
+                .map(User::getId)
+                .collect(Collectors.toSet());
     }
 
     private User getActiveUser(Long userId) {

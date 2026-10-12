@@ -215,4 +215,58 @@ class UserRepositoryTest {
 
         assertThat(found).extracting(User::getId).containsExactlyInAnyOrder(active.getId(), suspended.getId());
     }
+
+    @Test
+    @DisplayName("findAllByUserIdInOrderByUserIdAscIdAsc는 넘긴 사용자의 세션만 userId → id 순으로 돌려준다")
+    void find_instruments_by_user_id_in_ordered() {
+        User a = saveUser("a", null);
+        User b = saveUser("b", null);
+        User c = saveUser("c", null);
+        User outsider = saveUser("d", null);
+        UserInstrument aBass = userInstrumentRepository.save(UserInstrument.create(a.getId(), Instrument.BASS, Level.NOVICE));
+        UserInstrument bDrum = userInstrumentRepository.save(UserInstrument.create(b.getId(), Instrument.DRUM, Level.ADVANCED));
+        UserInstrument aKey = userInstrumentRepository.save(UserInstrument.create(a.getId(), Instrument.KEY, Level.BEGINNER));
+        userInstrumentRepository.save(UserInstrument.create(outsider.getId(), Instrument.VOCAL, Level.NOVICE));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<UserInstrument> found = userInstrumentRepository.findAllByUserIdInOrderByUserIdAscIdAsc(
+                List.of(a.getId(), b.getId(), c.getId()));
+
+        // a(id 작은 순: BASS → KEY) 다음 b. 세션 없는 c와 범위 밖 d는 없다
+        assertThat(found).extracting(UserInstrument::getId)
+                .containsExactly(aBass.getId(), aKey.getId(), bDrum.getId());
+    }
+
+    @Test
+    @DisplayName("findAllByIdInAndStatusAndNicknameContaining은 넘긴 id 중 ACTIVE·부분 일치만 돌려준다")
+    void filter_by_nickname_within_ids_active_only() {
+        User matched = saveUser("서준밴드", UserStatus.ACTIVE);
+        User suspended = saveUser("서준", UserStatus.SUSPENDED);
+        User withdrawn = saveUser("서준탈퇴", UserStatus.WITHDRAWN);
+        User noMatch = saveUser("민서", UserStatus.ACTIVE);
+        User outsider = saveUser("서준아웃", UserStatus.ACTIVE);
+        entityManager.clear();
+
+        List<User> found = userRepository.findAllByIdInAndStatusAndNicknameContaining(
+                List.of(matched.getId(), suspended.getId(), withdrawn.getId(), noMatch.getId(), 999_999L),
+                UserStatus.ACTIVE, "서준");
+
+        assertThat(found).extracting(User::getId).containsExactly(matched.getId());
+        assertThat(found).extracting(User::getId).doesNotContain(outsider.getId());
+    }
+
+    @Test
+    @DisplayName("닉네임 부분 일치의 %·_는 와일드카드가 아니라 글자 그대로 비교된다")
+    void nickname_containing_escapes_like_wildcards() {
+        User underscore = saveUser("a_b", UserStatus.ACTIVE);
+        User plain = saveUser("acb", UserStatus.ACTIVE);
+        entityManager.clear();
+        List<Long> ids = List.of(underscore.getId(), plain.getId());
+
+        assertThat(userRepository.findAllByIdInAndStatusAndNicknameContaining(ids, UserStatus.ACTIVE, "_"))
+                .extracting(User::getId).containsExactly(underscore.getId());
+        assertThat(userRepository.findAllByIdInAndStatusAndNicknameContaining(ids, UserStatus.ACTIVE, "%"))
+                .isEmpty();
+    }
 }
