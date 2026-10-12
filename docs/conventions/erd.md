@@ -213,12 +213,14 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `title` | `VARCHAR(100)` |  |
 |  | `body` | `TEXT` |  |
 |  | `wanted_slots` | `JSON` | 세션별 인원 |
-|  | `region` | `VARCHAR(50)` | 팀/모임 region과 무관 · 작성자가 작성·수정 시 직접 입력하는 독립 값 (동기화 불필요, `docs/plans/recruit-post-region-sync.md`) |
+|  | `region` | `VARCHAR(50) NOT NULL` | 팀/모임 region과 무관 · 작성자가 작성·수정 시 직접 입력하는 독립 값 (동기화 불필요, `docs/plans/recruit-post-region-sync.md`) |
 |  | `status` | `VARCHAR(10)` | OPEN\|CLOSED |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
 - **인덱스** `(status, region, created_at)`, `(target_team_id)`, `(target_group_id)`
+
+> 2026-10-08 변경: `region` NULL 허용 → NOT NULL. 명세(Notion `API 초안` 공고 작성 Required)와 요청 DTO는 이미 필수였고 스키마만 nullable이라 어긋나 있었다 — NULL 공고는 `region` 필터에 잡히지 않고 응답에서 키가 빠진다(PR #71 리뷰). 사유·영향: `docs/plans/recruit-post-region-not-null.md`.
 
 > 기존 `target_type`+`target_id`(다형성) → exclusive-arc(대상 타입별 컬럼 분리)로 전환(2026-09-16). FK·CHECK 제약은 걸지 않는다 — 참조 컬럼은 전부 `Long` 매핑, DB 제약 없음(CLAUDE.md 절대 규칙 6, PR #29). 근거: `docs/plans/schema-cleanup-adoption-review.md` §③
 
