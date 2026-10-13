@@ -495,6 +495,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- `pinnedNotices`는 **고정된 공지만** 최신순 최대 3건이다. 고정 공지가 없으면 빈 배열이고 일반 공지로 자리를 채우지 않는다(2026-10-07 확정). 전체 공지는 공지 목록 엔드포인트로 받는다
+
 ### PageResponse\<GroupMemberResponse\>
 
 `GET /v1/groups/{id}/members?keyword=&page=&size=`의 응답 항목. **2026-10-05에 Notion `API 초안`(2026-09-23) 기준으로 교체**했다 — 이전 스냅샷은 `user`를 중첩하고 `status`를 담는 형태였다.

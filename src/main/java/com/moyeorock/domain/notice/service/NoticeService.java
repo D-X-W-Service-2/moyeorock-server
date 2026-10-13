@@ -48,11 +48,12 @@ public class NoticeService {
     }
 
     /**
-     * 동아리 홈의 고정 공지 미리보기(상위 {@value #PREVIEW_SIZE}건).
+     * 동아리 홈의 고정 공지 미리보기 — <b>고정된 공지만</b> 최신순 {@value #PREVIEW_SIZE}건.
+     * 고정 공지가 없으면 빈 목록이다(일반 공지로 채우지 않는다 — 응답 필드가 {@code pinnedNotices}다).
      * <b>권한 확인을 하지 않는다</b> — 모임 상세에서만 호출하고 그쪽에서 이미 모임원인지 확인한다.
      */
     public List<NoticePreviewResponse> getPinnedPreview(Long groupId) {
-        return groupNoticeRepository.findTop3ByGroupIdOrderByIsPinnedDescCreatedAtDesc(groupId).stream()
+        return groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(groupId).stream()
                 .map(NoticePreviewResponse::from)
                 .toList();
     }

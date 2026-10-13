@@ -59,17 +59,39 @@ class GroupNoticeRepositoryTest {
     }
 
     @Test
-    @DisplayName("동아리 홈 미리보기는 고정 공지 우선으로 최대 3건만 가져온다")
-    void findTop3_limitsToThreeWithPinnedFirst() {
+    @DisplayName("동아리 홈 미리보기에는 고정 공지만 담긴다 — 일반 공지로 자리를 채우지 않는다")
+    void findTop3_returnsOnlyPinned() {
         groupNoticeRepository.saveAll(List.of(
                 notice("일반 1", false), notice("일반 2", false), notice("일반 3", false),
                 notice("고정 1", true), notice("고정 2", true)));
 
         List<GroupNotice> preview =
-                groupNoticeRepository.findTop3ByGroupIdOrderByIsPinnedDescCreatedAtDesc(GROUP_ID);
+                groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID);
+
+        assertThat(preview).hasSize(2);
+        assertThat(preview).allMatch(GroupNotice::isPinned);
+        assertThat(preview).extracting(GroupNotice::getTitle).containsExactlyInAnyOrder("고정 1", "고정 2");
+    }
+
+    @Test
+    @DisplayName("고정 공지가 없으면 미리보기는 빈 목록이다")
+    void findTop3_returnsEmpty_whenNoPinned() {
+        groupNoticeRepository.saveAll(List.of(notice("일반 1", false), notice("일반 2", false)));
+
+        assertThat(groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("고정 공지가 많으면 미리보기는 3건으로 자른다")
+    void findTop3_limitsToThree() {
+        groupNoticeRepository.saveAll(List.of(
+                notice("고정 1", true), notice("고정 2", true), notice("고정 3", true), notice("고정 4", true)));
+
+        List<GroupNotice> preview =
+                groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID);
 
         assertThat(preview).hasSize(3);
-        assertThat(preview).filteredOn(GroupNotice::isPinned).hasSize(2);
+        assertThat(preview).allMatch(GroupNotice::isPinned);
     }
 
     @Test

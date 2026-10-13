@@ -14,6 +14,7 @@ public interface GroupNoticeRepository extends JpaRepository<GroupNotice, Long> 
     Page<GroupNotice> findByGroupIdAndIsPinnedOrderByCreatedAtDesc(
             Long groupId, boolean isPinned, Pageable pageable);
 
-    // 동아리 홈(모임 상세)의 고정 공지 미리보기 — 상위 3건
-    List<GroupNotice> findTop3ByGroupIdOrderByIsPinnedDescCreatedAtDesc(Long groupId);
+    // 동아리 홈(모임 상세)의 고정 공지 미리보기 — 고정된 것만 최신순 상위 3건.
+    // 고정 여부로 필터하지 않으면 고정 공지가 없는 모임에서 일반 공지가 pinnedNotices로 내려간다.
+    List<GroupNotice> findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(Long groupId);
 }
