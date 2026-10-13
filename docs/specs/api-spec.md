@@ -216,10 +216,18 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | POST | `/v1/files/presigned-url` | 업로드&nbsp;URL&nbsp;발급 | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | |
+| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | `DeleteResponse` |
 
-> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11) — 기존 문서에는 없었다. Request/Response DTO가 아직 정의되어 있지 않으니 착수 전 팀 확인 필요.
-> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있지만, 이건 presigned URL로 발급받은 **S3 주소에 직접 올리는 클라이언트 동작**이지 moyeorock 백엔드 엔드포인트가 아니다 — 이 표에는 넣지 않는다.
+**로컬 저장 전용 임시 엔드포인트** — AWS 비용 때문에 당분간 서버 로컬 디스크에 저장하기로 한 결정(이슈 #18) 때문에 생긴 것이다. S3로 전환하면 `LocalFileStorageClient`와 함께 **둘 다 제거한다.** `API 초안`에는 없다.
+
+| 메서드 | 경로 | 기능 | Request | Response |
+|---|---|---|---|---|
+| PUT | `/v1/files/local-upload/**` | 업로드&nbsp;수신&nbsp;‡ | 파일 바이트(raw body) | — (`data: null`) |
+| GET | `/v1/files/local/**` | 파일&nbsp;서빙&nbsp;‡ | | 원시 바이트 |
+
+> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11). 응답은 공용 `DeleteResponse`(`{id, deleted}`)를 쓴다.
+> ‡ 로컬 저장에서는 발급된 `uploadUrl`이 S3가 아니라 이 서버의 `PUT /v1/files/local-upload/{fileKey}`를 가리킨다. 서빙(`GET /v1/files/local/**`)은 프로필·커버·포스터가 공개 정보라 인증 없이 열고(`PublicEndpoints` 등록), 원시 바이트를 그대로 내려줘야 해서 `api-conventions.md` §1의 "모든 응답은 `ApiResponse`로 감싼다" 규칙의 예외다.
+> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있다. S3로 전환하면 그 말대로 **S3 주소에 직접 올리는 클라이언트 동작**이 되어 백엔드 엔드포인트가 아니게 된다 — 위 임시 엔드포인트가 그때 사라지는 이유다.
 
 ### dashboard
 
