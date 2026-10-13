@@ -141,15 +141,16 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | POST | `/v1/groups/{id}/notices` | 공지&nbsp;작성 | `NoticeCreateRequest` | | 모임장 |
-| GET | `/v1/groups/{id}/notices` | 공지&nbsp;목록 | | `PageResponse<NoticeSummaryResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
+| GET | `/v1/groups/{id}/notices?isPinned=&page=&size=` ¶ | 공지&nbsp;목록 | | `PageResponse<NoticeSummaryResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
 | GET | `/v1/notices/{id}` | 공지&nbsp;상세 | | `NoticeDetailResponse` | ‖ |
 | PUT | `/v1/notices/{id}` | 공지&nbsp;수정 | `NoticeUpdateRequest` | | |
 | DELETE | `/v1/notices/{id}` | 공지&nbsp;삭제 | | | |
 
-> \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 팀 확인 필요.
+> \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 2026-10-07 대조에서 `API 초안`의 공지 목록 Query Parameter 표가 `isPinned`를 "고정 공지만 조회할지 여부"로 적고 있는 것을 확인했으므로 **목록 필터로 확정**한다(별도 토글 엔드포인트가 아니다). 고정 여부를 바꾸는 것은 공지 수정(`PUT /v1/notices/{id}`)의 `isPinned` 필드다.
 > ‖ `API 초안`에도 이 엔드포인트는 없다. **팀 결정으로 목록·상세를 분리해 신규 추가한 엔드포인트**로, 기존 문서의 결정을 그대로 유지한다 — 목록은 `body`를 뺀 `NoticeSummaryResponse`, 상세는 전체 필드를 담는 `NoticeDetailResponse`다(`docs/specs/dto-spec.md` §7).
 > `API 초안`은 공지 수정·삭제를 `/groups/{id}/notices/{id}`(그룹 하위 경로)로 적었으나, 기존 컨벤션(단독 경로 `/notices/{id}`)을 유지하기로 하고 노션도 함께 수정했다(2026-09-11). 생성·목록은 그대로 `/groups/{id}/notices` 아래에 둔다.
 > **2026-10-05 결정** — ① 공지 상세는 `API 초안`에 없던 엔드포인트였는데 이번에 노션에도 페이지를 만들어 양쪽을 맞췄다. ② **공지 응답에 작성자(`author`)를 담지 않는다** — 작성·수정·삭제 권한이 현재 모임장으로 고정이라 구분할 이유가 없다. ③ **공지 권한은 "현재 모임장"이다** — 작성자가 전 모임장이어도 현 모임장만 수정·삭제한다.
+> ¶ 공지 목록의 쿼리 파라미터: `isPinned` · `page` · `size` (전부 선택). **노션 `API 초안`(2026-09-23)에 이미 있던 것이 이 문서의 이전 스냅샷(2026-09-14)에 반영되지 않았던 항목**으로, 2026-10-07 대조에서 가져왔다 — 노션 쪽은 고칠 것이 없었다. `isPinned`를 생략하면 고정글 우선 정렬로 전체를, `true`/`false`면 해당 공지만 최신순으로 내려준다.
 
 ---
 
