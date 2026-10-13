@@ -156,13 +156,14 @@ class GroupMemberServiceTest {
     @DisplayName("모임장이 아닌 사람이 남을 내보내려 하면 거부된다")
     void changeStatus_throws_whenNonOwnerRemovesOther() {
         givenGroupExists();
-        givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
         givenActiveMember(30L, member(30L, GroupRole.MEMBER));
 
         assertThatThrownBy(() -> groupMemberService.changeStatus(30L, GROUP_ID, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        verify(groupMemberRepository, never())
+                .findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE);
     }
 
     @Test
@@ -193,6 +194,7 @@ class GroupMemberServiceTest {
     @DisplayName("탈퇴한 모임원을 다시 내보내려 하면 GROUP_MEMBER_NOT_FOUND를 던진다")
     void changeStatus_throws_whenTargetIsNotActive() {
         givenGroupExists();
+        givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
         when(groupMemberRepository.findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE))
                 .thenReturn(Optional.empty());
 
@@ -224,6 +226,23 @@ class GroupMemberServiceTest {
         givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
 
         groupMemberService.changeRole(OWNER_ID, GROUP_ID, MEMBER_ID, GroupRole.MANAGER);
+
+        InOrder order = inOrder(groupRepository, groupMemberRepository);
+        order.verify(groupRepository).existsById(GROUP_ID);
+        order.verify(groupMemberRepository)
+                .findByGroupIdAndUserIdAndStatus(GROUP_ID, OWNER_ID, GroupMemberStatus.ACTIVE);
+        order.verify(groupMemberRepository)
+                .findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("내보내기도 권한 확인을 대상 조회보다 먼저 한다 — changeRole과 잠금·검사 순서를 맞춘다")
+    void changeStatus_checksPermissionBeforeLookingUpTarget() {
+        givenGroupExists();
+        givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
+        givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
+
+        groupMemberService.changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
         order.verify(groupRepository).existsById(GROUP_ID);

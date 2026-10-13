@@ -60,12 +60,20 @@ public class GroupMemberService {
      * 내보내기·탈퇴. 요청 바디가 없고 서버가 상태를 정한다 —
      * 요청자 == 대상이면 {@code LEFT}(본인 탈퇴), 모임장이 타인에게 하면 {@code BANNED}(강퇴).
      * 모임장 본인은 위임 전에는 탈퇴할 수 없다.
+     *
+     * <p>{@link #changeRole}과 같이 <b>권한 확인을 대상 조회보다 먼저</b> 한다 — 권한 없는 요청자에게
+     * 다른 모임원의 존재 여부를 404/403으로 구분해 알려주지 않으려는 것이다. 요청자 행을 대상 행보다
+     * 먼저 읽는 순서도 두 메서드가 같아진다.
      */
     @Transactional
     public void changeStatus(Long userId, Long groupId, Long targetUserId) {
-        ensureGroupExists(groupId);
-        GroupMember target = getActiveMemberOrThrow(groupId, targetUserId);
+        if (userId.equals(targetUserId)) {
+            ensureGroupExists(groupId);
+        } else {
+            ensureOwner(groupId, userId);  // 모임 존재 확인을 포함한다 — 중복 조회하지 않는다
+        }
 
+        GroupMember target = getActiveMemberOrThrow(groupId, targetUserId);
         if (userId.equals(targetUserId)) {
             if (target.getRole() == GroupRole.OWNER) {
                 throw new BusinessException(ErrorCode.OWNER_CANNOT_LEAVE);
@@ -74,7 +82,6 @@ public class GroupMemberService {
             return;
         }
 
-        ensureOwner(groupId, userId);
         target.updateStatus(GroupMemberStatus.BANNED);
     }
 
