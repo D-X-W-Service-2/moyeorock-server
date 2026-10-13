@@ -78,7 +78,10 @@ public class FileService {
         }
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 쿼리가 메타데이터 조회 1번이고 나머지는 파일 I/O라 트랜잭션을 열지 않는다
+     * (conventions.md §3 — 쿼리 2번 이상의 결과가 서로 맞아야 할 때만 readOnly를 붙인다).
+     */
     public FileContent readLocalFile(String fileKey) {
         UploadedFile file = getByFileKeyOrThrow(fileKey);
         return new FileContent(openOrThrow(fileKey), file.getContentType());
