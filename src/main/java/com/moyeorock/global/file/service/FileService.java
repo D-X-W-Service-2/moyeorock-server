@@ -62,7 +62,18 @@ public class FileService {
         return PresignedUrlResponse.of(saved, uploadUrl);
     }
 
-    @Transactional
+    /**
+     * 트랜잭션을 열지 않는다. 파일 쓰기에 걸리는 시간은 서버가 아니라 올리는 쪽 네트워크 속도로
+     * 결정되는데, 트랜잭션을 걸면 그 시간 내내 DB 커넥션을 쥐고 있게 된다. 느린 업로드가 몇 건
+     * 겹치면 커넥션 풀이 비어 파일과 무관한 API까지 멈춘다.
+     *
+     * <p>게다가 얻는 것도 없다 — DB 쓰기가 없고(조회 1번), 파일 시스템 쓰기는 롤백 대상이 아니라
+     * 원자성도 만들어지지 않는다. 연관관계 매핑이 없어 영속성 컨텍스트도 필요 없다.
+     *
+     * <p>남는 경합: 권한 확인과 쓰기 사이에 같은 파일이 삭제되면 DB 행 없는 파일이 디스크에 남는다.
+     * 평범한 조회는 행을 잠그지 않으므로 트랜잭션이 있어도 막히지 않던 문제이고, 막으려면 업로드가
+     * 끝날 때까지 행 잠금을 들고 있어야 해서 더 나쁘다. S3 전환 시 이 경로 자체가 사라진다.
+     */
     public void receiveUpload(String fileKey, InputStream content, Long userId) {
         UploadedFile file = getByFileKeyOrThrow(fileKey);
         if (!file.isUploadedBy(userId)) {
