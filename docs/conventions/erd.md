@@ -135,6 +135,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
+- **인덱스** `(group_id, is_pinned, created_at)` ← 공지 목록·고정 필터·홈 미리보기가 모두 "모임으로 좁히고 → 고정 여부로 필터·정렬 → 최신순 → LIMIT" 모양이라 정렬까지 인덱스로 처리한다. V2에서 빠져 있어 2026-10-07 `V4__add_index_to_group_notices.sql`로 추가했다
 
 ---
 

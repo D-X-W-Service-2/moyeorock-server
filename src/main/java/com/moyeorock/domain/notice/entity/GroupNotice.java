@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -14,7 +15,9 @@ import lombok.NoArgsConstructor;
 // notice는 group과 분리된 도메인이다(domains.md "헷갈리는 경계"). 테이블은 group_notices,
 // 엔티티는 GroupNotice — Post라는 이름을 쓰지 않는다.
 @Entity
-@Table(name = "group_notices")
+@Table(name = "group_notices",
+        indexes = @Index(name = "idx_group_notices_group_id_is_pinned_created_at",
+                columnList = "group_id, is_pinned, created_at"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GroupNotice extends BaseEntity {
