@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
+`JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
 
 ---
 
@@ -793,22 +793,35 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ### BookmarkCreateRequest
 
 ```json
-{ "targetType": "TEAM", "targetId": 5 }
+{ "targetType": "USER", "targetId": 30 }
 ```
 
-### PageResponse\<BookmarkResponse\>
+`targetType`은 `TEAM`·`USER`·`SONG`이지만 **지금은 `USER`만 저장된다**(임시, 나머지는 `400 VALIDATION_FAILED`). `api-spec.md` §10 참고.
+
+### BookmarkResponse / PageResponse\<BookmarkResponse\>
+
+저장 추가(201)는 `BookmarkResponse` 하나, 목록은 `PageResponse<BookmarkResponse>`다.
 
 ```json
 {
-  "id": 301,
-  "targetType": "TEAM",
-  "targetId": 5,
+  "id": 21,
+  "targetType": "USER",
+  "targetId": 30,
   "target": {
-    "id": 5, "name": "무명밴드", "region": "SEOUL",
-    "genres": ["ROCK"], "imageUrl": null
+    "id": 30, "name": "민서", "region": "GYEONGGI",
+    "genres": ["JAZZ"], "imageUrl": "https://.../c.jpg"
   },
-  "createdAt": "2026-08-05T14:00:00"
+  "createdAt": "2026-08-10T12:00:00"
 }
+```
+
+- `target`의 해당 없는 필드는 null이라 생략된다(곡은 `region`이 없다). 사용자 대상은 `name`=닉네임, `imageUrl`=프로필 이미지이고 온보딩 전이면 `region`·`genres`가 없다.
+- 대상이 삭제·탈퇴·해체돼 조회되지 않으면 **`target` 키 자체가 없다**(전역 null 생략). 항목은 목록에서 빠지지 않는다.
+
+삭제(`DELETE /v1/bookmarks/{id}`)의 응답은 `DeleteResponse`다.
+
+```json
+{ "id": 21, "deleted": true }
 ```
 
 ### PresignedUrlCreateRequest

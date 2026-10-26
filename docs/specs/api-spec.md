@@ -209,9 +209,16 @@
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/bookmarks` | 저장&nbsp;추가 | `BookmarkCreateRequest` | |
-| GET | `/v1/bookmarks?targetType=` | 저장&nbsp;목록 | | `PageResponse<BookmarkResponse>` |
-| DELETE | `/v1/bookmarks/{id}` | 저장&nbsp;삭제 | | |
+| POST | `/v1/bookmarks` | 저장&nbsp;추가 | `BookmarkCreateRequest` | `BookmarkResponse` (201) |
+| GET | `/v1/bookmarks?targetType=&page=&size=` | 저장&nbsp;목록 | | `PageResponse<BookmarkResponse>` |
+| DELETE | `/v1/bookmarks/{id}` | 저장&nbsp;삭제 | | `DeleteResponse` |
+
+> **임시 구현 범위 (2026-10-26)**: 저장 대상 `TEAM`·`SONG`은 2팀 `TeamService`·4팀 `SongService`가 머지되기 전이라 **`USER`만 저장할 수 있다.** `TEAM`·`SONG` 저장 요청은 `400 VALIDATION_FAILED`다. 두 서비스가 생기면 대상 확인과 요약 조회를 잇는다(후속 이슈).
+> **중복 저장은 `409 BOOKMARK_DUPLICATED`다.** 더블 탭·재전송·다른 기기에서 먼저 저장한 경우처럼 정상 흐름에서도 생기므로 프론트는 409를 "이미 저장됨"(성공)으로 취급한다. 명세에는 없는 서버 정책이다.
+> 없는 사용자·탈퇴한 사용자를 저장하면 `404 USER_NOT_FOUND`다. 자기 자신도 저장할 수 있다(명세에 금지가 없음 — 프론트가 본인 항목에 저장 버튼을 숨기길 권장).
+> 삭제는 실제로 행이 사라지는 hard delete이고, 남의 저장·없는 저장은 똑같이 `404 BOOKMARK_NOT_FOUND`다(존재 여부를 드러내지 않음).
+> **대상이 삭제·탈퇴·해체돼 조회되지 않으면 목록에서 빼지 않고 `target`만 없다.** 프로젝트 전역 설정(null 필드 생략)상 JSON에서 `target` 키 자체가 빠진다 — 프론트는 `target`이 없으면 "삭제된 항목"으로 표시한다. 목록 정렬은 명세에 없어 최신순 고정이다.
+> Notion `API 초안`의 `[추가 필요] 저장 해제 (대상 기준)`(`DELETE /v1/bookmarks?targetType=&targetId=`)는 요청·응답이 비어 있어 구현하지 않았다.
 
 ### file (`global/file` — 도메인 아님)
 

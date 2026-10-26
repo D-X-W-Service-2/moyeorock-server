@@ -113,6 +113,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `UserInstrumentResponse` | 위에 `id` 추가된 응답형 |
 | `UserInstrumentsResponse` | `(List<UserInstrumentResponse> instruments)` |
 | `UserSummaryResponse` | **최다 재사용.** team·join·invitation·recruit 전부에서 참조 |
+| `UserProfileSummaryResponse` | `(Long id, String nickname, Region region, List<Genre> genres, String profileImage)` — 사용자를 카드로 보여주는 곳(북마크 대상 요약)용. 공용 `UserSummaryResponse`에 필드를 늘리지 않으려고 따로 둔다(§12). `UserService.getProfileSummaries`가 돌려준다 |
 | `UserWithdrawResponse` | `(LocalDateTime withdrawnAt)` |
 | `NicknameCheckResponse` | `(String nickname, boolean available)` |
 
@@ -392,7 +393,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `BookmarkTargetType`(`TEAM|USER|SONG`) · `NotificationTargetType`(`TEAM|GROUP|PERFORMANCE|NOTICE|JOIN_REQUEST|INVITATION`)은 `TargetType`(`TEAM|GROUP`)과 값이 다르다. **이름이 비슷하니 각각 별도 enum으로 두고 재사용하지 않는다.** 공유하면 잘못된 값이 검증을 통과한다.
 
-`BookmarkTarget`은 팀·사용자·곡 세 타입을 한 형태로 담는다. 해당 없는 필드는 `null`이다(곡은 `region`이 없고, 사용자는 `genres`가 있다). **대상이 삭제·해체됐으면 `target` 전체가 `null`**이고 프론트가 "삭제된 항목"으로 표시한다 — 조회에서 제외하지 않는 이유는 사용자가 직접 지울 수 있어야 하기 때문이다.
+`BookmarkTarget`은 팀·사용자·곡 세 타입을 한 형태로 담는다(사용자 대상은 `UserProfileSummaryResponse`로 채운다). 해당 없는 필드는 `null`이다(곡은 `region`이 없고, 사용자는 `genres`가 있다). **대상이 삭제·해체됐으면 `target` 전체가 `null`**이고 프론트가 "삭제된 항목"으로 표시한다 — 조회에서 제외하지 않는 이유는 사용자가 직접 지울 수 있어야 하기 때문이다.
 
 `DashboardResponse(List<RehearsalSummaryResponse> upcomingRehearsals, List<RecruitPostSummaryResponse> openRecruitPosts, List<SongSummaryResponse> recommendedSongs, int unreadNotificationCount)` — 4.1 화면 배치 순서와 필드 순서를 맞췄다. 다른 도메인의 응답 DTO 4종을 조합하므로, dashboard는 각 도메인 **Service만** 호출하고 Repository에 직접 접근하지 않는다.
 
