@@ -38,7 +38,7 @@ com.moyeorock
 
 **권한 검증은 Service에서 한다.** 컨트롤러에서 하면 같은 검증이 여러 곳에 흩어지고, 다른 도메인이 Service를 호출할 때 검증이 빠진다.
 
-**트랜잭션은 Service에만 붙인다.** 클래스에 `@Transactional(readOnly = true)`, 쓰기 메서드에만 `@Transactional`.
+**트랜잭션은 Service에만 붙인다.** 클래스에는 붙이지 않고 메서드마다 정한다 — 쓰기는 `@Transactional`, 여러 쿼리가 하나의 스냅샷이어야 하는 조회만 `@Transactional(readOnly = true)`, 단일 쿼리 조회는 붙이지 않는다. 기준은 `docs/conventions/conventions.md` §3.
 
 ## 3. 호출 방향
 
@@ -61,7 +61,7 @@ Controller → Service → Repository → DB
 |---|---|
 | `auth → user` | 단방향. `AuthService`가 `UserRepository`를 쓰는 것은 허용하되 반대는 금지 |
 | `dashboard` | 다른 도메인의 **Service만** 호출. Repository 직접 접근 금지 |
-| `notification` | 어떤 도메인도 직접 참조하지 않는다. 이벤트로만 받는다 |
+| `notification` | 어떤 도메인도 직접 참조하지 않는다. 이벤트(`global/event/NotificationEvent`)로만 받는다 — 발행은 트랜잭션 안에서, 수신은 커밋 후 별도 트랜잭션 |
 | `join` ↔ `team` `group` | 승인 시 멤버 추가는 `TeamService`·`GroupService` 호출 |
 | `performance` → `team` | 공연 종료 시 팀 해체는 `TeamService` 호출 |
 
@@ -80,7 +80,7 @@ Service끼리 서로 부르게 되는 상황이면 설계가 잘못된 것이다
 | `TeamMapper` 등 매퍼 클래스 | DTO 변환은 응답 DTO의 정적 팩토리 메서드로 (`TeamDetailResponse.from(team)`) |
 | Service 안의 별도 Validator 클래스 | 검증은 Service 메서드 안에서 |
 | 도메인별 예외 클래스 | `BusinessException` + `ErrorCode` enum만 쓴다 |
-| 임의의 `@Async` · 이벤트 · 캐시 도입 | 성능 문제가 실제로 확인된 뒤에 |
+| 임의의 `@Async` · 이벤트 · 캐시 도입 | 성능 문제가 실제로 확인된 뒤에. 단 알림 발생 이벤트(`NotificationEvent`)는 명세에 정해진 방식이라 예외다 |
 | DTO 상속 · 제네릭 베이스 DTO | `ApiResponse<T>` `PageResponse<T>` 두 개 외에는 쓰지 않는다 |
 | 도메인 밖 공용 유틸 클래스 남발 | `global/common`에 이미 있는지 먼저 확인 |
 

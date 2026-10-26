@@ -200,9 +200,13 @@
 
 발생은 2·3·4팀 도메인에서 **이벤트로만** 전달받는다 (`NotificationService` 직접 호출 금지).
 
+> **발행하는 쪽**: `global/event/NotificationEvent`(`userId`·`type`·`message`·`targetType`·`targetId`)를 `ApplicationEventPublisher`로 발행한다. `message`는 사용자에게 그대로 보이는 문장이라 발행하는 쪽이 만든다(255자 초과는 잘린다).
+> **트랜잭션 안에서 발행해야 한다.** 수신부는 발행한 쪽이 커밋된 뒤에만 별도 트랜잭션으로 저장하므로, 롤백된 작업의 알림은 남지 않고 알림 저장이 실패해도 핵심 작업은 실패하지 않는다. 대신 알림이 유실될 수 있고(서버 로그에만 남음), 트랜잭션 밖에서 발행하면 이벤트가 버려진다.
+> 읽음 처리의 `ids`는 null·빈 배열이면 전체 읽음이고, 최대 100개다(명세에 없는 서버 정책 — 초과하면 `400 VALIDATION_FAILED`). 남의 알림 id는 오류 없이 무시된다.
+
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| GET | `/v1/notifications?unreadOnly=` | 알림&nbsp;목록 | | `NotificationsResponse` |
+| GET | `/v1/notifications?page=&size=` | 알림&nbsp;목록 | | `NotificationsResponse` |
 | PATCH | `/v1/notifications/read` | 알림&nbsp;읽음 | `NotificationReadRequest` | `NotificationReadResponse` * |
 
 ### bookmark

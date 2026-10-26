@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
+`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `RehearsalUpdateRequest`
 
 ---
 
@@ -769,26 +769,51 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### NotificationsResponse
 
+배지 숫자(`unreadCount`) 때문에 래퍼를 두고, 목록 자체는 `PageResponse<NotificationResponse>`로 페이징한다. 정렬은 최신순 고정이다(클라이언트 `sort`는 무시).
+
 ```json
 {
   "unreadCount": 3,
-  "notifications": [
-    {
-      "id": 501,
-      "type": "TEAM_INVITE",
-      "message": "무명밴드에서 드럼 세션으로 초대했습니다.",
-      "targetType": "INVITATION",
-      "targetId": 91,
-      "isRead": false,
-      "createdAt": "2026-08-11T16:30:00"
-    }
-  ]
+  "notifications": {
+    "content": [
+      {
+        "id": 501,
+        "type": "TEAM_INVITE",
+        "message": "무명밴드에서 드럼 세션으로 초대했습니다.",
+        "targetType": "INVITATION",
+        "targetId": 91,
+        "isRead": false,
+        "createdAt": "2026-08-11T16:30:00"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 3,
+    "totalPages": 1,
+    "last": true
+  }
 }
 ```
 
 ### NotificationReadRequest / NotificationReadResponse
 
-**미작성** — 읽음 처리할 알림 id 목록을 담을 것으로 추정.
+`NotificationReadRequest`
+
+```json
+{ "ids": [501, 502] }
+```
+
+- `ids`는 선택이다. **null이거나 빈 배열이면 전체 읽음**이고, 요청 바디가 아예 없어도 전체 읽음이다.
+- 최대 100개 — 명세에 없는 서버 정책이다. 초과하거나 `null` 원소가 있으면 `400 VALIDATION_FAILED`.
+- 남의 알림 id·없는 id·이미 읽은 알림은 오류 없이 무시되고 `readCount`에 잡히지 않는다.
+
+`NotificationReadResponse`
+
+```json
+{ "readCount": 3, "unreadCount": 0 }
+```
+
+`readCount`는 이번 요청으로 읽음 처리된 알림 수, `unreadCount`는 처리 후 남은 안읽은 알림 수다.
 
 ### BookmarkCreateRequest
 
