@@ -1,8 +1,8 @@
 package com.moyeorock.domain.notification.entity;
 
-import com.moyeorock.domain.notification.enums.NotificationTargetType;
-import com.moyeorock.domain.notification.enums.NotificationType;
 import com.moyeorock.global.common.entity.BaseTimeEntity;
+import com.moyeorock.global.common.enums.NotificationTargetType;
+import com.moyeorock.global.common.enums.NotificationType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

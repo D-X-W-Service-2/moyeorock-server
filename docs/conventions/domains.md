@@ -60,6 +60,7 @@
 | `Genre` | `users` `teams` `songs` |
 | `Region` | `users` `teams` `groups_` `recruit_posts` |
 | `TargetType` | `recruit_posts` `join_requests` (`TEAM` `GROUP`) |
+| `NotificationType` `NotificationTargetType` | `notifications`와 알림 발생 이벤트(`global/event/NotificationEvent`) — 2·3·4팀이 이벤트에 담아 발행한다 |
 
 **값이 다르면 공유하지 않는다.**
 
@@ -93,7 +94,7 @@
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가. 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다 |
 | 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체 |
-| 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지 |
+| 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처를 2팀이 먼저 확정하고 공유해야 나머지가 막히지 않는다.

@@ -382,7 +382,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 |---|---|
 | `NotificationsResponse` | `(int unreadCount, PageResponse<NotificationResponse> notifications)` — 배지 숫자 때문에 래퍼가 필요하지만, 알림은 상한이 없으므로 목록 자체는 페이징한다 |
 | `NotificationResponse` | `(Long id, NotificationType type, String message, NotificationTargetType targetType, Long targetId, boolean isRead, LocalDateTime createdAt)` |
-| `NotificationReadRequest` | `(List<Long> ids)` — 빈 배열이면 전체 읽음 |
+| `NotificationReadRequest` | `(List<Long> ids)` — null·빈 배열이면 전체 읽음, 최대 100개 |
 | `NotificationReadResponse` | `(int readCount, int unreadCount)` |
 | `BookmarkCreateRequest` | `(BookmarkTargetType targetType, Long targetId)` |
 | `BookmarkResponse` | `(Long id, BookmarkTargetType targetType, Long targetId, BookmarkTarget target, LocalDateTime createdAt)` |
