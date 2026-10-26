@@ -40,3 +40,6 @@ out/
 
 docs/plans
 docs/results
+
+# macOS
+.DS_Store
