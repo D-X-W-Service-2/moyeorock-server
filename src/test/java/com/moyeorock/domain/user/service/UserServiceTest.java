@@ -16,6 +16,7 @@ import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
+import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
 import com.moyeorock.domain.user.entity.User;
@@ -436,6 +437,48 @@ class UserServiceTest {
             User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
             ReflectionTestUtils.setField(user, "id", id);
             return user;
+        }
+    }
+
+    @Nested
+    @DisplayName("getProfileSummaries")
+    class GetProfileSummaries {
+
+        private User userWithId(Long id, String nickname) {
+            User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
+            ReflectionTestUtils.setField(user, "id", id);
+            return user;
+        }
+
+        @Test
+        @DisplayName("getSummaries와 같은 기준(탈퇴 제외 IN 조회 1번)으로 활동 지역·장르·프로필 이미지까지 id별로 돌려준다")
+        void returns_profile_summaries_by_id_excluding_withdrawn() {
+            User onboarded = userWithId(10L, "서준");
+            onboarded.updateProfile("서준", Region.SEOUL, List.of(Genre.ROCK, Genre.JAZZ), null,
+                    "https://img/seojun.png", true, true);
+            User beforeOnboarding = userWithId(20L, "현빈");
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
+            given(userRepository.findAllByIdInAndStatusNot(idsCaptor.capture(), eq(UserStatus.WITHDRAWN)))
+                    .willReturn(List.of(onboarded, beforeOnboarding));
+
+            Map<Long, UserProfileSummaryResponse> result =
+                    userService.getProfileSummaries(List.of(10L, 20L, 10L, 999L));
+
+            assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L, 999L);
+            assertThat(result).containsOnlyKeys(10L, 20L);
+            assertThat(result.get(10L)).isEqualTo(new UserProfileSummaryResponse(
+                    10L, "서준", Region.SEOUL, List.of(Genre.ROCK, Genre.JAZZ), "https://img/seojun.png"));
+            assertThat(result.get(20L).region()).isNull();
+            assertThat(result.get(20L).genres()).isNull();
+        }
+
+        @Test
+        @DisplayName("빈 목록·null이면 조회 없이 빈 Map")
+        void empty_ids_returns_empty_map() {
+            assertThat(userService.getProfileSummaries(List.of())).isEmpty();
+            assertThat(userService.getProfileSummaries(null)).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
         }
     }
 }
