@@ -4,9 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,6 +52,33 @@ class LocalFileStorageClientTest {
     }
 
     @Test
+    @DisplayName("쓰는 도중 실패하면 잘린 파일도 임시 파일도 남기지 않는다")
+    void write_leavesNoFile_whenStreamFailsMidway() throws Exception {
+        LocalFileStorageClient client = client(tempDir);
+
+        assertThatThrownBy(() -> client.write("profile/abc.png", failingAfter(50_000)))
+                .isInstanceOf(UncheckedIOException.class);
+
+        assertThat(Files.exists(tempDir.resolve("profile/abc.png"))).isFalse();
+        try (Stream<Path> files = Files.list(tempDir.resolve("profile"))) {
+            assertThat(files).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("기존 파일 위에 다시 쓰다 실패하면 기존 파일이 그대로 남는다")
+    void write_keepsExistingFile_whenOverwriteFails() throws Exception {
+        LocalFileStorageClient client = client(tempDir);
+        byte[] original = {1, 2, 3};
+        client.write("profile/abc.png", new ByteArrayInputStream(original));
+
+        assertThatThrownBy(() -> client.write("profile/abc.png", failingAfter(50_000)))
+                .isInstanceOf(UncheckedIOException.class);
+
+        assertThat(Files.readAllBytes(tempDir.resolve("profile/abc.png"))).isEqualTo(original);
+    }
+
+    @Test
     @DisplayName("delete로 지우면 파일이 디스크에서 사라진다")
     void delete_removesFileFromDisk() throws Exception {
         LocalFileStorageClient client = client(tempDir);
@@ -75,5 +106,22 @@ class LocalFileStorageClientTest {
         assertThatThrownBy(() -> client.write("../outside.png", new ByteArrayInputStream(new byte[]{1})))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThat(Files.exists(tempDir.resolveSibling("outside.png"))).isFalse();
+    }
+
+    // 용량 초과·연결 끊김처럼 일부를 흘려보낸 뒤 예외가 나는 업로드 스트림
+    private static InputStream failingAfter(int bytes) {
+        return new FilterInputStream(new ByteArrayInputStream(new byte[bytes * 2])) {
+            private int read;
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                if (read >= bytes) {
+                    throw new IOException("업로드 중단");
+                }
+                int n = super.read(b, off, Math.min(len, bytes - read));
+                read += n;
+                return n;
+            }
+        };
     }
 }
