@@ -24,7 +24,15 @@ public enum ErrorCode {
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
-    NOT_POST_AUTHOR(HttpStatus.FORBIDDEN, "작성자만 할 수 있습니다.");
+    NOT_POST_AUTHOR(HttpStatus.FORBIDDEN, "작성자만 할 수 있습니다."),
+
+    // 파일
+    FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 파일입니다."),
+    UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),
+    FILE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "파일 크기가 허용 범위를 초과했습니다."),
+    EMPTY_FILE(HttpStatus.BAD_REQUEST, "빈 파일은 업로드할 수 없습니다."),
+    // S3도 만료된 presigned URL에 403을 준다 — 로컬 업로드 수신도 같은 상태 코드로 맞춘다
+    UPLOAD_URL_EXPIRED(HttpStatus.FORBIDDEN, "업로드 URL이 만료되었습니다.");
 
     private final HttpStatus status;
     private final String message;

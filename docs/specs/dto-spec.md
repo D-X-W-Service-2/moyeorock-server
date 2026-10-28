@@ -825,11 +825,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ```json
 {
+  "fileId": 101,
   "uploadUrl": "https://moyeorock.s3.ap-northeast-2.amazonaws.com/performance/uuid.png?X-Amz-...",
   "fileUrl": "https://cdn.moyeorock.com/performance/uuid.png",
   "expiresAt": "2026-08-11T16:10:00"
 }
 ```
+
+- `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
+- `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
+- 허용 확장자는 `jpg` · `jpeg` · `png` · `webp`뿐이고, `contentType`도 `image/jpeg` · `image/png` · `image/webp`만 받는다. 둘 중 하나라도 어긋나면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+- 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
 
 ### DashboardResponse
 

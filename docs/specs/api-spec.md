@@ -220,10 +220,30 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | POST | `/v1/files/presigned-url` | 업로드&nbsp;URL&nbsp;발급 | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | |
+| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | `DeleteResponse` |
 
-> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11) — 기존 문서에는 없었다. Request/Response DTO가 아직 정의되어 있지 않으니 착수 전 팀 확인 필요.
-> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있지만, 이건 presigned URL로 발급받은 **S3 주소에 직접 올리는 클라이언트 동작**이지 moyeorock 백엔드 엔드포인트가 아니다 — 이 표에는 넣지 않는다.
+**로컬 저장 전용 임시 엔드포인트** — AWS 비용 때문에 당분간 서버 로컬 디스크에 저장하기로 한 결정(이슈 #18) 때문에 생긴 것이다. S3로 전환하면 `LocalFileStorageClient`와 함께 **둘 다 제거한다.** `API 초안`에는 없다.
+
+| 메서드 | 경로 | 기능 | Request | Response |
+|---|---|---|---|---|
+| PUT | `/v1/files/local-upload/**` | 업로드&nbsp;수신&nbsp;‡ | 파일 바이트(raw body) | — (`data: null`) |
+| GET | `/v1/files/local/**` | 파일&nbsp;서빙&nbsp;‡ | | 원시 바이트 |
+
+> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11). 응답은 공용 `DeleteResponse`(`{id, deleted}`)를 쓴다.
+> ‡ 로컬 저장에서는 발급된 `uploadUrl`이 S3가 아니라 이 서버의 `PUT /v1/files/local-upload/{fileKey}`를 가리킨다. 서빙(`GET /v1/files/local/**`)은 프로필·커버·포스터가 공개 정보라 인증 없이 열고(`PublicEndpoints` 등록), 원시 바이트를 그대로 내려줘야 해서 `api-conventions.md` §1의 "모든 응답은 `ApiResponse`로 감싼다" 규칙의 예외다.
+> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있다. S3로 전환하면 그 말대로 **S3 주소에 직접 올리는 클라이언트 동작**이 되어 백엔드 엔드포인트가 아니게 된다 — 위 임시 엔드포인트가 그때 사라지는 이유다.
+
+**업로드 PUT 규칙** — 발급받은 `uploadUrl`로 파일을 올릴 때의 규칙이다. 로컬과 S3가 **인증 헤더 하나만 다르다.**
+
+| 항목 | 로컬 (지금) | S3 (전환 후) |
+|---|---|---|
+| `Authorization` 헤더 | **필수** (`Bearer {token}`). 업로더 본인만 올릴 수 있다 | **넣으면 안 된다.** presigned URL 서명과 충돌해 S3가 거부한다 |
+| `Content-Type` 헤더 | 발급 때 보낸 `contentType`과 같아야 한다(대소문자 무시). 다르거나 없으면 415 `UNSUPPORTED_MEDIA_TYPE` | 같아야 한다. 다르면 S3가 403 |
+| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 10MB 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw) |
+| 만료 | `expiresAt`(발급 후 10분)이 지나면 403 `UPLOAD_URL_EXPIRED` | 만료되면 S3가 403 |
+| 재업로드 | 만료 전엔 같은 `uploadUrl`로 다시 올리면 덮어쓴다 | 같음 |
+
+> ⚠️ **S3 전환 예정(조만간).** 전환해도 `PresignedUrlResponse` 구조(`fileId`·`uploadUrl`·`fileUrl`·`expiresAt`)는 그대로지만, **업로드 PUT에서 `Authorization` 헤더를 빼야 한다** — 프론트가 바꿔야 하는 유일한 지점이다. 지금부터 "`uploadUrl`이 이 서버의 `/v1/files/local-upload/`를 가리킬 때만 Bearer를 붙인다"로 분기해 두면 전환 때 프론트 코드 변경이 없다. 전환 시 위 로컬 임시 엔드포인트 2개는 제거된다.
 
 ### dashboard
 
