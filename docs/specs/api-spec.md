@@ -233,6 +233,18 @@
 > ‡ 로컬 저장에서는 발급된 `uploadUrl`이 S3가 아니라 이 서버의 `PUT /v1/files/local-upload/{fileKey}`를 가리킨다. 서빙(`GET /v1/files/local/**`)은 프로필·커버·포스터가 공개 정보라 인증 없이 열고(`PublicEndpoints` 등록), 원시 바이트를 그대로 내려줘야 해서 `api-conventions.md` §1의 "모든 응답은 `ApiResponse`로 감싼다" 규칙의 예외다.
 > 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있다. S3로 전환하면 그 말대로 **S3 주소에 직접 올리는 클라이언트 동작**이 되어 백엔드 엔드포인트가 아니게 된다 — 위 임시 엔드포인트가 그때 사라지는 이유다.
 
+**업로드 PUT 규칙** — 발급받은 `uploadUrl`로 파일을 올릴 때의 규칙이다. 로컬과 S3가 **인증 헤더 하나만 다르다.**
+
+| 항목 | 로컬 (지금) | S3 (전환 후) |
+|---|---|---|
+| `Authorization` 헤더 | **필수** (`Bearer {token}`). 업로더 본인만 올릴 수 있다 | **넣으면 안 된다.** presigned URL 서명과 충돌해 S3가 거부한다 |
+| `Content-Type` 헤더 | 발급 때 보낸 `contentType`과 같아야 한다(대소문자 무시). 다르거나 없으면 415 `UNSUPPORTED_MEDIA_TYPE` | 같아야 한다. 다르면 S3가 403 |
+| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 10MB 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw) |
+| 만료 | `expiresAt`(발급 후 10분)이 지나면 403 `UPLOAD_URL_EXPIRED` | 만료되면 S3가 403 |
+| 재업로드 | 만료 전엔 같은 `uploadUrl`로 다시 올리면 덮어쓴다 | 같음 |
+
+> ⚠️ **S3 전환 예정(조만간).** 전환해도 `PresignedUrlResponse` 구조(`fileId`·`uploadUrl`·`fileUrl`·`expiresAt`)는 그대로지만, **업로드 PUT에서 `Authorization` 헤더를 빼야 한다** — 프론트가 바꿔야 하는 유일한 지점이다. 지금부터 "`uploadUrl`이 이 서버의 `/v1/files/local-upload/`를 가리킬 때만 Bearer를 붙인다"로 분기해 두면 전환 때 프론트 코드 변경이 없다. 전환 시 위 로컬 임시 엔드포인트 2개는 제거된다.
+
 ### dashboard
 
 2·3·4팀 Service를 모두 호출한다. **3팀 작업 중 마지막.**
