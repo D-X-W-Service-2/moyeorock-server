@@ -226,6 +226,54 @@ class FileServiceTest {
     }
 
     @Test
+    @DisplayName("요청 Content-Type이 발급 때 정한 값과 다르면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenContentTypeMismatch() {
+        assertReceiveUploadRejectsContentType("image/jpeg");
+    }
+
+    @Test
+    @DisplayName("multipart/form-data로 보내면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenMultipart() {
+        // multipart면 Spring이 바디를 먼저 파싱해 빈 스트림만 넘어온다 — 막지 않으면 빈 파일이 200으로 저장된다.
+        assertReceiveUploadRejectsContentType("multipart/form-data; boundary=----x");
+    }
+
+    @Test
+    @DisplayName("Content-Type 헤더가 없으면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenContentTypeMissing() {
+        assertReceiveUploadRejectsContentType(null);
+    }
+
+    @Test
+    @DisplayName("Content-Type은 대소문자만 다르면 같은 값으로 본다")
+    void receiveUpload_acceptsContentType_ignoringCase() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        fileService.receiveUpload("profile/key.png", "IMAGE/PNG", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
+
+        verify(fileStorageClient).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), any());
+    }
+
+    @Test
+    @DisplayName("바디가 비어 있으면 EMPTY_FILE 예외를 던지고 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenBodyEmpty() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                InputStream.nullInputStream(), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.EMPTY_FILE);
+        verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    @Test
     @DisplayName("업로더 본인이면 삭제가 성공하고 스토리지·DB 양쪽에서 지운다")
     void delete_succeeds_forUploader() {
         UploadedFile file = withId(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
@@ -292,6 +340,20 @@ class FileServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_NOT_FOUND);
+    }
+
+    private void assertReceiveUploadRejectsContentType(String requestContentType) {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", requestContentType,
+                new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
+        verify(fileStorageClient, never()).write(anyString(), any());
     }
 
     // UploadedFile.id는 GeneratedValue라 create()로는 못 채운다 — 리플렉션으로 저장 후 채워지는 것처럼 흉내낸다.
