@@ -1,5 +1,8 @@
 package com.moyeorock.global.config;
 
+import com.moyeorock.global.security.AuthUser;
+import org.springdoc.core.utils.SpringDocUtils;
+
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
@@ -11,6 +14,11 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class OpenApiConfig {
+
+    // @AuthUser 파라미터는 토큰에서 주입되는 값이라 Swagger 요청 파라미터로 노출하지 않는다.
+    static {
+        SpringDocUtils.getConfig().addAnnotationsToIgnore(AuthUser.class);
+    }
 
     private static final String SECURITY_SCHEME_NAME = "bearerAuth";
 

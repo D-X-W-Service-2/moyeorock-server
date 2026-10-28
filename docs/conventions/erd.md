@@ -32,8 +32,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `genres` | `JSON` | 선호 장르 3.1 |
 |  | `bio` | `TEXT` |  |
 |  | `profile_image` | `VARCHAR(500)` |  |
-|  | `platform_role` | `VARCHAR(10)` | USER\|SUPER · 2.2 |
-|  | `status` | `VARCHAR(20)` | ACTIVE\|WITHDRAWN\|SUSPENDED |
+|  | `platform_role` | `VARCHAR(10) NOT NULL` | USER\|SUPER · 2.2 |
+|  | `status` | `VARCHAR(20) NOT NULL` | ACTIVE\|WITHDRAWN\|SUSPENDED |
 |  | `is_recommendable` | `TINYINT(1) DEFAULT 1` | 9.1 |
 | ＋ | `is_activity_public` | `TINYINT(1) DEFAULT 1` | 9.2 |
 | ＋ | `privacy_agreed_at` | `DATETIME(6) NOT NULL` | 2.3 |
@@ -55,11 +55,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY\|ETC |
-| ＋ | `custom_instrument` | `VARCHAR(30)` | 3.2 직접 입력 · instrument가 ETC일 때만 입력 |
-|  | `level` | `VARCHAR(20)` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
+|  | `instrument` | `VARCHAR(20) NOT NULL` | VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY |
+|  | `level` | `VARCHAR(20) NOT NULL` | 3.3 BEGINNER\|NOVICE\|INTERMEDIATE\|ADVANCED |
 
-- **유니크** `(user_id, instrument, custom_instrument)` — `instrument=ETC`인 사용자가 `custom_instrument`만 다른 세션을 여러 개 등록할 수 있게 확장(2026-09-16, 기존 `(user_id, instrument)`는 ETC 중복 등록을 막아버리는 버그였음)
+- **유니크** `(user_id, instrument)`
+
+> 악기 `ETC`(직접 입력) 및 `custom_instrument` 컬럼은 2026-09-28 대면 회의에서 폐지했다. 유니크도 `(user_id, instrument)`로 되돌렸다.
 
 
 ---
@@ -212,12 +213,14 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `title` | `VARCHAR(100)` |  |
 |  | `body` | `TEXT` |  |
 |  | `wanted_slots` | `JSON` | 세션별 인원 |
-|  | `region` | `VARCHAR(50)` | 팀/모임 region과 무관 · 작성자가 작성·수정 시 직접 입력하는 독립 값 (동기화 불필요, `docs/plans/recruit-post-region-sync.md`) |
+|  | `region` | `VARCHAR(50) NOT NULL` | 팀/모임 region과 무관 · 작성자가 작성·수정 시 직접 입력하는 독립 값 (동기화 불필요, `docs/plans/recruit-post-region-sync.md`) |
 |  | `status` | `VARCHAR(10)` | OPEN\|CLOSED |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
 - **인덱스** `(status, region, created_at)`, `(target_team_id)`, `(target_group_id)`
+
+> 2026-10-08 변경: `region` NULL 허용 → NOT NULL. 명세(Notion `API 초안` 공고 작성 Required)와 요청 DTO는 이미 필수였고 스키마만 nullable이라 어긋나 있었다 — NULL 공고는 `region` 필터에 잡히지 않고 응답에서 키가 빠진다(PR #71 리뷰). 사유·영향: `docs/plans/recruit-post-region-not-null.md`.
 
 > 기존 `target_type`+`target_id`(다형성) → exclusive-arc(대상 타입별 컬럼 분리)로 전환(2026-09-16). FK·CHECK 제약은 걸지 않는다 — 참조 컬럼은 전부 `Long` 매핑, DB 제약 없음(CLAUDE.md 절대 규칙 6, PR #29). 근거: `docs/plans/schema-cleanup-adoption-review.md` §③
 

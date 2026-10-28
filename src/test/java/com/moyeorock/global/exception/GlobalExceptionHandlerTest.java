@@ -35,7 +35,7 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("없는 경로 — 404 RESOURCE_NOT_FOUND")
     void unknownPath_returns404() throws Exception {
-        mockMvc.perform(get("/v0/not-exist"))
+        mockMvc.perform(get("/v1/not-exist"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
