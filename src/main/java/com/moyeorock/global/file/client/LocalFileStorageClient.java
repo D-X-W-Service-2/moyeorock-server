@@ -35,12 +35,23 @@ public class LocalFileStorageClient implements FileStorageClient {
         return new UploadUrl(uploadUrl, fileUrl, expiresAt);
     }
 
+    // 같은 디렉토리의 임시 파일에 끝까지 쓴 뒤 원자적으로 교체한다. Files.copy(REPLACE_EXISTING)로
+    // 바로 쓰면 기존 파일을 먼저 지우고 쓰기 시작하는데, 중간에 실패(용량 초과·연결 끊김)해도 쓰다 만
+    // 파일을 정리하지 않는다 — 잘린 파일이 fileUrl로 그대로 서빙되고, 재업로드 실패 시 기존 파일까지
+    // 사라진다. 임시 파일은 files 테이블에 키가 없어 서빙 엔드포인트로 노출되지 않는다.
     @Override
     public void write(String fileKey, InputStream content) {
         try {
             Path path = resolvePath(fileKey);
             Files.createDirectories(path.getParent());
-            Files.copy(content, path, StandardCopyOption.REPLACE_EXISTING);
+            Path temp = Files.createTempFile(path.getParent(), ".upload-", ".tmp");
+            try {
+                Files.copy(content, temp, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                deleteQuietly(temp, e);
+                throw e;
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -61,6 +72,16 @@ public class LocalFileStorageClient implements FileStorageClient {
             Files.deleteIfExists(resolvePath(fileKey));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    // 원래 예외(UploadSizeExceededException 등)를 FileService가 원인으로 구분해야 하므로 정리 실패는
+    // 덮어쓰지 않고 suppressed로만 붙인다.
+    private void deleteQuietly(Path temp, IOException original) {
+        try {
+            Files.deleteIfExists(temp);
+        } catch (IOException e) {
+            original.addSuppressed(e);
         }
     }
 
