@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -170,6 +172,52 @@ class FileServiceTest {
 
         assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", InputStream.nullInputStream(),
                 OTHER_USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("발급 후 유효 시간이 지나면 UPLOAD_URL_EXPIRED 예외를 던지고 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenUploadUrlExpired() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).minusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png",
+                new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UPLOAD_URL_EXPIRED);
+        verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("유효 시간 안이면 이미 올린 키에 다시 올려도 받는다(S3 presigned URL과 같은 동작)")
+    void receiveUpload_acceptsReupload_beforeExpiry() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).plusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        fileService.receiveUpload("profile/key.png", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
+        fileService.receiveUpload("profile/key.png", new ByteArrayInputStream(new byte[]{2}), UPLOADER_ID);
+
+        verify(fileStorageClient, times(2)).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), any());
+    }
+
+    @Test
+    @DisplayName("업로더가 아니면 만료 여부와 상관없이 NO_PERMISSION을 먼저 던진다")
+    void receiveUpload_checksUploaderBeforeExpiry() {
+        // 만료 검사를 먼저 하면 남의 파일에 대해 발급 시각(만료 여부)이 응답 코드로 드러난다.
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).minusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png",
+                new ByteArrayInputStream(new byte[]{1}), OTHER_USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NO_PERMISSION);
