@@ -37,7 +37,7 @@ public class S3FileStorageClient implements FileStorageClient {
                 .build();
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(properties.uploadUrlExpirySeconds()))
+                .signatureDuration(uploadUrlExpiry())
                 .putObjectRequest(putObjectRequest)
                 .build();
 
@@ -46,6 +46,11 @@ public class S3FileStorageClient implements FileStorageClient {
         String fileUrl = "https://%s.s3.%s.amazonaws.com/%s".formatted(properties.bucket(), properties.region(), fileKey);
 
         return new UploadUrl(presignedRequest.url().toString(), fileUrl, expiresAt);
+    }
+
+    @Override
+    public Duration uploadUrlExpiry() {
+        return Duration.ofSeconds(properties.uploadUrlExpirySeconds());
     }
 
     @Override

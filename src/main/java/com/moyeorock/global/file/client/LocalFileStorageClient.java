@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,8 +32,13 @@ public class LocalFileStorageClient implements FileStorageClient {
     public UploadUrl issuePresignedUrl(String fileKey, String contentType) {
         String uploadUrl = properties.baseUrl() + LOCAL_UPLOAD_PATH + fileKey;
         String fileUrl = properties.baseUrl() + LOCAL_SERVE_PATH + fileKey;
-        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(properties.uploadUrlExpirySeconds());
+        LocalDateTime expiresAt = LocalDateTime.now().plus(uploadUrlExpiry());
         return new UploadUrl(uploadUrl, fileUrl, expiresAt);
+    }
+
+    @Override
+    public Duration uploadUrlExpiry() {
+        return Duration.ofSeconds(properties.uploadUrlExpirySeconds());
     }
 
     // 같은 디렉토리의 임시 파일에 끝까지 쓴 뒤 원자적으로 교체한다. Files.copy(REPLACE_EXISTING)로

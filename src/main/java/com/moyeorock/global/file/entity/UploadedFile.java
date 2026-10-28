@@ -10,6 +10,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -55,5 +57,10 @@ public class UploadedFile extends BaseTimeEntity {
 
     public boolean isUploadedBy(Long userId) {
         return this.uploaderId.equals(userId);
+    }
+
+    // 만료 시각을 따로 저장하지 않는다 — 발급 시각(createdAt) + 유효 시간으로 계산한다.
+    public boolean isUploadExpired(Duration expiry) {
+        return LocalDateTime.now().isAfter(getCreatedAt().plus(expiry));
     }
 }

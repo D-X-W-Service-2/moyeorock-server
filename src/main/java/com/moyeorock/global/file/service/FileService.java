@@ -79,6 +79,11 @@ public class FileService {
         if (!file.isUploadedBy(userId)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION);
         }
+        // 업로더 확인 뒤에 둔다 — 남의 파일에 대해 발급 시각(만료 여부)을 알려주지 않으려고.
+        // 만료 전 재업로드는 막지 않고 덮어쓴다 — S3 presigned URL도 만료 전엔 여러 번 PUT할 수 있다.
+        if (file.isUploadExpired(fileStorageClient.uploadUrlExpiry())) {
+            throw new BusinessException(ErrorCode.UPLOAD_URL_EXPIRED);
+        }
         try {
             fileStorageClient.write(fileKey, new SizeLimitedInputStream(content, MAX_UPLOAD_SIZE_BYTES));
         } catch (UncheckedIOException e) {

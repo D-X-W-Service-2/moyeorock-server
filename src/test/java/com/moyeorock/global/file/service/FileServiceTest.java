@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.moyeorock.global.common.entity.BaseTimeEntity;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.file.client.FileStorageClient;
@@ -23,6 +24,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Field;
 import java.nio.file.NoSuchFileException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +40,7 @@ class FileServiceTest {
 
     private static final Long UPLOADER_ID = 1L;
     private static final Long OTHER_USER_ID = 2L;
+    private static final Duration EXPIRY = Duration.ofMinutes(10);
 
     @Mock
     private UploadedFileRepository uploadedFileRepository;
@@ -105,9 +108,10 @@ class FileServiceTest {
     @Test
     @DisplayName("업로더 본인이면 업로드 수신이 성공한다")
     void receiveUpload_succeeds_forUploader() throws Exception {
-        UploadedFile file = UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
-                "image/png", UPLOADER_ID);
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
         byte[] bytes = {1, 2, 3};
         InputStream content = new ByteArrayInputStream(bytes);
 
@@ -123,9 +127,10 @@ class FileServiceTest {
     @Test
     @DisplayName("업로드 용량 제한을 넘기면 FILE_SIZE_EXCEEDED 예외를 던진다")
     void receiveUpload_throws_whenSizeExceeded() {
-        UploadedFile file = UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
-                "image/png", UPLOADER_ID);
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
         // write() 호출 시 실제로 스트림을 끝까지 읽어야 SizeLimitedInputStream이 한도 초과를 감지한다 —
         // LocalFileStorageClient가 하듯 여기서도 끝까지 소비해서 검증한다.
         org.mockito.Mockito.doAnswer(invocation -> {
@@ -246,6 +251,18 @@ class FileServiceTest {
             Field idField = UploadedFile.class.getDeclaredField("id");
             idField.setAccessible(true);
             idField.set(file, id);
+            return file;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // createdAt(발급 시각)은 JPA Auditing이 저장 시점에 채운다 — 만료 판단 기준이라 리플렉션으로 넣는다.
+    private static UploadedFile issuedAt(UploadedFile file, LocalDateTime createdAt) {
+        try {
+            Field createdAtField = BaseTimeEntity.class.getDeclaredField("createdAt");
+            createdAtField.setAccessible(true);
+            createdAtField.set(file, createdAt);
             return file;
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
