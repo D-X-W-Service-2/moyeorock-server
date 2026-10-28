@@ -18,9 +18,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FileService {
@@ -118,10 +122,25 @@ public class FileService {
         if (!file.isUploadedBy(userId)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION);
         }
-        // DB 삭제를 먼저 커밋 경로에 태우고 스토리지 삭제(비가역)를 나중에 한다 — 순서가 반대였다면
-        // 스토리지 삭제 후 DB 커밋이 실패할 때 "파일은 없는데 DB row만 남는" 상태가 될 수 있었다.
         uploadedFileRepository.delete(file);
-        fileStorageClient.delete(file.getFileKey());
+        deleteFromStorageAfterCommit(file.getFileKey());
+    }
+
+    // repository.delete()는 삭제를 예약만 하고 실제 DELETE는 커밋 때 나간다 — 그 전에 스토리지(비가역)를
+    // 지우면 커밋이 실패했을 때 "파일은 없는데 DB 행만 남는" 상태가 된다. 그래서 커밋이 끝난 뒤에 지운다.
+    // 이 시점의 실패는 이미 커밋된 삭제를 되돌릴 수 없으니 던지지 않고 로그만 남긴다 — 던지면 클라이언트는
+    // 500을 받고 삭제가 실패한 줄 안다. 남는 건 어떤 행도 가리키지 않는 파일뿐이다.
+    private void deleteFromStorageAfterCommit(String fileKey) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    fileStorageClient.delete(fileKey);
+                } catch (RuntimeException e) {
+                    log.warn("files 행은 삭제됐지만 스토리지 삭제에 실패했습니다. fileKey={}", fileKey, e);
+                }
+            }
+        });
     }
 
     private InputStream openOrThrow(String fileKey) {

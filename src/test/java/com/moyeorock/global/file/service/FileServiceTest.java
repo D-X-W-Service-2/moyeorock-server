@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -33,7 +32,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -273,34 +271,8 @@ class FileServiceTest {
         verify(fileStorageClient, never()).write(anyString(), any());
     }
 
-    @Test
-    @DisplayName("업로더 본인이면 삭제가 성공하고 스토리지·DB 양쪽에서 지운다")
-    void delete_succeeds_forUploader() {
-        UploadedFile file = withId(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
-                "image/png", UPLOADER_ID), 5L);
-        when(uploadedFileRepository.findById(5L)).thenReturn(Optional.of(file));
-
-        fileService.delete(5L, UPLOADER_ID);
-
-        verify(fileStorageClient).delete("profile/key.png");
-        verify(uploadedFileRepository).delete(file);
-    }
-
-    @Test
-    @DisplayName("삭제 시 DB에서 먼저 지우고 스토리지(비가역)를 나중에 지운다")
-    void delete_deletesDbBeforeStorage() {
-        // 스토리지 삭제를 먼저 하면, 그 다음 DB 삭제 커밋이 실패했을 때 "파일은 없는데 DB row만 남는"
-        // 상태가 될 수 있다 — 순서를 반대로 둬서 그 창을 줄인다.
-        UploadedFile file = withId(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
-                "image/png", UPLOADER_ID), 5L);
-        when(uploadedFileRepository.findById(5L)).thenReturn(Optional.of(file));
-
-        fileService.delete(5L, UPLOADER_ID);
-
-        InOrder order = inOrder(uploadedFileRepository, fileStorageClient);
-        order.verify(uploadedFileRepository).delete(file);
-        order.verify(fileStorageClient).delete("profile/key.png");
-    }
+    // 삭제 성공 경로는 스토리지 삭제가 커밋 이후(afterCommit)에 일어나서 트랜잭션 없는 단위 테스트로는
+    // 검증할 수 없다 — FileServiceDeleteTest(실제 트랜잭션)에서 커밋·롤백 양쪽을 본다.
 
     @Test
     @DisplayName("존재하지 않는 fileId를 삭제하려 하면 FILE_NOT_FOUND 예외를 던진다")
