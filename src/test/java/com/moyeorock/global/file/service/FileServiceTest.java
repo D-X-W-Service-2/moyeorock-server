@@ -117,7 +117,7 @@ class FileServiceTest {
         byte[] bytes = {1, 2, 3};
         InputStream content = new ByteArrayInputStream(bytes);
 
-        fileService.receiveUpload("profile/key.png", content, UPLOADER_ID);
+        fileService.receiveUpload("profile/key.png", "image/png", content, UPLOADER_ID);
 
         // 용량 제한을 걸기 위해 원본 스트림을 SizeLimitedInputStream으로 감싸서 넘기므로 참조 동등성이
         // 아니라 실제로 읽히는 바이트가 같은지로 검증한다.
@@ -146,7 +146,7 @@ class FileServiceTest {
         }).when(fileStorageClient).write(anyString(), any());
         InputStream oversized = new ByteArrayInputStream(new byte[11 * 1024 * 1024]);
 
-        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", oversized, UPLOADER_ID))
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png", oversized, UPLOADER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
@@ -157,7 +157,8 @@ class FileServiceTest {
     void receiveUpload_throws_whenFileKeyUnknown() {
         when(uploadedFileRepository.findByFileKey("unknown")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> fileService.receiveUpload("unknown", InputStream.nullInputStream(), UPLOADER_ID))
+        assertThatThrownBy(() -> fileService.receiveUpload("unknown", "image/png", InputStream.nullInputStream(),
+                UPLOADER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_NOT_FOUND);
@@ -170,8 +171,8 @@ class FileServiceTest {
                 "image/png", UPLOADER_ID);
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
 
-        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", InputStream.nullInputStream(),
-                OTHER_USER_ID))
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                InputStream.nullInputStream(), OTHER_USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NO_PERMISSION);
@@ -186,7 +187,7 @@ class FileServiceTest {
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
         when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
 
-        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png",
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
                 new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
@@ -202,8 +203,8 @@ class FileServiceTest {
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
         when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
 
-        fileService.receiveUpload("profile/key.png", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
-        fileService.receiveUpload("profile/key.png", new ByteArrayInputStream(new byte[]{2}), UPLOADER_ID);
+        fileService.receiveUpload("profile/key.png", "image/png", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
+        fileService.receiveUpload("profile/key.png", "image/png", new ByteArrayInputStream(new byte[]{2}), UPLOADER_ID);
 
         verify(fileStorageClient, times(2)).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), any());
     }
@@ -216,7 +217,7 @@ class FileServiceTest {
                 "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).minusMinutes(1));
         when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
 
-        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png",
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
                 new ByteArrayInputStream(new byte[]{1}), OTHER_USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")

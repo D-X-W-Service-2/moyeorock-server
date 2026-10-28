@@ -8,7 +8,9 @@ import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.entity.UploadedFile;
 import com.moyeorock.global.file.enums.UploadDomain;
 import com.moyeorock.global.file.repository.UploadedFileRepository;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.PushbackInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.util.Locale;
@@ -74,7 +76,7 @@ public class FileService {
      * 평범한 조회는 행을 잠그지 않으므로 트랜잭션이 있어도 막히지 않던 문제이고, 막으려면 업로드가
      * 끝날 때까지 행 잠금을 들고 있어야 해서 더 나쁘다. S3 전환 시 이 경로 자체가 사라진다.
      */
-    public void receiveUpload(String fileKey, InputStream content, Long userId) {
+    public void receiveUpload(String fileKey, String contentType, InputStream content, Long userId) {
         UploadedFile file = getByFileKeyOrThrow(fileKey);
         if (!file.isUploadedBy(userId)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION);
@@ -84,8 +86,14 @@ public class FileService {
         if (file.isUploadExpired(fileStorageClient.uploadUrlExpiry())) {
             throw new BusinessException(ErrorCode.UPLOAD_URL_EXPIRED);
         }
+        // S3는 서명된 Content-Type과 다르면 거부한다 — 로컬도 맞춘다. 특히 FormData(multipart)로
+        // 보내면 Spring이 바디를 먼저 파싱해 버려서, 막지 않으면 빈 파일이 200으로 저장된다.
+        if (contentType == null || !file.getContentType().equalsIgnoreCase(contentType)) {
+            throw new BusinessException(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
+        }
+        InputStream body = requireNonEmpty(content);
         try {
-            fileStorageClient.write(fileKey, new SizeLimitedInputStream(content, MAX_UPLOAD_SIZE_BYTES));
+            fileStorageClient.write(fileKey, new SizeLimitedInputStream(body, MAX_UPLOAD_SIZE_BYTES));
         } catch (UncheckedIOException e) {
             if (e.getCause() instanceof UploadSizeExceededException) {
                 throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
@@ -124,6 +132,22 @@ public class FileService {
                 throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
             }
             throw e;
+        }
+    }
+
+    // 바디가 비어 있으면 빈 파일이 정상 업로드처럼 저장된다. 청크 전송이면 Content-Length로 알 수
+    // 없어서 첫 바이트를 직접 읽어 보고 되돌려 놓는다.
+    private InputStream requireNonEmpty(InputStream content) {
+        try {
+            PushbackInputStream in = new PushbackInputStream(content);
+            int first = in.read();
+            if (first == -1) {
+                throw new BusinessException(ErrorCode.EMPTY_FILE);
+            }
+            in.unread(first);
+            return in;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

@@ -59,7 +59,7 @@ public class FileController {
     public ApiResponse<Void> receiveLocalUpload(@AuthUser Long userId, HttpServletRequest request)
             throws IOException {
         String fileKey = extractFileKey(request, LOCAL_UPLOAD_PATH);
-        fileService.receiveUpload(fileKey, request.getInputStream(), userId);
+        fileService.receiveUpload(fileKey, request.getContentType(), request.getInputStream(), userId);
         return ApiResponse.success(null);
     }
 
