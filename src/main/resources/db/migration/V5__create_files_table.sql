@@ -1,6 +1,6 @@
 -- files (global/file — 도메인 아님, 1팀 담당. erd.md #17 참고). FK 없음(CLAUDE.md 절대 규칙 6).
--- 버전 번호 참고: V2·V3은 다른 진행 중인 PR(#59)이 이미 쓰고 있어서 충돌을 피하려고 V4로 잡았다.
--- 머지 순서상 겹치면 flyway-migration.md §2에 따라 머지하는 쪽에서 재조정한다.
+-- 버전 번호 참고: 처음엔 V4였으나 main에 V4__make_recruit_post_region_not_null.sql이 먼저 머지돼
+-- flyway-migration.md §2(머지하는 쪽에서 재조정)에 따라 V5로 옮겼다.
 
 CREATE TABLE files (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
