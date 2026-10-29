@@ -60,7 +60,7 @@ public class FileController {
             throws IOException {
         String fileKey = extractFileKey(request, LOCAL_UPLOAD_PATH);
         fileService.receiveUpload(fileKey, request.getContentType(), request.getInputStream(), userId);
-        return ApiResponse.success(null);
+        return ApiResponse.success();
     }
 
     /**

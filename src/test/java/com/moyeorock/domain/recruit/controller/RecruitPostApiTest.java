@@ -99,7 +99,7 @@ class RecruitPostApiTest {
                 {"targetType":"TEAM","targetId":5,"title":"t","body":"b","wantedSlots":[],"region":"SEOUL"}
                 """)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -110,7 +110,7 @@ class RecruitPostApiTest {
                  "wantedSlots":[{"instrument":"BASS","count":1},{"instrument":"BASS","count":2}],"region":"SEOUL"}
                 """)
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
         long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
         mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
@@ -120,7 +120,7 @@ class RecruitPostApiTest {
                                  "wantedSlots":[{"instrument":"DRUM","count":1},{"instrument":"DRUM","count":1}]}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -149,7 +149,7 @@ class RecruitPostApiTest {
     void getDetail_notFound_returns404() throws Exception {
         mockMvc.perform(get(BASE + "/999999").header("Authorization", bearer(AUTHOR_ID)))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("RECRUIT_POST_NOT_FOUND"));
+                .andExpect(jsonPath("$.code").value("RECRUIT_POST_NOT_FOUND"));
     }
 
     @Test
@@ -204,7 +204,7 @@ class RecruitPostApiTest {
         mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(OTHER_ID))
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code").value("NOT_POST_AUTHOR"));
+                .andExpect(jsonPath("$.code").value("NOT_POST_AUTHOR"));
     }
 
     @Test
@@ -221,7 +221,7 @@ class RecruitPostApiTest {
                                 {"title":"수정 시도","body":"b","wantedSlots":[{"instrument":"DRUM","count":1}],"region":"BUSAN"}
                                 """))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("INVALID_STATE"));
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
 
         mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID)))
                 .andExpect(jsonPath("$.data.title").value(org.hamcrest.Matchers.not("수정 시도")));
@@ -241,6 +241,6 @@ class RecruitPostApiTest {
         mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(AUTHOR_ID))
                         .contentType(MediaType.APPLICATION_JSON).content(closeBody))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("INVALID_STATE"));
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
     }
 }
