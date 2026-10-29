@@ -49,9 +49,9 @@ class GroupMemberRepositoryTest {
     @DisplayName("탈퇴·강퇴된 모임원은 목록에도 총 개수에도 들어가지 않는다")
     void findActiveMembers_excludesLeftAndBanned() {
         GroupMember left = GroupMember.create(GROUP_ID, 40L, GroupRole.MEMBER);
-        left.updateStatus(GroupMemberStatus.LEFT);
+        left.leave();
         GroupMember banned = GroupMember.create(GROUP_ID, 50L, GroupRole.MEMBER);
-        banned.updateStatus(GroupMemberStatus.BANNED);
+        banned.ban();
         groupMemberRepository.saveAll(List.of(
                 GroupMember.create(GROUP_ID, 10L, GroupRole.OWNER), left, banned));
 
@@ -65,7 +65,7 @@ class GroupMemberRepositoryTest {
     @DisplayName("ACTIVE 모임원 수만 센다")
     void countByGroupIdAndStatus_countsOnlyActive() {
         GroupMember left = GroupMember.create(GROUP_ID, 40L, GroupRole.MEMBER);
-        left.updateStatus(GroupMemberStatus.LEFT);
+        left.leave();
         groupMemberRepository.saveAll(List.of(
                 GroupMember.create(GROUP_ID, 10L, GroupRole.OWNER),
                 GroupMember.create(GROUP_ID, 20L, GroupRole.MEMBER), left));

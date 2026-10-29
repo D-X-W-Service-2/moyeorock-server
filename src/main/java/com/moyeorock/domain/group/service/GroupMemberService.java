@@ -75,14 +75,14 @@ public class GroupMemberService {
 
         GroupMember target = getActiveMemberOrThrow(groupId, targetUserId);
         if (userId.equals(targetUserId)) {
-            if (target.getRole() == GroupRole.OWNER) {
+            if (target.isOwner()) {
                 throw new BusinessException(ErrorCode.OWNER_CANNOT_LEAVE);
             }
-            target.updateStatus(GroupMemberStatus.LEFT);
+            target.leave();
             return;
         }
 
-        target.updateStatus(GroupMemberStatus.BANNED);
+        target.ban();
     }
 
     @Transactional
@@ -93,7 +93,7 @@ public class GroupMemberService {
     public void ensureOwner(Long groupId, Long userId) {
         ensureGroupExists(groupId);
         GroupMember member = getActiveMemberOrNull(groupId, userId);
-        if (member == null || member.getRole() != GroupRole.OWNER) {
+        if (member == null || !member.isOwner()) {
             throw new BusinessException(ErrorCode.NOT_GROUP_OWNER);
         }
     }

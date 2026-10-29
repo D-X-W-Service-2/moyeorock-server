@@ -56,11 +56,19 @@ public class GroupMember {
         return member;
     }
 
+    public boolean isOwner() {
+        return this.role == GroupRole.OWNER;
+    }
+
     public void changeRole(GroupRole role) {
         this.role = role;
     }
 
-    public void updateStatus(GroupMemberStatus status) {
-        this.status = status;
+    public void leave() {
+        this.status = GroupMemberStatus.LEFT;
+    }
+
+    public void ban() {
+        this.status = GroupMemberStatus.BANNED;
     }
 }
