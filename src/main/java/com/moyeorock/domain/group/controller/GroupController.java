@@ -60,6 +60,6 @@ public class GroupController {
     @PatchMapping("/{groupId}/status")
     public ApiResponse<Void> disband(@AuthUser Long userId, @PathVariable Long groupId) {
         groupService.disband(userId, groupId);
-        return ApiResponse.success(null);
+        return ApiResponse.success();
     }
 }

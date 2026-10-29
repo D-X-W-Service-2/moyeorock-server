@@ -27,6 +27,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
 
+    // 탈퇴 시 치환되는 닉네임 접두사. 일반 닉네임에는 예약어로 금지한다.
+    public static final String WITHDRAWN_NICKNAME_PREFIX = "탈퇴회원";
+    public static final int NICKNAME_MAX_LENGTH = 20;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -40,7 +44,7 @@ public class User extends BaseEntity {
     @Column(name = "kakao_id", length = 64)
     private String kakaoId;
 
-    @Column(length = 20, nullable = false)
+    @Column(length = NICKNAME_MAX_LENGTH, nullable = false)
     private String nickname;
 
     @Enumerated(EnumType.STRING)
@@ -143,6 +147,6 @@ public class User extends BaseEntity {
         this.email = null;
         this.kakaoId = null;
         this.passwordHash = null;
-        this.nickname = "탈퇴회원_" + this.id;
+        this.nickname = WITHDRAWN_NICKNAME_PREFIX + "_" + this.id;
     }
 }

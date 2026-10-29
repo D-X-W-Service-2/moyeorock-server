@@ -1,7 +1,7 @@
 # API 명세 — 전 도메인 통합
 
 - **원본**: Notion `API 명세서 수정안` 페이지의 `API 초안` 데이터베이스 (2026-09-11 대조 완료)
-- **버전**: 전 도메인 `/v1/`로 통일했다. **단, 합주(rehearsal, §3)는 초안 쪽 데이터가 아직 정리되지 않아 이번 반영에서 제외 — 기존 `/v0/` 그대로 유지**한다. 초안이 정리되면 별도로 반영한다.
+- **버전**: 전 도메인 `/v1/`. **예외 없다.** 합주(rehearsal, §3)만 초안 정리 전까지 `/v0/`를 유지했는데, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 반영했다.
 - **절 번호**: 이 파일과 `docs/specs/dto-spec.md`에서만 쓰는 좌표다
 - **인증**: 모든 API는 유저 인증 필요. 예외(auth 3개)는 §11에 별도 표기
 - **DTO 필드 정의**: `docs/specs/dto-spec.md` 참조. `API 초안`에는 DTO 정보가 없어 DTO 이름은 기존 `docs/conventions/dto-naming.md` 정의를 그대로 따른다. `*` 표시 Response는 원본 표에 비어 있으나 DTO 페이지의 이름·태그로 매칭한 것이다
@@ -52,16 +52,16 @@
 
 ## §3. 합주 (rehearsal) — 2팀
 
-**이번 업데이트에서 제외.** `API 초안`의 합주 도메인 행은 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로로 되어 있고 일부는 엔드포인트가 비어 있어(2026-09-11 확인), 팀 정리 전까지는 기존 `/v0/` 명세를 그대로 유지한다.
+2026-09-11 대조 때는 `API 초안`의 합주 행이 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로였고 일부는 비어 있어 이 절만 `/v0/`를 유지했다. **2026-10-05 재대조에서 6개 전부 `/v1/`로 정리된 것을 확인해 반영했다** — 경로만 바뀌었고 기능·DTO는 그대로다. 합주 구현체는 아직 없어 코드 영향은 없다.
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| GET | `/v0/teams/{teamId}/rehearsals?from=&to=` | 팀&nbsp;합주&nbsp;일정&nbsp;목록 | | `RehearsalsResponse` |
-| POST | `/v0/teams/{teamId}/rehearsals` | 합주&nbsp;일정&nbsp;생성 | `RehearsalCreateRequest` | |
-| GET | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;상세 | | `RehearsalDetailResponse` |
-| PUT | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;수정 | `RehearsalUpdateRequest` | |
-| DELETE | `/v0/rehearsals/{id}` | 합주&nbsp;일정&nbsp;삭제 | | |
-| GET | `/v0/users/me/rehearsals?from=&to=` | 내&nbsp;합주&nbsp;일정 | | `RehearsalsResponse` |
+| GET | `/v1/teams/{teamId}/rehearsals?from=&to=` | 팀&nbsp;합주&nbsp;일정&nbsp;목록 | | `RehearsalsResponse` |
+| POST | `/v1/teams/{teamId}/rehearsals` | 합주&nbsp;일정&nbsp;생성 | `RehearsalCreateRequest` | |
+| GET | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;상세 | | `RehearsalDetailResponse` |
+| PUT | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;수정 | `RehearsalUpdateRequest` | |
+| DELETE | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;삭제 | | |
+| GET | `/v1/users/me/rehearsals?from=&to=` | 내&nbsp;합주&nbsp;일정 | | `RehearsalsResponse` |
 
 ---
 
@@ -69,13 +69,16 @@
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/recruit-post` | 공고&nbsp;작성 | `RecruitPostCreateRequest` | |
+| POST | `/v1/recruit-post` | 공고&nbsp;작성 | `RecruitPostCreateRequest` | `RecruitPostDetailResponse` |
 | GET | `/v1/recruit-post` ¶ | 공고&nbsp;목록 | | `PageResponse<RecruitPostSummaryResponse>` |
 | GET | `/v1/recruit-post/{id}` | 공고&nbsp;상세 | | `RecruitPostDetailResponse` |
-| PUT | `/v1/recruit-post/{id}` | 공고&nbsp;수정 | `RecruitPostUpdateRequest` | |
+| PUT | `/v1/recruit-post/{id}` | 공고&nbsp;수정 | `RecruitPostUpdateRequest` | `RecruitPostDetailResponse` |
 | PATCH | `/v1/recruit-post/{id}/status` | 공고&nbsp;마감·삭제 | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` * |
 
-> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `authorId` (전부 선택).
+> ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `page` · `size` (전부 선택). `authorId`는 Notion `API 초안`에 없어 뺐다(2026-09-25 대조). 정렬 파라미터는 없고 최신순 고정이다.
+> Actor(Notion `API 초안`): 작성·수정·마감은 `모임장 / 팀장`, 목록·상세는 공통. 팀장·모임장 검증은 2팀 `TeamService`·4팀 `GroupService`가 머지된 뒤 붙이고, 그 전까지 구현은 "수정·마감은 작성자 본인만, 작성은 로그인만"이다.
+> 마감(`CLOSED`)된 공고는 수정(`PUT`)할 수 없다 — 작성자라도 `409 INVALID_STATE`다(권한 검사가 먼저라 작성자가 아니면 `403 NOT_POST_AUTHOR`). 명세에는 없는 서버 정책으로, 마감 뒤 모집 세션·인원이 바뀌어 이미 들어온 신청과 어긋나는 것을 막는다 — Notion 반영 필요.
+> `wantedSlots`에 같은 `instrument`가 두 번 오면 `400 VALIDATION_FAILED`다(예: BASS 1명 + BASS 2명). 명세에는 없는 서버 검증으로, 세션별 집계·마감 기준이 모호해지는 것을 막는다 — Notion 반영 필요.
 > 경로가 단수형 `recruit-post`다 — 상단 "경로 표기" 참고.
 > ⚠️ DTO 이름(`RecruitPostStatusUpdateRequest` 등)은 `API 초안`에 없어 기존 `docs/conventions/dto-naming.md` 정의를 그대로 썼다. 과거 노션 `API 명세서 v0`이 마감·삭제 Request를 `RecruitPostStatusResponse`로 오기했던 문제는 이 표와 무관하다.
 
@@ -127,7 +130,7 @@
 | GET | `/v1/groups/{id}` | 모임&nbsp;상세&nbsp;(동아리&nbsp;홈) | | `GroupDetailResponse` | |
 | PUT | `/v1/groups/{id}` | 모임&nbsp;정보&nbsp;수정 | `GroupUpdateRequest` | | |
 | PATCH | `/v1/groups/{groupId}/status` | 모임&nbsp;해체 ※ | — | — (`data: null`) | 모임장 |
-| GET | `/v1/groups/{id}/members` | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
+| GET | `/v1/groups/{id}/members?keyword=&page=&size=` ¶ | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
 | PATCH | `/v1/groups/{groupId}/members/{userId}` | 모임원&nbsp;역할&nbsp;변경&nbsp;(모임장&nbsp;위임) | `GroupMemberUpdateRequest` | | 모임장 |
 | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | — | — (`data: null`) * | |
 
@@ -135,6 +138,7 @@
 > \* **2026-10-05 대조**: 내보내기·탈퇴는 `API 초안`(2026-09-23) 기준으로 **요청·응답 바디가 모두 없다**. 이 문서의 이전 스냅샷(2026-09-14)에 있던 `GroupMemberStatusUpdateRequest`·`GroupMemberStatusResponse`를 걷었다 — 더 최신 문서를 따른 것이다. 상태값은 서버가 판단한다(요청자 == 대상 → `LEFT`, 모임장이 타인 → `BANNED`).
 > 모임원 목록 항목(`GroupMemberResponse`)도 같은 날 `API 초안` 기준으로 평탄화 구조로 교체했다(`docs/specs/dto-spec.md` §7).
 > § 원본 DTO 페이지 `GroupMembersResponse`가 `PageResponse<>`로 개명된 이력이 있다(2026-08-22). 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조. `API 초안`에는 DTO 정보가 없어 이 이력은 갱신되지 않았다.
+> ¶ 모임원 목록의 쿼리 파라미터: `keyword`(닉네임 검색) · `page` · `size` (전부 선택) — `API 초안`에서 확인됐으나 이번 반영(2026-09-11) 당시 누락됐던 것을 2026-09-30 대조로 뒤늦게 확인해 추가했다.
 > ※ **2026-10-29 결정(이슈 #80)** — `API 초안`의 `[추가 필요]` 3행을 이렇게 정리하고 노션도 함께 고쳤다.
 > - **전체 모임 검색·목록(`GET /v1/groups?keyword=&region=`)은 만들지 않는다.** 모임은 전체 목록을 열지 않고 내가 속한 모임만 보여준다. 모임에 들어가는 길은 초대·공고다
 > - **내 모임 목록은 `GET /v1/groups/my`** — 초안의 `/v1/users/me/groups`에서 옮겼다(다른 "내 ~ 목록"은 `/v1/users/me/...` 패턴이라 이 경로만 예외다). 검색은 여기서만 한다: `keyword`(모임 이름 부분 일치, 앞뒤 공백 무시, `%`·`_`는 글자 그대로) · `page` · `size`(기본·최대 20, 넘으면 20으로 자른다), 전부 선택. 정렬은 고정이라 `sort`는 받지 않는다. 내가 ACTIVE 모임원인, 해체되지 않은 모임을 **가입 최신순**으로 준다
@@ -226,10 +230,30 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | POST | `/v1/files/presigned-url` | 업로드&nbsp;URL&nbsp;발급 | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | |
+| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | `DeleteResponse` |
 
-> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11) — 기존 문서에는 없었다. Request/Response DTO가 아직 정의되어 있지 않으니 착수 전 팀 확인 필요.
-> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있지만, 이건 presigned URL로 발급받은 **S3 주소에 직접 올리는 클라이언트 동작**이지 moyeorock 백엔드 엔드포인트가 아니다 — 이 표에는 넣지 않는다.
+**로컬 저장 전용 임시 엔드포인트** — AWS 비용 때문에 당분간 서버 로컬 디스크에 저장하기로 한 결정(이슈 #18) 때문에 생긴 것이다. S3로 전환하면 `LocalFileStorageClient`와 함께 **둘 다 제거한다.** `API 초안`에는 없다.
+
+| 메서드 | 경로 | 기능 | Request | Response |
+|---|---|---|---|---|
+| PUT | `/v1/files/local-upload/**` | 업로드&nbsp;수신&nbsp;‡ | 파일 바이트(raw body) | — (`data: null`) |
+| GET | `/v1/files/local/**` | 파일&nbsp;서빙&nbsp;‡ | | 원시 바이트 |
+
+> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11). 응답은 공용 `DeleteResponse`(`{id, deleted}`)를 쓴다.
+> ‡ 로컬 저장에서는 발급된 `uploadUrl`이 S3가 아니라 이 서버의 `PUT /v1/files/local-upload/{fileKey}`를 가리킨다. 서빙(`GET /v1/files/local/**`)은 프로필·커버·포스터가 공개 정보라 인증 없이 열고(`PublicEndpoints` 등록), 원시 바이트를 그대로 내려줘야 해서 `api-conventions.md` §1의 "모든 응답은 `ApiResponse`로 감싼다" 규칙의 예외다.
+> 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있다. S3로 전환하면 그 말대로 **S3 주소에 직접 올리는 클라이언트 동작**이 되어 백엔드 엔드포인트가 아니게 된다 — 위 임시 엔드포인트가 그때 사라지는 이유다.
+
+**업로드 PUT 규칙** — 발급받은 `uploadUrl`로 파일을 올릴 때의 규칙이다. 로컬과 S3가 **인증 헤더 하나만 다르다.**
+
+| 항목 | 로컬 (지금) | S3 (전환 후) |
+|---|---|---|
+| `Authorization` 헤더 | **필수** (`Bearer {token}`). 업로더 본인만 올릴 수 있다 | **넣으면 안 된다.** presigned URL 서명과 충돌해 S3가 거부한다 |
+| `Content-Type` 헤더 | 발급 때 보낸 `contentType`과 같아야 한다(대소문자 무시). 다르거나 없으면 415 `UNSUPPORTED_MEDIA_TYPE` | 같아야 한다. 다르면 S3가 403 |
+| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 10MB 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw) |
+| 만료 | `expiresAt`(발급 후 10분)이 지나면 403 `UPLOAD_URL_EXPIRED` | 만료되면 S3가 403 |
+| 재업로드 | 만료 전엔 같은 `uploadUrl`로 다시 올리면 덮어쓴다 | 같음 |
+
+> ⚠️ **S3 전환 예정(조만간).** 전환해도 `PresignedUrlResponse` 구조(`fileId`·`uploadUrl`·`fileUrl`·`expiresAt`)는 그대로지만, **업로드 PUT에서 `Authorization` 헤더를 빼야 한다** — 프론트가 바꿔야 하는 유일한 지점이다. 지금부터 "`uploadUrl`이 이 서버의 `/v1/files/local-upload/`를 가리킬 때만 Bearer를 붙인다"로 분기해 두면 전환 때 프론트 코드 변경이 없다. 전환 시 위 로컬 임시 엔드포인트 2개는 제거된다.
 
 ### dashboard
 
@@ -269,3 +293,4 @@
 | 8 | 모임원 목록 응답 | `GroupMembersResponse` → `PageResponse<>` 개명 이력은 `API 초안`에 DTO 정보가 없어 갱신되지 않았다. 완성형은 `PageResponse<GroupMemberResponse>` (§7 §) |
 | 9 | 경로 단수형 예외 | `join-request` · `recruit-post` 2개는 `API 초안`을 신뢰해 단수형 그대로 반영(2026-09-11 팀 확인). `api-conventions.md`의 "리소스는 복수형" 규칙의 명시적 예외로 기록 |
 | 10 | 파일 삭제 신규 | `DELETE /v1/files/{fileId}`가 `API 초안`에서 새로 확인됨(§10). DTO·구현 담당 확인 필요 |
+| 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |

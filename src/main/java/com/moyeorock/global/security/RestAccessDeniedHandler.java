@@ -2,7 +2,6 @@ package com.moyeorock.global.security;
 
 import tools.jackson.databind.ObjectMapper;
 import com.moyeorock.global.common.dto.ApiResponse;
-import com.moyeorock.global.common.dto.ErrorResponse;
 import com.moyeorock.global.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,6 +26,6 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         response.getWriter().write(
-                objectMapper.writeValueAsString(ApiResponse.error(ErrorResponse.of(errorCode))));
+                objectMapper.writeValueAsString(ApiResponse.error(errorCode)));
     }
 }

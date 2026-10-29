@@ -8,6 +8,13 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+  # 페이징 size 상한. 사용자 검색 무한 스크롤 기준 20 (2026-09-28 결정). 전역이라 모든 팀 목록 API에 적용된다.
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        max-page-size: 20
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -22,7 +29,6 @@ spring:
     locations: classpath:db/migration
 
   jackson:
-    default-property-inclusion: non_null
     serialization:
       fail-on-empty-beans: false
 
@@ -30,6 +36,19 @@ jwt:
   secret-key: ${JWT_SECRET_KEY}
   issuer: ${JWT_ISSUER}
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY}
+
+# file.storage.type을 안 정하면 local이 기본값이다(FileStorageClient 구현체들의
+# @ConditionalOnProperty matchIfMissing=true). S3로 전환할 땐 FILE_STORAGE_TYPE=s3 +
+# file.storage.s3.bucket/region/upload-url-expiry-seconds를 설정한다. upload-url-expiry-seconds를
+# 빠뜨리면 0으로 바인딩돼 발급한 URL이 바로 만료된다. 프론트는 업로드 PUT에서 Authorization 헤더를
+# 빼야 한다(docs/specs/api-spec.md §10 file "업로드 PUT 규칙").
+file:
+  storage:
+    type: ${FILE_STORAGE_TYPE:local}
+    local:
+      base-path: ${FILE_LOCAL_BASE_PATH:./uploads}
+      base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
+      upload-url-expiry-seconds: 600
 
 springdoc:
   api-docs:

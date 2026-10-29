@@ -5,12 +5,16 @@
 모든 응답은 `ApiResponse<T>`로 감싼다. 예외 없다.
 
 ```json
-{ "success": true, "data": { }, "error": null }
-{ "success": false, "data": null,
-  "error": { "code": "TEAM_NOT_FOUND", "message": "존재하지 않는 팀입니다.", "fieldErrors": [] } }
+{ "success": true, "code": "SUCCESS", "message": "요청에 성공했습니다.", "data": { } }
+{ "success": true, "code": "SUCCESS", "message": "요청에 성공했습니다.", "data": null }
+{ "success": false, "code": "TEAM_NOT_FOUND", "message": "존재하지 않는 팀입니다.", "data": null }
 ```
 
-JSON 키는 `camelCase`로 쓴다 (`fieldErrors`, `totalPages`). Jackson 기본 동작 그대로이며 `spring.jackson.property-naming-strategy`를 설정하지 않는다.
+- 성공은 `code`가 항상 `"SUCCESS"`, `message`가 `"요청에 성공했습니다."`다. 돌려줄 바디가 없으면 `ApiResponse.success()`를 쓰고 `"data": null`로 나간다
+- 에러는 `code`가 `ErrorCode` 상수명, `message`가 그 메시지이고 `data`는 항상 `null`이다. 필드별 오류 목록은 따로 두지 않는다 — 검증 실패는 §3 표처럼 첫 오류 하나를 `"필드: 사유"`로 `message`에 담는다
+- **null 필드도 키를 빼지 않는다.** `spring.jackson.default-property-inclusion`을 설정하지 않으므로 값이 없으면 `"key": null`로 나간다
+
+JSON 키는 `camelCase`로 쓴다 (`totalElements`, `totalPages`). Jackson 기본 동작 그대로이며 `spring.jackson.property-naming-strategy`를 설정하지 않는다.
 
 컨트롤러 반환 타입은 `ApiResponse<T>`. `ResponseEntity`는 `Location` 헤더가 필요한 생성 응답에서만 쓴다.
 
@@ -90,12 +94,12 @@ throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
 | 잡는 예외 | 응답 |
 |---|---|
 | `BusinessException` | `ErrorCode`의 status·code·message |
-| `MethodArgumentNotValidException` | 400 `VALIDATION_FAILED` + `fieldErrors` 채움 |
+| `MethodArgumentNotValidException` | 400 `VALIDATION_FAILED` + `message`에 첫 필드 오류 `"필드: 사유"` (필드 오류가 없으면 `ErrorCode` 메시지) |
 | `HttpMessageNotReadableException` | 400 `VALIDATION_FAILED` (깨진 JSON · 없는 enum 값 등 바디 파싱 실패) |
 | `AccessDeniedException` | 403 `NO_PERMISSION` |
 | `NoResourceFoundException` · `NoHandlerFoundException` | 404 `RESOURCE_NOT_FOUND` (없는 경로) |
-| `MethodArgumentTypeMismatchException` | 400 `VALIDATION_FAILED` + `fieldErrors`에 파라미터명 (타입 변환 실패) |
-| `MissingServletRequestParameterException` | 400 `VALIDATION_FAILED` + `fieldErrors`에 파라미터명 (필수 파라미터 누락) |
+| `MethodArgumentTypeMismatchException` | 400 `VALIDATION_FAILED` + `message`에 `"파라미터명: 올바른 값이 아닙니다."` (타입 변환 실패) |
+| `MissingServletRequestParameterException` | 400 `VALIDATION_FAILED` + `message`에 `"파라미터명: 필수 파라미터입니다."` (필수 파라미터 누락) |
 | `HttpRequestMethodNotSupportedException` | 405 `METHOD_NOT_ALLOWED` |
 | `HttpMediaTypeNotSupportedException` | 415 `UNSUPPORTED_MEDIA_TYPE` |
 | `Exception` | 500. 스택트레이스는 로그에만, 응답에 노출 금지 |
@@ -123,12 +127,11 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 
 ## 5. URL
 
-- 접두사 `/v1/` (2026-09-11부터. 단, 합주(rehearsal) 도메인은 `API 초안` 정리 전까지 `/v0/` 유지 — `docs/specs/api-spec.md` §3 참고)
+- 접두사 `/v1/` — **전 도메인 예외 없음.** 합주(rehearsal)만 `API 초안` 정리 전까지 `/v0/`를 유지하던 예외가 있었으나, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 해소했다. `/v0/`는 더 이상 쓰지 않는다
 - `join-request` · `recruit-post`는 예외적으로 단수형이다(`API 초안` 기준, 2026-09-11 확인). 그 외 리소스는 아래 규칙대로 복수형을 쓴다
 - 리소스는 복수형 (`/teams` `/invitations`). 예외: `join-request` · `recruit-post` (단수형, `API 초안` 기준)
 - 상태 전이는 `PATCH /{id}/status` 또는 `PATCH /{id}/{action}`
 - 하위 리소스는 부모 경로 아래 (`/teams/{teamId}/rehearsals`), 단건 조회·수정·삭제는 단독 경로 (`/rehearsals/{id}`)
-- `me` 별칭 지원 — `?authorId=me`
 
 **소프트 삭제는 `DELETE`가 아니라 `PATCH .../status`다.** `DELETE`는 실제로 행이 사라지는 3곳(합주·공지·북마크)에만 쓴다. 팀원·모임원의 탈퇴·강퇴는 행이 사라지지 않고 `status`만 바뀌므로 `PATCH /{teamId 또는 groupId}/members/{userId}/status`를 쓴다.
 

@@ -42,6 +42,6 @@ public class GroupMemberController {
     public ApiResponse<Void> changeStatus(@AuthUser Long userId, @PathVariable Long groupId,
             @PathVariable Long targetUserId) {
         groupMemberService.changeStatus(userId, groupId, targetUserId);
-        return ApiResponse.success(null);
+        return ApiResponse.success();
     }
 }

@@ -62,6 +62,6 @@ public class NoticeController {
     @DeleteMapping("/v1/notices/{noticeId}")
     public ApiResponse<Void> delete(@AuthUser Long userId, @PathVariable Long noticeId) {
         noticeService.delete(userId, noticeId);
-        return ApiResponse.success(null);
+        return ApiResponse.success();
     }
 }

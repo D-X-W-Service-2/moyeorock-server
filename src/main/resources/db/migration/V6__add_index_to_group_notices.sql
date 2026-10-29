@@ -1,3 +1,6 @@
+-- 버전 번호 참고: 처음엔 V4였으나 main에 V4__make_recruit_post_region_not_null.sql·V5__create_files_table.sql이
+-- 먼저 머지돼 flyway-migration.md §2(머지하는 쪽에서 재조정)에 따라 V6으로 옮겼다.
+--
 -- group_notices는 V2에서 group_id를 "FK 아님, 인덱스만"으로 적어두고 인덱스를 빼먹었다.
 -- 같은 V2의 다른 자식 테이블(notifications·join_requests·recruit_posts)은 모두 걸려 있어 이 테이블만 누락이었다.
 --
