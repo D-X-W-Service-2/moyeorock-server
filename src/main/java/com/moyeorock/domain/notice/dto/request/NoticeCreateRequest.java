@@ -11,8 +11,9 @@ public record NoticeCreateRequest(
         @NotBlank(message = "공지 내용은 필수입니다.")
         String body,
 
-        // 명세상 선택값이고 기본값이 false다. 래퍼 타입으로 받아 "안 보냄"과 "false"를 구분하지 않고
-        // null이면 false로 취급한다(isPinned() 대신 Service에서 변환).
+        // 명세상 선택값이고 기본값이 false다. primitive boolean으로 받으면 Jackson 3이 필드가 없거나
+        // null일 때 역직렬화를 실패시켜(FAIL_ON_NULL_FOR_PRIMITIVES 기본 활성) 400이 나므로 래퍼로 받고,
+        // null → false 변환은 pinned() 한 곳에서 한다.
         Boolean isPinned
 ) {
 

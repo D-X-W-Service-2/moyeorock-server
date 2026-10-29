@@ -11,6 +11,7 @@ public record NoticeUpdateRequest(
         @NotBlank(message = "공지 내용은 필수입니다.")
         String body,
 
+        // 래퍼로 받는 이유는 NoticeCreateRequest와 같다
         Boolean isPinned
 ) {
 
