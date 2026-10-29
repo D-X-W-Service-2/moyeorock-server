@@ -9,6 +9,7 @@ import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -92,10 +93,9 @@ public class GroupMemberService {
 
     public void ensureOwner(Long groupId, Long userId) {
         ensureGroupExists(groupId);
-        GroupMember member = getActiveMemberOrNull(groupId, userId);
-        if (member == null || !member.isOwner()) {
-            throw new BusinessException(ErrorCode.NOT_GROUP_OWNER);
-        }
+        findActiveMember(groupId, userId)
+                .filter(GroupMember::isOwner)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_GROUP_OWNER));
     }
 
     public void ensureActiveMember(Long groupId, Long userId) {
@@ -107,11 +107,9 @@ public class GroupMemberService {
 
     /** 모임원이 아니면 {@code NOT_GROUP_MEMBER}. 모임 상세의 {@code myRole}에 쓴다. */
     public GroupRole getActiveRole(Long groupId, Long userId) {
-        GroupMember member = getActiveMemberOrNull(groupId, userId);
-        if (member == null) {
-            throw new BusinessException(ErrorCode.NOT_GROUP_MEMBER);
-        }
-        return member.getRole();
+        return findActiveMember(groupId, userId)
+                .map(GroupMember::getRole)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_GROUP_MEMBER));
     }
 
     public int countActiveMembers(Long groupId) {
@@ -129,17 +127,12 @@ public class GroupMemberService {
     }
 
     private GroupMember getActiveMemberOrThrow(Long groupId, Long userId) {
-        GroupMember member = getActiveMemberOrNull(groupId, userId);
-        if (member == null) {
-            throw new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND);
-        }
-        return member;
+        return findActiveMember(groupId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_MEMBER_NOT_FOUND));
     }
 
-    private GroupMember getActiveMemberOrNull(Long groupId, Long userId) {
-        return groupMemberRepository
-                .findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE)
-                .orElse(null);
+    private Optional<GroupMember> findActiveMember(Long groupId, Long userId) {
+        return groupMemberRepository.findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE);
     }
 
     private void ensureGroupExists(Long groupId) {
