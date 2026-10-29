@@ -3,14 +3,19 @@ package com.moyeorock.domain.group.service;
 import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
 import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.service.NoticeService;
+import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +34,19 @@ public class GroupService {
                 request.name(), request.description(), request.type(), request.region(), request.coverImage()));
         groupMemberService.addOwner(group.getId(), userId);
         return GroupDetailResponse.of(group, userId, 1, GroupRole.OWNER, noticeService.getPinnedPreview(group.getId()));
+    }
+
+    /**
+     * 내 모임 목록. 전체 모임 목록·검색은 두지 않는다 — 검색({@code keyword}, 모임 이름 부분 일치)도
+     * 내 모임 안에서만 한다. 해체된 모임과 내가 탈퇴·강퇴된 모임은 빠진다.
+     * 모임 페이지와 그 모임들에서의 내 역할을 따로 조회해 붙이므로 단일 스냅샷으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<GroupSummaryResponse> getMyGroups(Long userId, String keyword, Pageable pageable) {
+        Page<Group> groups = groupRepository.findMyGroups(userId, normalizeKeyword(keyword), pageable);
+        Map<Long, GroupRole> roles = groupMemberService.getActiveRoles(
+                userId, groups.map(Group::getId).getContent());
+        return PageResponse.from(groups.map(group -> GroupSummaryResponse.of(group, roles.get(group.getId()))));
     }
 
     /**
@@ -69,6 +87,14 @@ public class GroupService {
                 groupMemberService.countActiveMembers(groupId),
                 myRole,
                 noticeService.getPinnedPreview(groupId));
+    }
+
+    // 앞뒤 공백은 검색어가 아니다. 비면 필터 없이 내 모임 전체.
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return null;
+        }
+        return keyword.strip();
     }
 
     private Group getGroupOrThrow(Long groupId) {

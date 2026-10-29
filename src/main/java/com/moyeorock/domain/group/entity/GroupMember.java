@@ -20,7 +20,10 @@ import lombok.NoArgsConstructor;
 // (team_members와 동일 패턴).
 @Entity
 @Table(name = "group_members",
-        indexes = @Index(name = "uk_group_members_group_id_user_id", columnList = "group_id, user_id", unique = true))
+        indexes = {
+                @Index(name = "uk_group_members_group_id_user_id", columnList = "group_id, user_id", unique = true),
+                @Index(name = "idx_group_members_user_id", columnList = "user_id")
+        })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GroupMember {

@@ -10,7 +10,10 @@ import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -111,6 +114,16 @@ public class GroupMemberService {
         return findActiveMember(groupId, userId)
                 .map(GroupMember::getRole)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_GROUP_MEMBER));
+    }
+
+    /** 여러 모임에서의 내 역할을 한 번에 조회한다(내 모임 목록). 모임원이 아닌 모임은 키가 없다. */
+    public Map<Long, GroupRole> getActiveRoles(Long userId, Collection<Long> groupIds) {
+        if (groupIds.isEmpty()) {
+            return Map.of();
+        }
+        return groupMemberRepository.findByUserIdAndGroupIdInAndStatus(userId, groupIds, GroupMemberStatus.ACTIVE)
+                .stream()
+                .collect(Collectors.toMap(GroupMember::getGroupId, GroupMember::getRole));
     }
 
     public int countActiveMembers(Long groupId) {

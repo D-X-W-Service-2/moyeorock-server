@@ -3,6 +3,8 @@ package com.moyeorock.domain.group.repository;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
 import com.moyeorock.domain.group.enums.GroupRole;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +21,9 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
     int countByGroupIdAndStatus(Long groupId, GroupMemberStatus status);
 
     boolean existsByGroupIdAndUserIdAndStatus(Long groupId, Long userId, GroupMemberStatus status);
+
+    List<GroupMember> findByUserIdAndGroupIdInAndStatus(Long userId, Collection<Long> groupIds,
+            GroupMemberStatus status);
 
     /**
      * 모임장을 맨 위에, 그다음은 가입 순. role은 {@code EnumType.STRING}으로 저장돼 있어

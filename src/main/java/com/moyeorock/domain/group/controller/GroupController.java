@@ -3,11 +3,15 @@ package com.moyeorock.domain.group.controller;
 import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
 import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
 import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.global.common.dto.ApiResponse;
+import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -16,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,6 +36,13 @@ public class GroupController {
     public ApiResponse<GroupDetailResponse> create(@AuthUser Long userId,
             @Valid @RequestBody GroupCreateRequest request) {
         return ApiResponse.success(groupService.create(userId, request));
+    }
+
+    /** 내 모임 목록. 전체 모임 목록은 두지 않는다 — 검색({@code keyword})도 내 모임 안에서만 한다. */
+    @GetMapping("/my")
+    public ApiResponse<PageResponse<GroupSummaryResponse>> getMyGroups(@AuthUser Long userId,
+            @RequestParam(required = false) String keyword, @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(groupService.getMyGroups(userId, keyword, pageable));
     }
 
     @GetMapping("/{groupId}")
