@@ -65,7 +65,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `ErrorResponse` | `{code, message, fieldErrors}` |
 | `FieldErrorResponse` | `{field, reason}` |
 | `PageResponse<T>` | `{content, page, size, totalElements, totalPages, last}` |
-| `DeleteResponse` | `{id, deleted}` — hard delete 3곳 공용 |
+| `DeleteResponse` | `{id, deleted}` — 합주·북마크·파일 삭제 공용. 공지 삭제는 노션 `API 초안`(2026-09-30)을 따라 `data: null`이다 |
 
 ---
 
@@ -309,7 +309,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 - **공지 권한은 "현재 모임장"이다.** 작성자가 전 모임장이어도 현 모임장만 수정·삭제할 수 있다 — `GroupNotice.isAuthor()`를 권한 판별에 쓰지 않는다
 - `GroupRole`에 `MANAGER`를 추가했다. **값만 있고 권한은 없다**(`MEMBER`와 동일 취급) — `erd.md` §5 참고
 
-`GroupDetailResponse`는 동아리 홈 화면이므로 `notices`(고정 공지 몇 건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
+`GroupDetailResponse`는 동아리 홈 화면이므로 `pinnedNotices`(고정 공지 최대 3건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
 
 ---
 

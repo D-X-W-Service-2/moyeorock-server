@@ -137,7 +137,7 @@
 > § 원본 DTO 페이지 `GroupMembersResponse`가 `PageResponse<>`로 개명된 이력이 있다(2026-08-22). 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조. `API 초안`에는 DTO 정보가 없어 이 이력은 갱신되지 않았다.
 > ※ **2026-10-29 결정(이슈 #80)** — `API 초안`의 `[추가 필요]` 3행을 이렇게 정리하고 노션도 함께 고쳤다.
 > - **전체 모임 검색·목록(`GET /v1/groups?keyword=&region=`)은 만들지 않는다.** 모임은 전체 목록을 열지 않고 내가 속한 모임만 보여준다. 모임에 들어가는 길은 초대·공고다
-> - **내 모임 목록은 `GET /v1/groups/my`** — 초안의 `/v1/users/me/groups`에서 옮겼다(다른 "내 ~ 목록"은 `/v1/users/me/...` 패턴이라 이 경로만 예외다). 검색은 여기서만 한다: `keyword`(모임 이름 부분 일치, 앞뒤 공백 무시, `%`·`_`는 글자 그대로) · `page` · `size`, 전부 선택. 내가 ACTIVE 모임원인, 해체되지 않은 모임을 **가입 최신순**으로 준다
+> - **내 모임 목록은 `GET /v1/groups/my`** — 초안의 `/v1/users/me/groups`에서 옮겼다(다른 "내 ~ 목록"은 `/v1/users/me/...` 패턴이라 이 경로만 예외다). 검색은 여기서만 한다: `keyword`(모임 이름 부분 일치, 앞뒤 공백 무시, `%`·`_`는 글자 그대로) · `page` · `size`(기본·최대 20, 넘으면 20으로 자른다), 전부 선택. 정렬은 고정이라 `sort`는 받지 않는다. 내가 ACTIVE 모임원인, 해체되지 않은 모임을 **가입 최신순**으로 준다
 > - **모임 해체는 soft delete다** — 요청 바디 없이 `groups_.status`를 `DISBANDED`로 바꾼다. 모임장만 할 수 있고, 다른 모임원이 남아 있어도 된다. 해체된 모임은 **모임·모임원·공지 엔드포인트 전부에서 404 `GROUP_NOT_FOUND`**(없는 모임)이고 내 모임 목록에서 빠진다. 모임원·공지 행은 지우지 않는다(`architecture.md` §6)
 
 ### notice
