@@ -24,7 +24,7 @@ public class GroupMemberController {
 
     private final GroupMemberService groupMemberService;
 
-    // 명세의 keyword(닉네임 검색)는 user 도메인 Service가 머지된 뒤에 붙인다 — 지금 받으면 무시만 하게 된다
+    // 명세의 keyword(닉네임 검색)는 user 도메인 연동 때 붙인다 — 지금 받으면 무시만 하게 된다
     @GetMapping
     public ApiResponse<PageResponse<GroupMemberResponse>> getMembers(@AuthUser Long userId,
             @PathVariable Long groupId, @PageableDefault(size = 20) Pageable pageable) {

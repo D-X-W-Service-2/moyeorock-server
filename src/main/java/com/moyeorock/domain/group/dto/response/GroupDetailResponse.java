@@ -11,9 +11,9 @@ import java.util.List;
 /**
  * 모임 생성·상세·수정 공통 응답 (동아리 홈 화면).
  *
- * <p>명세(Notion API 초안)의 {@code owner}(UserSummary)와 {@code upcomingPerformances}는 아직 담지 않는다.
- * 전자는 user 도메인 Service(PR #57 미머지), 후자는 performance 도메인이 있어야 채울 수 있다.
- * 지금은 모임장의 식별자만 {@code ownerId}로 내려주고, 두 도메인이 준비되면 교체·추가한다.
+ * <p>명세(Notion API 초안)의 {@code owner}(UserSummary)와 {@code upcomingPerformances}는 아직 담지 않는다 —
+ * 지금은 모임장 식별자만 {@code ownerId}로 내려준다. {@code owner}는 user 도메인 연동 때,
+ * {@code upcomingPerformances}는 performance 도메인 구현 때 채운다.
  */
 public record GroupDetailResponse(
         Long id,
