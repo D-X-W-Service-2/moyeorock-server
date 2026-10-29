@@ -13,7 +13,9 @@ import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,12 +33,14 @@ public class NoticeService {
     private final GroupNoticeRepository groupNoticeRepository;
     private final GroupMemberService groupMemberService;
 
+    /** 정렬은 고정 공지 우선·최신순 고정이라 클라이언트 sort는 버린다(엔티티에 없는 속성이 들어오면 500이 난다). */
     public PageResponse<NoticeSummaryResponse> getNotices(Long userId, Long groupId, Boolean isPinned,
             Pageable pageable) {
         groupMemberService.ensureActiveMember(groupId, userId);
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         Page<GroupNotice> notices = isPinned == null
-                ? groupNoticeRepository.findByGroupIdOrderByIsPinnedDescCreatedAtDesc(groupId, pageable)
-                : groupNoticeRepository.findByGroupIdAndIsPinnedOrderByCreatedAtDesc(groupId, isPinned, pageable);
+                ? groupNoticeRepository.findByGroupIdOrderByIsPinnedDescCreatedAtDescIdDesc(groupId, unsorted)
+                : groupNoticeRepository.findByGroupIdAndIsPinnedOrderByCreatedAtDescIdDesc(groupId, isPinned, unsorted);
         return PageResponse.from(notices.map(NoticeSummaryResponse::from));
     }
 
@@ -49,10 +53,13 @@ public class NoticeService {
     /**
      * 동아리 홈의 고정 공지 미리보기 — <b>고정된 공지만</b> 최신순 {@value #PREVIEW_SIZE}건.
      * 고정 공지가 없으면 빈 목록이다(일반 공지로 채우지 않는다 — 응답 필드가 {@code pinnedNotices}다).
-     * <b>권한 확인을 하지 않는다</b> — 모임 상세에서만 호출하고 그쪽에서 이미 모임원인지 확인한다.
+     * 해체된 모임이면 {@code GROUP_NOT_FOUND}다. <b>모임원 확인은 하지 않는다</b> — 모임 상세·수정에서만
+     * 호출하고 그쪽에서 이미 모임원·모임장인지 확인한다.
      */
     public List<NoticePreviewResponse> getPinnedPreview(Long groupId) {
-        return groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(groupId).stream()
+        groupMemberService.ensureGroupExists(groupId);
+        return groupNoticeRepository
+                .findByGroupIdAndIsPinnedTrueOrderByCreatedAtDescIdDesc(groupId, Limit.of(PREVIEW_SIZE)).stream()
                 .map(NoticePreviewResponse::from)
                 .toList();
     }
