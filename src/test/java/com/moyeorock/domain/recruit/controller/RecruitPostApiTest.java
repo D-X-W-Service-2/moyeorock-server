@@ -1,5 +1,7 @@
 package com.moyeorock.domain.recruit.controller;
 
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -83,10 +85,11 @@ class RecruitPostApiTest {
     }
 
     @Test
-    @DisplayName("계산할 수 없는 appliedCount는 0이 아니라 키 자체가 응답에서 빠진다")
-    void create_omitsAppliedCount_whenUnknown() throws Exception {
+    @DisplayName("계산할 수 없는 appliedCount는 0이 아니라 null로 내려간다")
+    void create_returnsNullAppliedCount_whenUnknown() throws Exception {
         createPost(AUTHOR_ID, CREATE_BODY)
-                .andExpect(jsonPath("$.data.wantedSlots[0].appliedCount").doesNotExist());
+                .andExpect(jsonPath("$.data.wantedSlots[0]", hasKey("appliedCount")))
+                .andExpect(jsonPath("$.data.wantedSlots[0].appliedCount").value(nullValue()));
     }
 
     @Test
