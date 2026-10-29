@@ -2,10 +2,10 @@ package com.moyeorock.domain.group.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.group.entity.GroupMember;
@@ -16,8 +16,6 @@ import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class GroupMemberServiceTest {
@@ -48,26 +49,6 @@ class GroupMemberServiceTest {
     }
 
     @Test
-    @DisplayName("여러 모임에서의 내 역할을 모임 id별로 돌려준다")
-    void getActiveRoles_mapsRoleByGroupId() {
-        when(groupMemberRepository.findByUserIdAndGroupIdInAndStatus(MEMBER_ID, List.of(1L, 2L),
-                GroupMemberStatus.ACTIVE))
-                .thenReturn(List.of(GroupMember.create(1L, MEMBER_ID, GroupRole.OWNER),
-                        GroupMember.create(2L, MEMBER_ID, GroupRole.MEMBER)));
-
-        Map<Long, GroupRole> roles = groupMemberService.getActiveRoles(MEMBER_ID, List.of(1L, 2L));
-
-        assertThat(roles).containsExactlyInAnyOrderEntriesOf(Map.of(1L, GroupRole.OWNER, 2L, GroupRole.MEMBER));
-    }
-
-    @Test
-    @DisplayName("모임 id가 없으면(빈 페이지) 조회하지 않고 빈 결과를 돌려준다")
-    void getActiveRoles_skipsQuery_whenNoGroupIds() {
-        assertThat(groupMemberService.getActiveRoles(MEMBER_ID, List.of())).isEmpty();
-        verifyNoInteractions(groupMemberRepository);
-    }
-
-    @Test
     @DisplayName("모임장을 위임하면 대상이 OWNER로 올라가고 기존 모임장은 MEMBER로 내려간다")
     void changeRole_delegatesOwnership_andDemotesPreviousOwner() {
         GroupMember owner = member(OWNER_ID, GroupRole.OWNER);
@@ -75,13 +56,12 @@ class GroupMemberServiceTest {
         givenGroupExists();
         givenActiveMember(OWNER_ID, owner);
         givenActiveMember(MEMBER_ID, target);
-        when(groupMemberRepository.findByGroupIdAndRoleAndStatus(GROUP_ID, GroupRole.OWNER, GroupMemberStatus.ACTIVE))
-                .thenReturn(Optional.of(owner));
 
         groupMemberService.changeRole(OWNER_ID, GROUP_ID, MEMBER_ID, GroupRole.OWNER);
 
         assertThat(target.getRole()).isEqualTo(GroupRole.OWNER);
         assertThat(owner.getRole()).isEqualTo(GroupRole.MEMBER);
+        verify(groupMemberRepository, never()).findActiveOwner(any());
     }
 
     @Test
@@ -97,8 +77,6 @@ class GroupMemberServiceTest {
 
         assertThat(target.getRole()).isEqualTo(GroupRole.MANAGER);
         assertThat(owner.getRole()).isEqualTo(GroupRole.OWNER);
-        verify(groupMemberRepository, never())
-                .findByGroupIdAndRoleAndStatus(GROUP_ID, GroupRole.OWNER, GroupMemberStatus.ACTIVE);
     }
 
     @Test
@@ -186,8 +164,7 @@ class GroupMemberServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
-        verify(groupMemberRepository, never())
-                .findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE);
+        verify(groupMemberRepository, never()).findActiveMember(GROUP_ID, MEMBER_ID);
     }
 
     @Test
@@ -219,8 +196,7 @@ class GroupMemberServiceTest {
     void changeStatus_throws_whenTargetIsNotActive() {
         givenGroupExists();
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
-        when(groupMemberRepository.findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE))
-                .thenReturn(Optional.empty());
+        when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> groupMemberService.changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
@@ -253,10 +229,8 @@ class GroupMemberServiceTest {
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
         order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
-        order.verify(groupMemberRepository)
-                .findByGroupIdAndUserIdAndStatus(GROUP_ID, OWNER_ID, GroupMemberStatus.ACTIVE);
-        order.verify(groupMemberRepository)
-                .findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE);
+        order.verify(groupMemberRepository).findActiveMember(GROUP_ID, OWNER_ID);
+        order.verify(groupMemberRepository).findActiveMember(GROUP_ID, MEMBER_ID);
     }
 
     @Test
@@ -270,10 +244,32 @@ class GroupMemberServiceTest {
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
         order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
-        order.verify(groupMemberRepository)
-                .findByGroupIdAndUserIdAndStatus(GROUP_ID, OWNER_ID, GroupMemberStatus.ACTIVE);
-        order.verify(groupMemberRepository)
-                .findByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE);
+        order.verify(groupMemberRepository).findActiveMember(GROUP_ID, OWNER_ID);
+        order.verify(groupMemberRepository).findActiveMember(GROUP_ID, MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("모임원 목록은 클라이언트 sort를 버리고 고정 정렬로 조회한다")
+    void getMembers_dropsClientSort() {
+        givenGroupExists();
+        when(groupMemberRepository.existsByGroupIdAndUserIdAndStatus(GROUP_ID, MEMBER_ID, GroupMemberStatus.ACTIVE))
+                .thenReturn(true);
+        when(groupMemberRepository.findActiveMembers(any(), any(), any())).thenReturn(Page.empty());
+
+        groupMemberService.getMembers(MEMBER_ID, GROUP_ID, PageRequest.of(0, 20, Sort.by("nickname")));
+
+        verify(groupMemberRepository).findActiveMembers(GROUP_ID, GroupMemberStatus.ACTIVE, PageRequest.of(0, 20));
+    }
+
+    @Test
+    @DisplayName("해체됐거나 없는 모임의 모임장을 물으면 GROUP_NOT_FOUND를 던진다")
+    void getOwnerId_throws_whenGroupDisbanded() {
+        when(groupMemberRepository.findActiveOwner(GROUP_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.getOwnerId(GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
     }
 
     private void givenGroupExists() {
@@ -281,8 +277,7 @@ class GroupMemberServiceTest {
     }
 
     private void givenActiveMember(Long userId, GroupMember member) {
-        when(groupMemberRepository.findByGroupIdAndUserIdAndStatus(GROUP_ID, userId, GroupMemberStatus.ACTIVE))
-                .thenReturn(Optional.of(member));
+        when(groupMemberRepository.findActiveMember(GROUP_ID, userId)).thenReturn(Optional.of(member));
     }
 
     private static GroupMember member(Long userId, GroupRole role) {

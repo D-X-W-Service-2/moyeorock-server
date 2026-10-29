@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.domain.PageRequest;
 
 /**
@@ -37,7 +38,7 @@ class GroupNoticeRepositoryTest {
                 notice("일반 공지 2", false)));
 
         List<GroupNotice> notices = groupNoticeRepository
-                .findByGroupIdOrderByIsPinnedDescCreatedAtDesc(GROUP_ID, PageRequest.of(0, 20))
+                .findByGroupIdOrderByIsPinnedDescCreatedAtDescIdDesc(GROUP_ID, PageRequest.of(0, 20))
                 .getContent();
 
         assertThat(notices).hasSize(3);
@@ -52,7 +53,7 @@ class GroupNoticeRepositoryTest {
                 notice("일반 공지", false), notice("고정 공지", true)));
 
         var page = groupNoticeRepository
-                .findByGroupIdAndIsPinnedOrderByCreatedAtDesc(GROUP_ID, true, PageRequest.of(0, 20));
+                .findByGroupIdAndIsPinnedOrderByCreatedAtDescIdDesc(GROUP_ID, true, PageRequest.of(0, 20));
 
         assertThat(page.getTotalElements()).isEqualTo(1);
         assertThat(page.getContent().get(0).getTitle()).isEqualTo("고정 공지");
@@ -60,13 +61,13 @@ class GroupNoticeRepositoryTest {
 
     @Test
     @DisplayName("동아리 홈 미리보기에는 고정 공지만 담긴다 — 일반 공지로 자리를 채우지 않는다")
-    void findTop3_returnsOnlyPinned() {
+    void findPinnedPreview_returnsOnlyPinned() {
         groupNoticeRepository.saveAll(List.of(
                 notice("일반 1", false), notice("일반 2", false), notice("일반 3", false),
                 notice("고정 1", true), notice("고정 2", true)));
 
         List<GroupNotice> preview =
-                groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID);
+                groupNoticeRepository.findByGroupIdAndIsPinnedTrueOrderByCreatedAtDescIdDesc(GROUP_ID, Limit.of(3));
 
         assertThat(preview).hasSize(2);
         assertThat(preview).allMatch(GroupNotice::isPinned);
@@ -75,20 +76,21 @@ class GroupNoticeRepositoryTest {
 
     @Test
     @DisplayName("고정 공지가 없으면 미리보기는 빈 목록이다")
-    void findTop3_returnsEmpty_whenNoPinned() {
+    void findPinnedPreview_returnsEmpty_whenNoPinned() {
         groupNoticeRepository.saveAll(List.of(notice("일반 1", false), notice("일반 2", false)));
 
-        assertThat(groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID)).isEmpty();
+        assertThat(groupNoticeRepository.findByGroupIdAndIsPinnedTrueOrderByCreatedAtDescIdDesc(GROUP_ID, Limit.of(3)))
+                .isEmpty();
     }
 
     @Test
     @DisplayName("고정 공지가 많으면 미리보기는 3건으로 자른다")
-    void findTop3_limitsToThree() {
+    void findPinnedPreview_limitsToGivenSize() {
         groupNoticeRepository.saveAll(List.of(
                 notice("고정 1", true), notice("고정 2", true), notice("고정 3", true), notice("고정 4", true)));
 
         List<GroupNotice> preview =
-                groupNoticeRepository.findTop3ByGroupIdAndIsPinnedTrueOrderByCreatedAtDesc(GROUP_ID);
+                groupNoticeRepository.findByGroupIdAndIsPinnedTrueOrderByCreatedAtDescIdDesc(GROUP_ID, Limit.of(3));
 
         assertThat(preview).hasSize(3);
         assertThat(preview).allMatch(GroupNotice::isPinned);
@@ -102,7 +104,7 @@ class GroupNoticeRepositoryTest {
                 GroupNotice.create(99L, AUTHOR_ID, "다른 모임 공지", "본문", false)));
 
         var page = groupNoticeRepository
-                .findByGroupIdOrderByIsPinnedDescCreatedAtDesc(GROUP_ID, PageRequest.of(0, 20));
+                .findByGroupIdOrderByIsPinnedDescCreatedAtDescIdDesc(GROUP_ID, PageRequest.of(0, 20));
 
         assertThat(page.getTotalElements()).isEqualTo(1);
         assertThat(page.getContent().get(0).getTitle()).isEqualTo("우리 모임 공지");

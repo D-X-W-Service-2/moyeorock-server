@@ -1,6 +1,7 @@
 package com.moyeorock.domain.group.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.entity.Group;
@@ -11,6 +12,7 @@ import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.config.JpaAuditingConfig;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,10 +73,25 @@ class GroupRepositoryTest {
         banned.ban();
         groupMemberRepository.flush();
 
-        Page<Group> page = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 20));
+        Page<Object[]> page = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 20));
 
-        assertThat(page.getContent()).extracting(Group::getId).containsExactly(mine.getId());
+        assertThat(groupIds(page)).containsExactly(mine.getId());
         assertThat(page.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("내 모임 목록의 각 행에는 그 모임에서의 내 역할이 함께 온다")
+    void findMyGroups_returnsMyRolePerGroup() {
+        Group owned = groupRepository.save(group("내가 만든 모임"));
+        groupMemberRepository.saveAndFlush(GroupMember.create(owned.getId(), ME, GroupRole.OWNER));
+        Group joined = joined(ME, group("가입한 모임"), 1);
+
+        Page<Object[]> page = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 20));
+
+        assertThat(page.getContent())
+                .extracting(row -> ((Group) row[0]).getId(), row -> row[1])
+                .containsExactlyInAnyOrder(
+                        tuple(owned.getId(), GroupRole.OWNER), tuple(joined.getId(), GroupRole.MEMBER));
     }
 
     @Test
@@ -85,9 +102,9 @@ class GroupRepositoryTest {
         disbanded.disband();
         groupRepository.flush();
 
-        Page<Group> page = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 20));
+        Page<Object[]> page = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 20));
 
-        assertThat(page.getContent()).extracting(Group::getId).containsExactly(active.getId());
+        assertThat(groupIds(page)).containsExactly(active.getId());
     }
 
     @Test
@@ -96,9 +113,9 @@ class GroupRepositoryTest {
         Group band = joined(ME, group("홍대 밴드부"), 1);
         joined(ME, group("재즈 동아리"), 2);
 
-        Page<Group> page = groupRepository.findMyGroups(ME, "밴드", PageRequest.of(0, 20));
+        Page<Object[]> page = groupRepository.findMyGroups(ME, "밴드", PageRequest.of(0, 20));
 
-        assertThat(page.getContent()).extracting(Group::getId).containsExactly(band.getId());
+        assertThat(groupIds(page)).containsExactly(band.getId());
     }
 
     @Test
@@ -109,10 +126,10 @@ class GroupRepositoryTest {
         Group underscore = joined(ME, group("a_b"), 3);
         joined(ME, group("axb"), 4);
 
-        assertThat(groupRepository.findMyGroups(ME, "0%", PageRequest.of(0, 20)).getContent())
-                .extracting(Group::getId).containsExactly(percent.getId());
-        assertThat(groupRepository.findMyGroups(ME, "a_b", PageRequest.of(0, 20)).getContent())
-                .extracting(Group::getId).containsExactly(underscore.getId());
+        assertThat(groupIds(groupRepository.findMyGroups(ME, "0%", PageRequest.of(0, 20))))
+                .containsExactly(percent.getId());
+        assertThat(groupIds(groupRepository.findMyGroups(ME, "a_b", PageRequest.of(0, 20))))
+                .containsExactly(underscore.getId());
     }
 
     @Test
@@ -122,12 +139,17 @@ class GroupRepositoryTest {
         Group second = joined(ME, group("두 번째 가입"), 2);
         Group latest = joined(ME, group("가장 최근 가입"), 3);
 
-        Page<Group> firstPage = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 2));
-        Page<Group> secondPage = groupRepository.findMyGroups(ME, null, PageRequest.of(1, 2));
+        Page<Object[]> firstPage = groupRepository.findMyGroups(ME, null, PageRequest.of(0, 2));
+        Page<Object[]> secondPage = groupRepository.findMyGroups(ME, null, PageRequest.of(1, 2));
 
-        assertThat(firstPage.getContent()).extracting(Group::getId).containsExactly(latest.getId(), second.getId());
-        assertThat(secondPage.getContent()).extracting(Group::getId).containsExactly(first.getId());
+        assertThat(groupIds(firstPage)).containsExactly(latest.getId(), second.getId());
+        assertThat(groupIds(secondPage)).containsExactly(first.getId());
         assertThat(firstPage.getTotalElements()).isEqualTo(3);
+    }
+
+    // findMyGroups의 각 행은 [Group, 내 역할]이다
+    private static List<Long> groupIds(Page<Object[]> page) {
+        return page.getContent().stream().map(row -> ((Group) row[0]).getId()).toList();
     }
 
     // joinedAt은 create()가 now()로 채워 연달아 만들면 같아질 수 있다 — 정렬을 확정하려고 가입 순서를 분 단위로 벌린다.

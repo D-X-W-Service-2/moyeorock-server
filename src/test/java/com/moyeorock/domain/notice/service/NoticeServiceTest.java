@@ -13,10 +13,12 @@ import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.notice.dto.request.NoticeCreateRequest;
 import com.moyeorock.domain.notice.dto.request.NoticeUpdateRequest;
 import com.moyeorock.domain.notice.dto.response.NoticeDetailResponse;
+import com.moyeorock.domain.notice.dto.response.NoticePreviewResponse;
 import com.moyeorock.domain.notice.entity.GroupNotice;
 import com.moyeorock.domain.notice.repository.GroupNoticeRepository;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +26,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Limit;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class NoticeServiceTest {
@@ -167,6 +173,41 @@ class NoticeServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
+    }
+
+    @Test
+    @DisplayName("공지 목록은 클라이언트 sort를 버리고 고정 정렬로 조회한다")
+    void getNotices_dropsClientSort() {
+        when(groupNoticeRepository.findByGroupIdOrderByIsPinnedDescCreatedAtDescIdDesc(any(), any()))
+                .thenReturn(Page.empty());
+
+        noticeService.getNotices(OWNER_ID, GROUP_ID, null, PageRequest.of(0, 20, Sort.by("foo")));
+
+        verify(groupNoticeRepository)
+                .findByGroupIdOrderByIsPinnedDescCreatedAtDescIdDesc(GROUP_ID, PageRequest.of(0, 20));
+    }
+
+    @Test
+    @DisplayName("고정 공지 미리보기는 모임이 해체되지 않았는지 먼저 확인하고 3건까지 조회한다")
+    void getPinnedPreview_checksGroupThenLimitsToThree() {
+        when(groupNoticeRepository.findByGroupIdAndIsPinnedTrueOrderByCreatedAtDescIdDesc(GROUP_ID, Limit.of(3)))
+                .thenReturn(List.of(GroupNotice.create(GROUP_ID, OWNER_ID, "고정", "본문", true)));
+
+        assertThat(noticeService.getPinnedPreview(GROUP_ID)).extracting(NoticePreviewResponse::title)
+                .containsExactly("고정");
+        verify(groupMemberService).ensureGroupExists(GROUP_ID);
+    }
+
+    @Test
+    @DisplayName("해체된 모임의 고정 공지는 조회하지 않고 GROUP_NOT_FOUND를 던진다")
+    void getPinnedPreview_throws_whenGroupDisbanded() {
+        doThrow(new BusinessException(ErrorCode.GROUP_NOT_FOUND)).when(groupMemberService).ensureGroupExists(GROUP_ID);
+
+        assertThatThrownBy(() -> noticeService.getPinnedPreview(GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+        verifyNoInteractions(groupNoticeRepository);
     }
 
     private static GroupNotice notice(Long authorId) {

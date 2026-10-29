@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -24,10 +25,8 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
-import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +38,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class GroupServiceTest {
@@ -67,7 +68,6 @@ class GroupServiceTest {
     @DisplayName("모임을 만들면 생성자가 모임장으로 등록되고 모임원 수가 1이다")
     void create_registersCreatorAsOwner() {
         when(groupRepository.save(any())).thenAnswer(invocation -> withId(invocation.getArgument(0), GROUP_ID));
-        when(noticeService.getPinnedPreview(GROUP_ID)).thenReturn(List.of());
 
         GroupDetailResponse response = groupService.create(OWNER_ID, new GroupCreateRequest(
                 "홍대 밴드부", "매주 토요일 합주", GroupType.REGULAR, Region.SEOUL, "https://x/cover.jpg"));
@@ -78,6 +78,8 @@ class GroupServiceTest {
         assertThat(response.myRole()).isEqualTo(GroupRole.OWNER);
         assertThat(response.memberCount()).isEqualTo(1);
         assertThat(response.name()).isEqualTo("홍대 밴드부");
+        assertThat(response.pinnedNotices()).isEmpty();
+        verifyNoInteractions(noticeService);
     }
 
     @Test
@@ -117,7 +119,6 @@ class GroupServiceTest {
     void update_appliesAllFieldsIncludingType() {
         Group group = withId(group(), GROUP_ID);
         when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
-        when(groupMemberService.getOwnerId(GROUP_ID)).thenReturn(OWNER_ID);
         when(groupMemberService.countActiveMembers(GROUP_ID)).thenReturn(5);
         when(noticeService.getPinnedPreview(GROUP_ID)).thenReturn(List.of());
 
@@ -130,6 +131,8 @@ class GroupServiceTest {
         assertThat(group.getCoverImage()).isNull();
         assertThat(response.name()).isEqualTo("새 이름");
         assertThat(response.myRole()).isEqualTo(GroupRole.OWNER);
+        assertThat(response.ownerId()).isEqualTo(OWNER_ID);
+        verify(groupMemberService, never()).getOwnerId(any());
     }
 
     @Test
@@ -138,10 +141,8 @@ class GroupServiceTest {
         Group owned = withId(group(), 1L);
         Group joined = withId(group(), 2L);
         Pageable pageable = PageRequest.of(0, 20);
-        when(groupRepository.findMyGroups(MEMBER_ID, null, pageable))
-                .thenReturn(new PageImpl<>(List.of(owned, joined), pageable, 2));
-        when(groupMemberService.getActiveRoles(MEMBER_ID, List.of(1L, 2L)))
-                .thenReturn(Map.of(1L, GroupRole.OWNER, 2L, GroupRole.MEMBER));
+        when(groupRepository.findMyGroups(MEMBER_ID, null, pageable)).thenReturn(new PageImpl<>(
+                List.of(new Object[] {owned, GroupRole.OWNER}, new Object[] {joined, GroupRole.MEMBER}), pageable, 2));
 
         PageResponse<GroupSummaryResponse> response = groupService.getMyGroups(MEMBER_ID, null, pageable);
 
@@ -155,13 +156,22 @@ class GroupServiceTest {
     void getMyGroups_normalizesKeyword() {
         Pageable pageable = PageRequest.of(0, 20);
         when(groupRepository.findMyGroups(any(), any(), any())).thenReturn(Page.empty(pageable));
-        when(groupMemberService.getActiveRoles(MEMBER_ID, List.of())).thenReturn(Map.of());
 
         groupService.getMyGroups(MEMBER_ID, "  밴드 ", pageable);
         groupService.getMyGroups(MEMBER_ID, "   ", pageable);
 
         verify(groupRepository).findMyGroups(MEMBER_ID, "밴드", pageable);
         verify(groupRepository).findMyGroups(MEMBER_ID, null, pageable);
+    }
+
+    @Test
+    @DisplayName("내 모임 목록은 클라이언트 sort를 버리고 페이지 크기를 20으로 자른다")
+    void getMyGroups_dropsSortAndCapsPageSize() {
+        when(groupRepository.findMyGroups(any(), any(), any())).thenReturn(Page.empty());
+
+        groupService.getMyGroups(MEMBER_ID, null, PageRequest.of(1, 500, Sort.by("joinedAt")));
+
+        verify(groupRepository).findMyGroups(MEMBER_ID, null, PageRequest.of(1, 20));
     }
 
     @Test
@@ -209,13 +219,7 @@ class GroupServiceTest {
 
     // id는 GeneratedValue라 create()로는 못 채운다 — 저장 후 채워지는 것처럼 리플렉션으로 넣는다.
     private static Group withId(Group group, Long id) {
-        try {
-            Field idField = Group.class.getDeclaredField("id");
-            idField.setAccessible(true);
-            idField.set(group, id);
-            return group;
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(e);
-        }
+        ReflectionTestUtils.setField(group, "id", id);
+        return group;
     }
 }
