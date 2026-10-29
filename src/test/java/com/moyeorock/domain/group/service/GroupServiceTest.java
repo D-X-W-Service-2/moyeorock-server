@@ -2,6 +2,7 @@ package com.moyeorock.domain.group.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
 import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.enums.GroupStatus;
@@ -18,12 +20,14 @@ import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.dto.response.NoticePreviewResponse;
 import com.moyeorock.domain.notice.service.NoticeService;
+import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +35,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class GroupServiceTest {
@@ -122,6 +130,38 @@ class GroupServiceTest {
         assertThat(group.getCoverImage()).isNull();
         assertThat(response.name()).isEqualTo("새 이름");
         assertThat(response.myRole()).isEqualTo(GroupRole.OWNER);
+    }
+
+    @Test
+    @DisplayName("내 모임 목록은 모임마다 그 모임에서의 내 역할을 붙인다")
+    void getMyGroups_attachesMyRolePerGroup() {
+        Group owned = withId(group(), 1L);
+        Group joined = withId(group(), 2L);
+        Pageable pageable = PageRequest.of(0, 20);
+        when(groupRepository.findMyGroups(MEMBER_ID, null, pageable))
+                .thenReturn(new PageImpl<>(List.of(owned, joined), pageable, 2));
+        when(groupMemberService.getActiveRoles(MEMBER_ID, List.of(1L, 2L)))
+                .thenReturn(Map.of(1L, GroupRole.OWNER, 2L, GroupRole.MEMBER));
+
+        PageResponse<GroupSummaryResponse> response = groupService.getMyGroups(MEMBER_ID, null, pageable);
+
+        assertThat(response.content()).extracting(GroupSummaryResponse::id, GroupSummaryResponse::role)
+                .containsExactly(tuple(1L, GroupRole.OWNER), tuple(2L, GroupRole.MEMBER));
+        assertThat(response.totalElements()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("keyword는 앞뒤 공백을 지우고, 공백뿐이면 필터 없이 조회한다")
+    void getMyGroups_normalizesKeyword() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(groupRepository.findMyGroups(any(), any(), any())).thenReturn(Page.empty(pageable));
+        when(groupMemberService.getActiveRoles(MEMBER_ID, List.of())).thenReturn(Map.of());
+
+        groupService.getMyGroups(MEMBER_ID, "  밴드 ", pageable);
+        groupService.getMyGroups(MEMBER_ID, "   ", pageable);
+
+        verify(groupRepository).findMyGroups(MEMBER_ID, "밴드", pageable);
+        verify(groupRepository).findMyGroups(MEMBER_ID, null, pageable);
     }
 
     @Test

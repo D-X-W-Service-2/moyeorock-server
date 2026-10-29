@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.group.entity.GroupMember;
@@ -15,6 +16,8 @@ import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +45,26 @@ class GroupMemberServiceTest {
     @BeforeEach
     void setUp() {
         groupMemberService = new GroupMemberService(groupMemberRepository, groupRepository);
+    }
+
+    @Test
+    @DisplayName("여러 모임에서의 내 역할을 모임 id별로 돌려준다")
+    void getActiveRoles_mapsRoleByGroupId() {
+        when(groupMemberRepository.findByUserIdAndGroupIdInAndStatus(MEMBER_ID, List.of(1L, 2L),
+                GroupMemberStatus.ACTIVE))
+                .thenReturn(List.of(GroupMember.create(1L, MEMBER_ID, GroupRole.OWNER),
+                        GroupMember.create(2L, MEMBER_ID, GroupRole.MEMBER)));
+
+        Map<Long, GroupRole> roles = groupMemberService.getActiveRoles(MEMBER_ID, List.of(1L, 2L));
+
+        assertThat(roles).containsExactlyInAnyOrderEntriesOf(Map.of(1L, GroupRole.OWNER, 2L, GroupRole.MEMBER));
+    }
+
+    @Test
+    @DisplayName("모임 id가 없으면(빈 페이지) 조회하지 않고 빈 결과를 돌려준다")
+    void getActiveRoles_skipsQuery_whenNoGroupIds() {
+        assertThat(groupMemberService.getActiveRoles(MEMBER_ID, List.of())).isEmpty();
+        verifyNoInteractions(groupMemberRepository);
     }
 
     @Test
