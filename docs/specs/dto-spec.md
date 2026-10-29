@@ -497,6 +497,18 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - `pinnedNotices`는 **고정된 공지만** 최신순 최대 3건이다. 고정 공지가 없으면 빈 배열이고 일반 공지로 자리를 채우지 않는다(2026-10-07 확정). 전체 공지는 공지 목록 엔드포인트로 받는다
 
+### PageResponse\<GroupSummaryResponse\>
+
+`GET /v1/groups/my?keyword=&page=&size=`(내 모임 목록)의 응답 항목. 2026-10-29 추가(이슈 #80).
+
+```json
+{ "id": 2, "name": "홍대 밴드부", "type": "REGULAR", "role": "OWNER", "coverImage": "https://.../cover.jpg" }
+```
+
+- `role`은 그 모임에서의 **내 역할**이다
+- `UserActivityResponse.groups[]` 항목과 같은 모양이다(`docs/conventions/dto-naming.md` §8 — `GroupSummaryResponse`를 거기서 재사용). 노션 `API 초안`의 이 행은 본문이 비어 있어 이미 명세에 있던 이 모양을 그대로 썼다
+- 모임원 수·지역 등은 담지 않는다(명세에 없음)
+
 ### PageResponse\<GroupMemberResponse\>
 
 `GET /v1/groups/{id}/members?keyword=&page=&size=`의 응답 항목. **2026-10-05에 Notion `API 초안`(2026-09-23) 기준으로 교체**했다 — 이전 스냅샷은 `user`를 중첩하고 `status`를 담는 형태였다.

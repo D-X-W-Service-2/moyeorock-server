@@ -16,7 +16,7 @@
 | `join` | 3팀 | `join_requests` | 12 |
 | `notification` | 3팀 | `notifications` | 2 |
 | `bookmark` | 3팀 | `bookmarks` | 3 |
-| `group` | 4팀 | `groups_` `group_members` | 6 |
+| `group` | 4팀 | `groups_` `group_members` | 8 |
 | `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 7 |
 | `song` | 4팀 | `songs` | 2 |
@@ -77,7 +77,7 @@
 | **1팀** | `auth` `user` `file` | 13 |
 | **2팀** | `team` `rehearsal` | 15 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 22 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 24 |
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
