@@ -49,6 +49,18 @@ public class GroupService {
         return toDetail(group, GroupRole.OWNER);
     }
 
+    /**
+     * 모임 해체(soft delete). 모임 상태만 바꾸고 모임원·공지는 그대로 둔다 — 해체된 모임은 조회·권한 확인에서
+     * 없는 모임으로 걸러지므로(getGroupOrThrow·GroupMemberService.ensureGroupExists) 따로 정리할 필요가 없다.
+     * 다른 모임원이 남아 있어도 모임장이면 해체할 수 있다.
+     */
+    @Transactional
+    public void disband(Long userId, Long groupId) {
+        Group group = getGroupOrThrow(groupId);
+        groupMemberService.ensureOwner(groupId, userId);
+        group.disband();
+    }
+
     private GroupDetailResponse toDetail(Group group, GroupRole myRole) {
         Long groupId = group.getId();
         return GroupDetailResponse.of(

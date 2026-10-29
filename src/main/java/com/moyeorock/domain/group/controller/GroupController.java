@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -41,5 +42,12 @@ public class GroupController {
     public ApiResponse<GroupDetailResponse> update(@AuthUser Long userId, @PathVariable Long groupId,
             @Valid @RequestBody GroupUpdateRequest request) {
         return ApiResponse.success(groupService.update(userId, groupId, request));
+    }
+
+    /** 모임 해체. 요청 바디가 없다 — 상태 전이가 ACTIVE → DISBANDED 하나뿐이다. */
+    @PatchMapping("/{groupId}/status")
+    public ApiResponse<Void> disband(@AuthUser Long userId, @PathVariable Long groupId) {
+        groupService.disband(userId, groupId);
+        return ApiResponse.success(null);
     }
 }
