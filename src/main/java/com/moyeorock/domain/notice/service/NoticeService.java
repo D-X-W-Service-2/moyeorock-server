@@ -19,9 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 공지 담당. 작성·수정·삭제 권한은 <b>현재 모임장</b>이다 — 작성자가 전 모임장이어도
- * 현 모임장만 수정·삭제할 수 있고, 그래서 {@code GroupNotice.isAuthor()}를 권한 판별에 쓰지 않는다.
- * 조회는 모임원이면 가능하다.
+ * 공지 담당. 작성·수정·삭제 권한은 작성자가 아니라 <b>현재 모임장</b>이다 — 작성자가 전 모임장이어도
+ * 현 모임장만 수정·삭제할 수 있다. 조회는 모임원이면 가능하다.
  */
 @Service
 @RequiredArgsConstructor

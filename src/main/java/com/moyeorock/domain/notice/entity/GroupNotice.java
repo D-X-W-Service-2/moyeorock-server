@@ -51,10 +51,6 @@ public class GroupNotice extends BaseEntity {
         return notice;
     }
 
-    public boolean isAuthor(Long userId) {
-        return this.authorId.equals(userId);
-    }
-
     public void update(String title, String body, boolean isPinned) {
         this.title = title;
         this.body = body;
