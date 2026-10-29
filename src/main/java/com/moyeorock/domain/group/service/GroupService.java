@@ -9,6 +9,7 @@ import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.service.NoticeService;
+import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
@@ -29,6 +30,7 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final GroupMemberService groupMemberService;
     private final NoticeService noticeService;
+    private final RecruitPostService recruitPostService;
 
     /** 모임 저장과 모임장 등록은 한 단위다 — 하나만 들어가면 주인 없는 모임이 생긴다. 새 모임이라 고정 공지는 없다. */
     @Transactional
@@ -74,8 +76,9 @@ public class GroupService {
     }
 
     /**
-     * 모임 해체(soft delete). 모임 상태만 바꾸고 모임원·공지는 그대로 둔다 — 해체된 모임은 조회·권한 확인에서
+     * 모임 해체(soft delete). 모임원·공지는 그대로 둔다 — 해체된 모임은 조회·권한 확인에서
      * 없는 모임으로 걸러지므로(getGroupOrThrow·GroupMemberService.ensureGroupExists) 따로 정리할 필요가 없다.
+     * 모임 밖(recruit)에 노출되는 모집 중 공고는 걸러 줄 곳이 없어 같은 트랜잭션에서 마감한다.
      * 다른 모임원이 남아 있어도 모임장이면 해체할 수 있다.
      * 위임과 동시에 오면 전 모임장이 해체할 수 있으므로 모임원 변경과 같은 모임 행 잠금으로 직렬화한다.
      */
@@ -85,6 +88,7 @@ public class GroupService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
         groupMemberService.ensureOwner(groupId, userId);
         group.disband();
+        recruitPostService.closeOpenPostsOfGroup(groupId);
     }
 
     private GroupDetailResponse toDetail(Group group, Long ownerId, GroupRole myRole) {

@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 권한은 임시 정책이다 — Notion 명세의 Actor는 "모임장 / 팀장"(작성·수정·마감)인데, 팀장·모임장을 확인할
  * 2팀 TeamService·4팀 GroupService가 아직 머지되지 않아 지금은 "수정·마감은 작성자 본인만, 작성은 로그인만"이다.
  * 대상 팀/모임의 존재·소속 검증도 같은 이유로 없다. 두 Service가 생기면 create/update/close의 권한 검증을 교체한다.
+ * 모임장 확인은 {@code GroupMemberService.ensureOwner}로 한다 — {@code GroupService}는 모임 해체 때 이 Service를
+ * 부르므로({@link #closeOpenPostsOfGroup}) 여기서 {@code GroupService}를 부르면 순환 참조가 된다.
  */
 @Service
 @RequiredArgsConstructor
@@ -93,6 +95,15 @@ public class RecruitPostService {
         }
         post.close();
         return RecruitPostStatusResponse.from(post);
+    }
+
+    /**
+     * 모임 해체 때 그 모임의 모집 중 공고를 마감한다({@code GroupService.disband}가 부른다). 권한 확인은 부르는 쪽이 한다.
+     * 해체는 soft delete라 공고 행도 지우지 않고 마감으로 남긴다(architecture.md §6). 마감된 공고는 이미 두고 간다.
+     */
+    @Transactional
+    public void closeOpenPostsOfGroup(Long groupId) {
+        recruitPostRepository.findByTargetGroupIdAndStatus(groupId, RecruitStatus.OPEN).forEach(RecruitPost::close);
     }
 
     private RecruitPost getPostOrThrow(Long postId) {
