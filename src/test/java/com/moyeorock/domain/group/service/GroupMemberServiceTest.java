@@ -6,14 +6,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.enums.GroupStatus;
+import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.group.repository.GroupRepository;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Optional;
@@ -53,7 +57,7 @@ class GroupMemberServiceTest {
     void changeRole_delegatesOwnership_andDemotesPreviousOwner() {
         GroupMember owner = member(OWNER_ID, GroupRole.OWNER);
         GroupMember target = member(MEMBER_ID, GroupRole.MEMBER);
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, owner);
         givenActiveMember(MEMBER_ID, target);
 
@@ -69,7 +73,7 @@ class GroupMemberServiceTest {
     void changeRole_toManager_doesNotTouchOwner() {
         GroupMember owner = member(OWNER_ID, GroupRole.OWNER);
         GroupMember target = member(MEMBER_ID, GroupRole.MEMBER);
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, owner);
         givenActiveMember(MEMBER_ID, target);
 
@@ -82,7 +86,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("자기 자신의 역할은 변경할 수 없다")
     void changeRole_throws_whenTargetIsSelf() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
 
         assertThatThrownBy(() -> groupMemberService.changeRole(OWNER_ID, GROUP_ID, OWNER_ID, GroupRole.MEMBER))
@@ -94,7 +98,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("모임장이 아니면 역할을 변경할 수 없다")
     void changeRole_throws_whenRequesterIsNotOwner() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
 
         assertThatThrownBy(() -> groupMemberService.changeRole(MEMBER_ID, GROUP_ID, OWNER_ID, GroupRole.OWNER))
@@ -106,7 +110,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("MANAGER도 역할 변경 권한은 없다 — 지금은 MEMBER와 동일 취급")
     void changeRole_throws_whenRequesterIsManager() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MANAGER));
 
         assertThatThrownBy(() -> groupMemberService.changeRole(MEMBER_ID, GROUP_ID, OWNER_ID, GroupRole.MEMBER))
@@ -119,7 +123,7 @@ class GroupMemberServiceTest {
     @DisplayName("본인이 탈퇴하면 상태가 LEFT가 된다")
     void changeStatus_setsLeft_whenMemberLeavesSelf() {
         GroupMember target = member(MEMBER_ID, GroupRole.MEMBER);
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(MEMBER_ID, target);
 
         groupMemberService.changeStatus(MEMBER_ID, GROUP_ID, MEMBER_ID);
@@ -131,7 +135,7 @@ class GroupMemberServiceTest {
     @DisplayName("모임장이 다른 모임원을 내보내면 상태가 BANNED가 된다")
     void changeStatus_setsBanned_whenOwnerRemovesOther() {
         GroupMember target = member(MEMBER_ID, GroupRole.MEMBER);
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(MEMBER_ID, target);
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
 
@@ -144,7 +148,7 @@ class GroupMemberServiceTest {
     @DisplayName("모임장은 위임 없이 탈퇴할 수 없다")
     void changeStatus_throws_whenOwnerLeavesWithoutDelegation() {
         GroupMember owner = member(OWNER_ID, GroupRole.OWNER);
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, owner);
 
         assertThatThrownBy(() -> groupMemberService.changeStatus(OWNER_ID, GROUP_ID, OWNER_ID))
@@ -157,7 +161,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("모임장이 아닌 사람이 남을 내보내려 하면 거부된다")
     void changeStatus_throws_whenNonOwnerRemovesOther() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(30L, member(30L, GroupRole.MEMBER));
 
         assertThatThrownBy(() -> groupMemberService.changeStatus(30L, GROUP_ID, MEMBER_ID))
@@ -194,7 +198,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("탈퇴한 모임원을 다시 내보내려 하면 GROUP_MEMBER_NOT_FOUND를 던진다")
     void changeStatus_throws_whenTargetIsNotActive() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
         when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID)).thenReturn(Optional.empty());
 
@@ -221,14 +225,14 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("권한 확인은 대상 조회보다 먼저 한다 — 권한 없는 요청에 다른 모임원 존재 여부를 노출하지 않는다")
     void changeRole_checksPermissionBeforeLookingUpTarget() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
         givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
 
         groupMemberService.changeRole(OWNER_ID, GROUP_ID, MEMBER_ID, GroupRole.MANAGER);
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
-        order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
+        order.verify(groupRepository).findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE);
         order.verify(groupMemberRepository).findActiveMember(GROUP_ID, OWNER_ID);
         order.verify(groupMemberRepository).findActiveMember(GROUP_ID, MEMBER_ID);
     }
@@ -236,14 +240,14 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("내보내기도 권한 확인을 대상 조회보다 먼저 한다 — changeRole과 잠금·검사 순서를 맞춘다")
     void changeStatus_checksPermissionBeforeLookingUpTarget() {
-        givenGroupExists();
+        givenGroupLocked();
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
         givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
 
         groupMemberService.changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
-        order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
+        order.verify(groupRepository).findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE);
         order.verify(groupMemberRepository).findActiveMember(GROUP_ID, OWNER_ID);
         order.verify(groupMemberRepository).findActiveMember(GROUP_ID, MEMBER_ID);
     }
@@ -272,8 +276,38 @@ class GroupMemberServiceTest {
                 .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
     }
 
+    @Test
+    @DisplayName("위임은 모임 행을 먼저 잠그고, 해체됐거나 없는 모임이면 모임원을 조회하지 않고 GROUP_NOT_FOUND를 던진다")
+    void changeRole_throws_whenGroupDisbanded() {
+        when(groupRepository.findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.changeRole(OWNER_ID, GROUP_ID, MEMBER_ID, GroupRole.OWNER))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+        verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("해체됐거나 없는 모임에서는 탈퇴도 모임원을 조회하지 않고 GROUP_NOT_FOUND를 던진다")
+    void changeStatus_throws_whenGroupDisbanded() {
+        when(groupRepository.findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.changeStatus(MEMBER_ID, GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+        verifyNoInteractions(groupMemberRepository);
+    }
+
     private void givenGroupExists() {
         when(groupRepository.existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(true);
+    }
+
+    // 위임·탈퇴·강퇴는 존재 확인 대신 모임 행 잠금 조회로 모임을 확인한다
+    private void givenGroupLocked() {
+        when(groupRepository.findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE))
+                .thenReturn(Optional.of(Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)));
     }
 
     private void givenActiveMember(Long userId, GroupMember member) {

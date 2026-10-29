@@ -147,6 +147,18 @@ class GroupRepositoryTest {
         assertThat(firstPage.getTotalElements()).isEqualTo(3);
     }
 
+    @Test
+    @DisplayName("잠금 조회도 해체된 모임은 없는 모임으로 보고, 해체되지 않은 모임은 찾는다")
+    void findByIdAndStatusForUpdate_excludesDisbandedGroup() {
+        Group active = groupRepository.saveAndFlush(group("활동 중"));
+        Group disbanded = groupRepository.save(group("해체됨"));
+        disbanded.disband();
+        groupRepository.flush();
+
+        assertThat(groupRepository.findByIdAndStatusForUpdate(active.getId(), GroupStatus.ACTIVE)).isPresent();
+        assertThat(groupRepository.findByIdAndStatusForUpdate(disbanded.getId(), GroupStatus.ACTIVE)).isEmpty();
+    }
+
     // findMyGroups의 각 행은 [Group, 내 역할]이다
     private static List<Long> groupIds(Page<Object[]> page) {
         return page.getContent().stream().map(row -> ((Group) row[0]).getId()).toList();
@@ -164,4 +176,5 @@ class GroupRepositoryTest {
     private static Group group(String name) {
         return Group.create(name, null, GroupType.REGULAR, Region.SEOUL, null);
     }
+
 }
