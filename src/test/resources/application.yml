@@ -27,7 +27,6 @@ spring:
     locations: classpath:db/migration
 
   jackson:
-    default-property-inclusion: non_null
     serialization:
       fail-on-empty-beans: false
 
