@@ -101,8 +101,11 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `type` | `VARCHAR(10)` | REGULAR\|PROJECT |
 |  | `region` | `VARCHAR(50)` |  |
 |  | `cover_image` | `VARCHAR(500)` |  |
+|  | `status` | `VARCHAR(10) NOT NULL` | ACTIVE\|DISBANDED (기본값 ACTIVE) |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
+
+> 2026-10-29 `status` 추가(이슈 #80) — 모임 해체(`PATCH /v1/groups/{groupId}/status`)는 행을 지우지 않는 soft delete다(`architecture.md` §6). 해체 시 이 컬럼만 바꾸고 `group_members`·`group_notices`는 그대로 두며, 모임을 거쳐 들어오는 조회가 `DISBANDED`를 걸러 "없는 모임"(404)으로 본다.
 
 ### 5. `group_members`
 
