@@ -3,6 +3,7 @@ package com.moyeorock.domain.group.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -121,6 +122,45 @@ class GroupServiceTest {
         assertThat(group.getCoverImage()).isNull();
         assertThat(response.name()).isEqualTo("새 이름");
         assertThat(response.myRole()).isEqualTo(GroupRole.OWNER);
+    }
+
+    @Test
+    @DisplayName("모임장이 해체하면 모임이 DISBANDED가 된다")
+    void disband_changesStatusToDisbanded() {
+        Group group = withId(group(), GROUP_ID);
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
+
+        groupService.disband(OWNER_ID, GROUP_ID);
+
+        verify(groupMemberService).ensureOwner(GROUP_ID, OWNER_ID);
+        assertThat(group.getStatus()).isEqualTo(GroupStatus.DISBANDED);
+    }
+
+    @Test
+    @DisplayName("모임장이 아니면 해체할 수 없고 모임 상태도 그대로다")
+    void disband_throws_whenNotOwner() {
+        Group group = withId(group(), GROUP_ID);
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_OWNER))
+                .when(groupMemberService).ensureOwner(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> groupService.disband(MEMBER_ID, GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        assertThat(group.getStatus()).isEqualTo(GroupStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("이미 해체된(없는) 모임을 해체하면 GROUP_NOT_FOUND를 던지고 권한 확인까지 가지 않는다")
+    void disband_throws_whenGroupMissingOrDisbanded() {
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupService.disband(OWNER_ID, GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+        verifyNoInteractions(groupMemberService);
     }
 
     private static Group group() {
