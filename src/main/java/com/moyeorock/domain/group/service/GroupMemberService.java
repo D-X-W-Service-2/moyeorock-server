@@ -4,6 +4,7 @@ import com.moyeorock.domain.group.dto.response.GroupMemberResponse;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
 import com.moyeorock.domain.group.enums.GroupRole;
+import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -135,8 +136,10 @@ public class GroupMemberService {
         return groupMemberRepository.findByGroupIdAndUserIdAndStatus(groupId, userId, GroupMemberStatus.ACTIVE);
     }
 
+    // 해체된 모임도 없는 모임으로 본다 — ensureOwner·ensureActiveMember가 이걸 거치므로
+    // 모임원·공지 엔드포인트가 모두 해체된 모임을 404로 막는다.
     private void ensureGroupExists(Long groupId) {
-        if (!groupRepository.existsById(groupId)) {
+        if (!groupRepository.existsByIdAndStatus(groupId, GroupStatus.ACTIVE)) {
             throw new BusinessException(ErrorCode.GROUP_NOT_FOUND);
         }
     }

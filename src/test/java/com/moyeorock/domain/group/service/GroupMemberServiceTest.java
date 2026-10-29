@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
 import com.moyeorock.domain.group.enums.GroupRole;
+import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.exception.BusinessException;
@@ -169,7 +170,7 @@ class GroupMemberServiceTest {
     @Test
     @DisplayName("존재하지 않는 모임이면 GROUP_NOT_FOUND를 던진다")
     void ensureActiveMember_throws_whenGroupMissing() {
-        when(groupRepository.existsById(GROUP_ID)).thenReturn(false);
+        when(groupRepository.existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(false);
 
         assertThatThrownBy(() -> groupMemberService.ensureActiveMember(GROUP_ID, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
@@ -228,7 +229,7 @@ class GroupMemberServiceTest {
         groupMemberService.changeRole(OWNER_ID, GROUP_ID, MEMBER_ID, GroupRole.MANAGER);
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
-        order.verify(groupRepository).existsById(GROUP_ID);
+        order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
         order.verify(groupMemberRepository)
                 .findByGroupIdAndUserIdAndStatus(GROUP_ID, OWNER_ID, GroupMemberStatus.ACTIVE);
         order.verify(groupMemberRepository)
@@ -245,7 +246,7 @@ class GroupMemberServiceTest {
         groupMemberService.changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
 
         InOrder order = inOrder(groupRepository, groupMemberRepository);
-        order.verify(groupRepository).existsById(GROUP_ID);
+        order.verify(groupRepository).existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE);
         order.verify(groupMemberRepository)
                 .findByGroupIdAndUserIdAndStatus(GROUP_ID, OWNER_ID, GroupMemberStatus.ACTIVE);
         order.verify(groupMemberRepository)
@@ -253,7 +254,7 @@ class GroupMemberServiceTest {
     }
 
     private void givenGroupExists() {
-        when(groupRepository.existsById(GROUP_ID)).thenReturn(true);
+        when(groupRepository.existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(true);
     }
 
     private void givenActiveMember(Long userId, GroupMember member) {

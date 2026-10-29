@@ -5,6 +5,7 @@ import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupRole;
+import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.service.NoticeService;
 import com.moyeorock.global.exception.BusinessException;
@@ -59,7 +60,7 @@ public class GroupService {
     }
 
     private Group getGroupOrThrow(Long groupId) {
-        return groupRepository.findById(groupId)
+        return groupRepository.findByIdAndStatus(groupId, GroupStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
     }
 }

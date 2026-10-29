@@ -12,6 +12,7 @@ import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupRole;
+import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.dto.response.NoticePreviewResponse;
@@ -74,7 +75,7 @@ class GroupServiceTest {
     @DisplayName("모임 상세는 모임원 수·내 역할·고정 공지를 함께 담는다")
     void getDetail_composesHomeScreen() {
         Group group = withId(group(), GROUP_ID);
-        when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
         when(groupMemberService.getActiveRole(GROUP_ID, MEMBER_ID)).thenReturn(GroupRole.MEMBER);
         when(groupMemberService.getOwnerId(GROUP_ID)).thenReturn(OWNER_ID);
         when(groupMemberService.countActiveMembers(GROUP_ID)).thenReturn(24);
@@ -93,7 +94,7 @@ class GroupServiceTest {
     @Test
     @DisplayName("없는 모임을 조회하면 GROUP_NOT_FOUND를 던진다")
     void getDetail_throws_whenGroupMissing() {
-        when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.empty());
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> groupService.getDetail(MEMBER_ID, GROUP_ID))
                 .isInstanceOf(BusinessException.class)
@@ -106,7 +107,7 @@ class GroupServiceTest {
     @DisplayName("모임 정보 수정은 type까지 반영한다")
     void update_appliesAllFieldsIncludingType() {
         Group group = withId(group(), GROUP_ID);
-        when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
         when(groupMemberService.getOwnerId(GROUP_ID)).thenReturn(OWNER_ID);
         when(groupMemberService.countActiveMembers(GROUP_ID)).thenReturn(5);
         when(noticeService.getPinnedPreview(GROUP_ID)).thenReturn(List.of());
