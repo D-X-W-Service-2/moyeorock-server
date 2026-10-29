@@ -8,7 +8,9 @@ public record NoticeUpdateRequest(
         @Size(max = 100, message = "공지 제목은 100자 이하여야 합니다.")
         String title,
 
+        // 최대 길이를 정한 이유는 NoticeCreateRequest와 같다
         @NotBlank(message = "공지 내용은 필수입니다.")
+        @Size(max = 20000, message = "공지 내용은 20,000자 이하여야 합니다.")
         String body,
 
         // 래퍼로 받는 이유는 NoticeCreateRequest와 같다
