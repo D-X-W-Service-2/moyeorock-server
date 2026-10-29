@@ -46,10 +46,12 @@ public class GroupMemberService {
 
     /**
      * 역할 변경·모임장 위임. {@code OWNER}로 위임하면 기존 모임장(요청자)을 {@code MEMBER}로 강등한다 —
-     * 두 변경이 반만 적용되면 모임장이 0명 또는 2명이 되므로 한 트랜잭션으로 묶는다.
+     * 두 변경이 반만 적용되면 모임장이 0명 또는 2명이 되므로 한 트랜잭션으로 묶고, 같은 모임의 다른 위임·탈퇴·
+     * 강퇴와 겹치지 않게 모임 행을 먼저 잠근다.
      */
     @Transactional
     public GroupMemberResponse changeRole(Long userId, Long groupId, Long targetUserId, GroupRole role) {
+        lockActiveGroup(groupId);
         GroupMember owner = getOwnerOrThrow(groupId, userId);
         if (userId.equals(targetUserId)) {
             throw new BusinessException(ErrorCode.CANNOT_CHANGE_OWN_ROLE);
@@ -70,14 +72,13 @@ public class GroupMemberService {
      *
      * <p>{@link #changeRole}과 같이 <b>권한 확인을 대상 조회보다 먼저</b> 한다 — 권한 없는 요청자에게
      * 다른 모임원의 존재 여부를 404/403으로 구분해 알려주지 않으려는 것이다. 요청자 행을 대상 행보다
-     * 먼저 읽는 순서도 두 메서드가 같아진다.
+     * 먼저 읽는 순서도 두 메서드가 같아진다. 위임과 같은 이유로 모임 행을 먼저 잠근다.
      */
     @Transactional
     public void changeStatus(Long userId, Long groupId, Long targetUserId) {
-        if (userId.equals(targetUserId)) {
-            ensureGroupExists(groupId);
-        } else {
-            ensureOwner(groupId, userId);  // 모임 존재 확인을 포함한다 — 중복 조회하지 않는다
+        lockActiveGroup(groupId);
+        if (!userId.equals(targetUserId)) {
+            getOwnerOrThrow(groupId, userId);
         }
 
         GroupMember target = getActiveMemberOrThrow(groupId, targetUserId);
@@ -98,6 +99,7 @@ public class GroupMemberService {
     }
 
     public void ensureOwner(Long groupId, Long userId) {
+        ensureGroupExists(groupId);
         getOwnerOrThrow(groupId, userId);
     }
 
@@ -138,9 +140,16 @@ public class GroupMemberService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
     }
 
+    // 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
+    // 트랜잭션의 첫 조회여야 한다(GroupRepository.findByIdAndStatusForUpdate).
+    private void lockActiveGroup(Long groupId) {
+        groupRepository.findByIdAndStatusForUpdate(groupId, GroupStatus.ACTIVE)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+    }
+
     // 요청자가 이 모임의 현재 모임장인지 확인하고 그 행을 돌려준다 — 위임할 때 다시 조회하지 않고 바로 강등한다.
+    // 모임 존재 확인은 부르는 쪽이 먼저 한다(ensureOwner·lockActiveGroup).
     private GroupMember getOwnerOrThrow(Long groupId, Long userId) {
-        ensureGroupExists(groupId);
         return groupMemberRepository.findActiveMember(groupId, userId)
                 .filter(GroupMember::isOwner)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_GROUP_OWNER));
