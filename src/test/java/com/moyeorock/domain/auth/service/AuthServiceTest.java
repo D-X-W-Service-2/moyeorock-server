@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.moyeorock.domain.auth.client.KakaoOAuthClient;
@@ -21,6 +22,7 @@ import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.security.JwtProvider;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +74,13 @@ class AuthServiceTest {
         return ((BusinessException) thrown).getErrorCode();
     }
 
+    /** MySQL이 UNIQUE 위반에 내는 메시지 형태. 어느 인덱스에 걸렸는지는 이 메시지로만 알 수 있다. */
+    private static DataIntegrityViolationException uniqueViolation(String index, String value) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new SQLIntegrityConstraintViolationException(
+                        "Duplicate entry '" + value + "' for key 'users." + index + "'"));
+    }
+
     @Nested
     @DisplayName("signup")
     class Signup {
@@ -108,14 +117,49 @@ class AuthServiceTest {
         }
 
         @Test
-        @DisplayName("동시 가입으로 UNIQUE에 걸리면 500 대신 EMAIL_DUPLICATED")
-        void unique_violation_maps_to_409() {
+        @DisplayName("동시 가입으로 email UNIQUE에 걸리면 500 대신 EMAIL_DUPLICATED, 재시도하지 않는다")
+        void email_unique_violation_maps_to_409() {
             given(userRepository.existsByEmail(any())).willReturn(false);
             given(nicknameGenerator.resolve(any())).willReturn("서준");
             given(passwordEncoder.encode(any())).willReturn("hashed");
-            given(userRepository.saveAndFlush(any(User.class))).willThrow(new DataIntegrityViolationException("dup"));
+            given(userRepository.saveAndFlush(any(User.class)))
+                    .willThrow(uniqueViolation("uk_users_email", "seojun@example.com"));
 
             assertThat(errorCodeOf(catchThrowable(() -> authService.signup(request)))).isEqualTo(ErrorCode.EMAIL_DUPLICATED);
+            verify(userRepository, times(1)).saveAndFlush(any(User.class));
+        }
+
+        @Test
+        @DisplayName("동시 가입으로 임시 닉네임이 nickname UNIQUE에 걸리면 닉네임을 다시 만들어 1회 재시도한다")
+        void nickname_unique_violation_retries_with_new_nickname() {
+            given(userRepository.existsByEmail(any())).willReturn(false);
+            given(nicknameGenerator.resolve("서준")).willReturn("서준", "서준_x9k2");
+            given(passwordEncoder.encode(any())).willReturn("hashed");
+            given(userRepository.saveAndFlush(any(User.class)))
+                    .willThrow(uniqueViolation("uk_users_nickname", "서준"))
+                    .willAnswer(inv -> withId(inv.getArgument(0), 13L));
+            given(jwtProvider.generateToken(13L)).willReturn("access");
+
+            AuthTokenResponse response = authService.signup(request);
+
+            ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+            verify(userRepository, times(2)).saveAndFlush(saved.capture());
+            assertThat(saved.getAllValues()).extracting(User::getNickname).containsExactly("서준", "서준_x9k2");
+            assertThat(response).isEqualTo(new AuthTokenResponse("access", 13L, "서준_x9k2", false));
+        }
+
+        @Test
+        @DisplayName("재시도까지 nickname UNIQUE에 걸리면 BusinessException으로 바꾸지 않고 그대로 흘린다(500)")
+        void nickname_unique_violation_twice_propagates() {
+            given(userRepository.existsByEmail(any())).willReturn(false);
+            given(nicknameGenerator.resolve(any())).willReturn("서준", "서준_x9k2");
+            given(passwordEncoder.encode(any())).willReturn("hashed");
+            given(userRepository.saveAndFlush(any(User.class)))
+                    .willThrow(uniqueViolation("uk_users_nickname", "서준"))
+                    .willThrow(uniqueViolation("uk_users_nickname", "서준_x9k2"));
+
+            assertThat(catchThrowable(() -> authService.signup(request))).isInstanceOf(DataIntegrityViolationException.class);
+            verify(userRepository, times(2)).saveAndFlush(any(User.class));
         }
     }
 
@@ -243,6 +287,23 @@ class AuthServiceTest {
             assertThat(saved.getValue().getEmail()).isNull();
             assertThat(saved.getValue().getPasswordHash()).isNull();
             assertThat(response).isEqualTo(new AuthTokenResponse("access", 30L, "민서_a1b2", false));
+        }
+
+        @Test
+        @DisplayName("동시 가입으로 kakao_id UNIQUE에 걸리면 ALREADY_REGISTERED, nickname UNIQUE면 닉네임을 다시 만들어 재시도한다")
+        void unique_violations_split_by_index() {
+            given(signupTokenProvider.parse("signup-jwt")).willReturn(new SignupClaims("k-2", "민서"));
+            given(userRepository.findByKakaoId("k-2")).willReturn(Optional.empty());
+            given(nicknameGenerator.resolve("민서")).willReturn("민서", "민서_a1b2", "민서");
+            given(userRepository.saveAndFlush(any(User.class)))
+                    .willThrow(uniqueViolation("uk_users_nickname", "민서"))
+                    .willAnswer(inv -> withId(inv.getArgument(0), 31L))
+                    .willThrow(uniqueViolation("uk_users_kakao_id", "k-2"));
+            given(jwtProvider.generateToken(31L)).willReturn("access");
+
+            assertThat(authService.kakaoSignup(request).nickname()).isEqualTo("민서_a1b2");
+            assertThat(errorCodeOf(catchThrowable(() -> authService.kakaoSignup(request)))).isEqualTo(ErrorCode.ALREADY_REGISTERED);
+            verify(userRepository, times(3)).saveAndFlush(any(User.class));
         }
 
         @Test
