@@ -8,7 +8,7 @@
 
 | 도메인 | 담당 | 소유 테이블 | 개수 |
 |---|---|---|---|
-| `auth` | 1팀 | (없음 · `users` 읽기) | 3 |
+| `auth` | 1팀 | (없음 · `users` 읽기·가입 시 생성) | 4 |
 | `user` | 1팀 | `users` `user_instruments` | 9 |
 | `team` | 2팀 | `teams` `team_genres` `team_members` | 9 |
 | `rehearsal` | 2팀 | `rehearsals` | 6 |
@@ -74,7 +74,7 @@
 
 | 팀 | 도메인 | 엔드포인트 |
 |---|---|---|
-| **1팀** | `auth` `user` `file` | 13 |
+| **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 15 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
 | **4팀** | `group` `notice` `performance` `song` `setlist` | 22 |

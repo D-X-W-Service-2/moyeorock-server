@@ -27,6 +27,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByNickname(String nickname);
 
+    // auth 도메인용 (architecture.md §3: auth → user 단방향, AuthService의 UserRepository 사용 허용)
+    boolean existsByEmail(String email);
+
+    Optional<User> findByEmail(String email);
+
+    Optional<User> findByKakaoId(String kakaoId);
+
     Page<User> findByStatusAndNicknameContaining(UserStatus status, String nickname, Pageable pageable);
 
     /** 타 도메인 일괄 요약 조회용(UserService.getSummaries). IN 1번, 지정 상태(탈퇴)만 제외. */
