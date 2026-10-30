@@ -112,7 +112,7 @@ public class UserService {
      * 다른 도메인이 팀원·작성자 등을 채울 때 쓰는 일괄 조회(conventions.md §4). IN 쿼리 1번.
      * 탈퇴 회원은 제외한다(PR #57 2팀 요청). 존재하지 않는 id와 탈퇴한 id는 결과 Map에서 빠진다.
      */
-    public Map<Long, UserSummaryResponse> getSummaries(List<Long> userIds) {
+    public Map<Long, UserSummaryResponse> getSummaries(Collection<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
         }
@@ -122,32 +122,36 @@ public class UserService {
 
     /**
      * 타 도메인이 자기 범위(모임원 등)의 사용자 세션 목록을 채울 때 쓰는 일괄 조회(conventions.md §4, 이슈 #73). IN 쿼리 1번.
-     * 세션이 없는 사용자와 존재하지 않는 id는 Map에 키가 없다 — 호출자는 getOrDefault(id, List.of())로 읽는다.
-     * 사용자 상태는 보지 않는다. 탈퇴 제외는 getSummaries가 담당하므로 호출자가 두 결과를 합치면서 거른다.
+     * getSummaries와 같이 탈퇴 회원은 제외한다(PR #74 리뷰). 호출자가 두 결과를 합치며 거르는 단계를 빼먹어도 탈퇴 회원의 세션이 새지 않는다.
+     * 세션이 없는 사용자·존재하지 않는 id·탈퇴한 id는 Map에 키가 없다. 호출자는 getOrDefault(id, List.of())로 읽는다.
      */
     public Map<Long, List<UserInstrumentResponse>> getInstruments(Collection<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
         }
-        return userInstrumentRepository.findAllByUserIdInOrderByUserIdAscIdAsc(new HashSet<>(userIds)).stream()
+        return userInstrumentRepository
+                .findAllByUserIdInAndUserStatusNotOrderByUserIdAscIdAsc(new HashSet<>(userIds), UserStatus.WITHDRAWN)
+                .stream()
                 .collect(Collectors.groupingBy(UserInstrument::getUserId, LinkedHashMap::new,
                         Collectors.mapping(UserInstrumentResponse::from, Collectors.toList())));
     }
 
     /**
-     * 호출자가 넘긴 id 범위(모임원 등) 안에서 닉네임이 keyword를 부분 포함하는 ACTIVE 사용자 id만 돌려준다(이슈 #73). IN 쿼리 1번.
-     * 전체 회원을 훑지 않으므로 결과가 입력 크기를 넘지 않는다 — search처럼 상한 없는 닉네임 검색 경로를 열지 않기 위한 설계다.
-     * keyword는 search와 같이 앞뒤 공백을 지우고, 비면 조회 없이 빈 Set이다("조건 없음 = 전부"로 읽히지 않게).
-     * 조건 없는 목록은 호출자가 이 메서드를 거치지 않으면 된다.
+     * 호출자가 넘긴 id 범위(모임원 등) 안에서 탈퇴하지 않은 사용자 id를 돌려주고, keyword가 있으면 닉네임 부분 일치 조건을 더한다(이슈 #73). IN 쿼리 1번.
+     * 전체 회원을 훑지 않으므로 결과가 입력 크기를 넘지 않는다. search처럼 상한 없는 닉네임 검색 경로를 열지 않기 위한 설계다.
+     * 상태 조건은 같은 응답을 그리는 getSummaries와 맞춰 "탈퇴 제외"다(정지 회원은 목록에 보이므로 검색에서도 보인다). ACTIVE만 보는 search와는 다르다(PR #74 리뷰).
+     * keyword는 search와 같이 앞뒤 공백을 지우고, 비면 닉네임 조건 없이 넘긴 id 전부(탈퇴 제외)다. 호출자(GroupService)가 빈 keyword를 "조건 없음"으로 다루는 관례와 같다.
      */
     public Set<Long> filterByNickname(Collection<Long> userIds, String keyword) {
-        String normalized = normalizeNickname(keyword);
-        if (userIds == null || userIds.isEmpty() || normalized == null || normalized.isEmpty()) {
+        if (userIds == null || userIds.isEmpty()) {
             return Set.of();
         }
-        return userRepository
-                .findAllByIdInAndStatusAndNicknameContaining(new HashSet<>(userIds), UserStatus.ACTIVE, normalized)
-                .stream()
+        Set<Long> ids = new HashSet<>(userIds);
+        String normalized = normalizeNickname(keyword);
+        List<User> users = (normalized == null || normalized.isEmpty())
+                ? userRepository.findAllByIdInAndStatusNot(ids, UserStatus.WITHDRAWN)
+                : userRepository.findAllByIdInAndStatusNotAndNicknameContaining(ids, UserStatus.WITHDRAWN, normalized);
+        return users.stream()
                 .map(User::getId)
                 .collect(Collectors.toSet());
     }

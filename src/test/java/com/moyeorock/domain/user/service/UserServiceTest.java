@@ -452,11 +452,12 @@ class UserServiceTest {
         }
 
         @Test
-        @DisplayName("중복을 뺀 id로 IN 조회 1번을 하고, userId별로 세션 목록을 조회 순서대로 묶는다 (세션 없는 id는 키가 없다)")
+        @DisplayName("중복을 뺀 id로 탈퇴 제외 IN 조회 1번을 하고, userId별로 세션 목록을 조회 순서대로 묶는다 (세션 없는 id는 키가 없다)")
         void groups_instruments_by_user_id() {
             @SuppressWarnings("unchecked")
             ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
-            given(userInstrumentRepository.findAllByUserIdInOrderByUserIdAscIdAsc(idsCaptor.capture()))
+            given(userInstrumentRepository.findAllByUserIdInAndUserStatusNotOrderByUserIdAscIdAsc(
+                    idsCaptor.capture(), eq(UserStatus.WITHDRAWN)))
                     .willReturn(List.of(
                             instrumentOf(1L, 10L, Instrument.BASS, Level.INTERMEDIATE),
                             instrumentOf(2L, 10L, Instrument.KEY, Level.NOVICE),
@@ -478,7 +479,7 @@ class UserServiceTest {
         void empty_ids_returns_empty_map() {
             assertThat(userService.getInstruments(List.of())).isEmpty();
             assertThat(userService.getInstruments(null)).isEmpty();
-            verify(userInstrumentRepository, never()).findAllByUserIdInOrderByUserIdAscIdAsc(any());
+            verify(userInstrumentRepository, never()).findAllByUserIdInAndUserStatusNotOrderByUserIdAscIdAsc(any(), any());
         }
     }
 
@@ -486,29 +487,42 @@ class UserServiceTest {
     @DisplayName("filterByNickname")
     class FilterByNickname {
 
+        private User userWithId(Long id, String nickname) {
+            User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
+            ReflectionTestUtils.setField(user, "id", id);
+            return user;
+        }
+
         @Test
-        @DisplayName("검색어 앞뒤 공백을 지우고, 넘긴 id 범위 안에서 ACTIVE·부분 일치 조회 1번을 해 id 집합을 돌려준다")
+        @DisplayName("검색어 앞뒤 공백을 지우고, 넘긴 id 범위 안에서 탈퇴 제외·부분 일치 조회 1번을 해 id 집합을 돌려준다")
         void filters_within_given_ids() {
-            User matched = User.signupWithEmail("a@example.com", "hash", "서준밴드", LocalDateTime.now());
-            ReflectionTestUtils.setField(matched, "id", 10L);
+            User matched = userWithId(10L, "서준밴드");
             @SuppressWarnings("unchecked")
             ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
-            given(userRepository.findAllByIdInAndStatusAndNicknameContaining(
-                    idsCaptor.capture(), eq(UserStatus.ACTIVE), eq("서준")))
+            given(userRepository.findAllByIdInAndStatusNotAndNicknameContaining(
+                    idsCaptor.capture(), eq(UserStatus.WITHDRAWN), eq("서준")))
                     .willReturn(List.of(matched));
 
             Set<Long> result = userService.filterByNickname(List.of(10L, 20L, 10L), " 서준 ");
 
             assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L);
             assertThat(result).containsExactly(10L);
+            verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
         }
 
         @Test
-        @DisplayName("검색어가 비면 조회 없이 빈 Set (조건 없음을 전부로 읽지 않는다)")
-        void blank_keyword_returns_empty_without_query() {
-            assertThat(userService.filterByNickname(List.of(10L), "  ")).isEmpty();
-            assertThat(userService.filterByNickname(List.of(10L), null)).isEmpty();
-            verify(userRepository, never()).findAllByIdInAndStatusAndNicknameContaining(any(), any(), any());
+        @DisplayName("검색어가 비면 닉네임 조건 없이 탈퇴 제외 조회 1번을 해 넘긴 id 전부를 돌려준다 (조건 없음 = 범위 전부)")
+        void blank_keyword_returns_all_given_ids_excluding_withdrawn() {
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<Collection<Long>> idsCaptor = ArgumentCaptor.forClass(Collection.class);
+            given(userRepository.findAllByIdInAndStatusNot(idsCaptor.capture(), eq(UserStatus.WITHDRAWN)))
+                    .willReturn(List.of(userWithId(10L, "서준"), userWithId(20L, "현빈")));
+
+            assertThat(userService.filterByNickname(List.of(10L, 20L, 30L), "  ")).containsExactlyInAnyOrder(10L, 20L);
+            assertThat(userService.filterByNickname(List.of(10L, 20L, 30L), null)).containsExactlyInAnyOrder(10L, 20L);
+
+            assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(10L, 20L, 30L);
+            verify(userRepository, never()).findAllByIdInAndStatusNotAndNicknameContaining(any(), any(), any());
         }
 
         @Test
@@ -516,7 +530,9 @@ class UserServiceTest {
         void empty_ids_returns_empty_without_query() {
             assertThat(userService.filterByNickname(List.of(), "서준")).isEmpty();
             assertThat(userService.filterByNickname(null, "서준")).isEmpty();
-            verify(userRepository, never()).findAllByIdInAndStatusAndNicknameContaining(any(), any(), any());
+            assertThat(userService.filterByNickname(List.of(), null)).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusNotAndNicknameContaining(any(), any(), any());
+            verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
         }
     }
 }
