@@ -43,7 +43,10 @@ public enum ErrorCode {
     OWNER_CANNOT_LEAVE(HttpStatus.CONFLICT, "모임장은 위임 후 탈퇴할 수 있습니다."),
 
     // 공지 (notice)
-    NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공지입니다.");
+    NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공지입니다."),
+
+    // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
+    PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다.");
 
     private final HttpStatus status;
     private final String message;
