@@ -7,7 +7,7 @@
 ## 공용 참조 객체 — 확정 (2026-08-27, 1팀)
 
 원본 JSON 예시가 문자열로만 참조하던 객체들. `docs/conventions/dto-naming.md`의 정식 이름으로 매핑하고 필드를 확정했다.
-패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/conventions/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투 5종만 둔다.
+패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/conventions/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투·공통 응답 3종(`ApiResponse` `PageResponse` `DeleteResponse`)만 둔다.
 
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
@@ -23,7 +23,7 @@
 
 DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3개는 **팀 경계를 넘는 의존의 시작점**이라 착수 전에 정하지 않으면 서로를 블로킹한다.
 
-1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 5종·enums 다음 3순위로 못 박힌 이유.
+1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 DTO·enums 다음 3순위로 못 박힌 이유.
 2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v1/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v1/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/conventions/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
 3. **`PageResponse<T>` (1팀 소유, global/common)** — 모든 팀의 목록 API가 import하는 클래스. 확정이 늦으면 각 팀이 임시 포장을 만들었다가 갈아엎게 된다. 필드는 이미 dto-naming.md §0에 있으므로 구현만 선행하면 된다.
 
@@ -347,8 +347,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 {
   "id": 14,
   "targetType": "TEAM",
-  "target": "TeamSummary",
-  "author": "UserSummary",
+  "target": { "id": 5, "name": "무명밴드", "region": "SEOUL", "genres": ["ROCK"] },
+  "author": { "id": 12, "nickname": "김철수" },
   "title": "베이스 1명 구합니다",
   "body": "주 1회 홍대에서 합주합니다.",
   "wantedSlots": [
@@ -358,9 +358,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "status": "OPEN",
   "canEdit": false,
   "myJoinRequest": { "id": 77, "status": "PENDING" },
-  "createdAt": "2026-08-11T15:00:00"
+  "createdAt": "2026-08-11T15:00:00",
+  "updatedAt": "2026-08-11T15:00:00"
 }
 ```
+
+> 2026-09-25 Notion `API 초안` 공고 행과 대조해 반영했다.
+> - `updatedAt`이 추가됐다(작성·상세·수정 응답 공통). 이전 예시에는 `createdAt`만 있었다.
+> - `target`은 `TeamSummary` 자리표시자가 아니라 **recruit 자체 축약형** `{id, name, region, genres}`이다(`docs/conventions/dto-naming.md` §5). `author`는 `UserSummaryResponse`이며 Notion 예시는 `{id, nickname}`만 있다.
+> - `wantedSlots[].appliedCount`는 대기(`PENDING`) 신청 수. 작성 직후 응답 예시는 `0`이다.
+> - `canEdit`은 수정 권한 여부이고 Notion Actor가 `모임장 / 팀장`이다. `myJoinRequest`는 신청 이력이 없으면 `null`이며 Notion에 "상의 필요" 메모가 있다.
+> - **구현 현황**: `author`·`myJoinRequest`는 해당 도메인(user·join) 미머지로 필드 자체를 뺐고, `appliedCount`는 키를 뺀다(null), `target`은 `id`만 채운다. 도메인이 머지되면 채운다.
 
 ### RecruitPostUpdateRequest
 
@@ -817,11 +825,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ```json
 {
+  "fileId": 101,
   "uploadUrl": "https://moyeorock.s3.ap-northeast-2.amazonaws.com/performance/uuid.png?X-Amz-...",
   "fileUrl": "https://cdn.moyeorock.com/performance/uuid.png",
   "expiresAt": "2026-08-11T16:10:00"
 }
 ```
+
+- `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
+- `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
+- 허용 확장자는 `jpg` · `jpeg` · `png` · `webp`뿐이고, `contentType`도 `image/jpeg` · `image/png` · `image/webp`만 받는다. 둘 중 하나라도 어긋나면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+- 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
 
 ### DashboardResponse
 
