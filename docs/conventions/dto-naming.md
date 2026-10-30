@@ -61,9 +61,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 클래스 | 용도 |
 |---|---|
-| `ApiResponse<T>` | 모든 응답 봉투 `{success, data, error}` |
-| `ErrorResponse` | `{code, message, fieldErrors}` |
-| `FieldErrorResponse` | `{field, reason}` |
+| `ApiResponse<T>` | 모든 응답 봉투 `{success, code, message, data}` — 에러도 같은 모양(`data: null`). §0 규칙 1의 예외로 `record`가 아니라 클래스다(컴포넌트 `success`의 접근자와 인자 없는 팩토리 `success()`가 충돌) |
 | `PageResponse<T>` | `{content, page, size, totalElements, totalPages, last}` |
 | `DeleteResponse` | `{id, deleted}` — hard delete 3곳 공용 |
 
@@ -428,7 +426,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ### 착수 순서상 먼저 만들어야 하는 것
 
-1. `global/common/dto` 5개 — 나머지 전부가 의존한다
+1. `global/common/dto` 3개 — 나머지 전부가 의존한다
 2. `global/common/enums` — DTO 필드 타입이 여기 있다
 3. `UserSummaryResponse` — 재사용 1위
 4. 이후 도메인별 병렬

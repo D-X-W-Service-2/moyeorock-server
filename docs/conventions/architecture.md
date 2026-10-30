@@ -14,7 +14,7 @@ com.moyeorock
 │   ├── logging/         RequestLoggingFilter, MdcKeys
 │   ├── common/
 │   │   ├── entity/      BaseTimeEntity, BaseEntity
-│   │   ├── dto/         ApiResponse, PageResponse, ErrorResponse, DeleteResponse
+│   │   ├── dto/         ApiResponse, PageResponse, DeleteResponse
 │   │   └── enums/       Instrument, Level, Genre, Region, TargetType …
 │   ├── event/           도메인 간 이벤트 정의
 │   └── file/            파일 업로드

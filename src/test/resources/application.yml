@@ -27,7 +27,6 @@ spring:
     locations: classpath:db/migration
 
   jackson:
-    default-property-inclusion: non_null
     serialization:
       fail-on-empty-beans: false
 
@@ -43,3 +42,11 @@ kakao:
   redirect-uri: http://localhost:3000/login/oauth2/code/kakao
   token-uri: http://localhost/kakao/oauth/token
   user-info-uri: http://localhost/kakao/v2/user/me
+
+file:
+  storage:
+    type: local
+    local:
+      base-path: build/test-uploads
+      base-url: http://localhost:8080
+      upload-url-expiry-seconds: 600

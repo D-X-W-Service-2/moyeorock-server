@@ -1,0 +1,354 @@
+package com.moyeorock.global.file.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import com.moyeorock.global.common.entity.BaseTimeEntity;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
+import com.moyeorock.global.file.client.FileStorageClient;
+import com.moyeorock.global.file.client.UploadUrl;
+import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
+import com.moyeorock.global.file.entity.UploadedFile;
+import com.moyeorock.global.file.enums.UploadDomain;
+import com.moyeorock.global.file.repository.UploadedFileRepository;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
+import java.nio.file.NoSuchFileException;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class FileServiceTest {
+
+    private static final Long UPLOADER_ID = 1L;
+    private static final Long OTHER_USER_ID = 2L;
+    private static final Duration EXPIRY = Duration.ofMinutes(10);
+
+    @Mock
+    private UploadedFileRepository uploadedFileRepository;
+
+    @Mock
+    private FileStorageClient fileStorageClient;
+
+    private FileService fileService;
+
+    @BeforeEach
+    void setUp() {
+        fileService = new FileService(uploadedFileRepository, fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("허용된 확장자면 presigned URL을 발급하고 files 행을 저장한다")
+    void issuePresignedUrl_succeeds_forAllowedExtension() {
+        UploadUrl uploadUrl = new UploadUrl(
+                "https://example.com/upload", "https://example.com/file", LocalDateTime.now().plusMinutes(10));
+        when(fileStorageClient.issuePresignedUrl(any(), any())).thenReturn(uploadUrl);
+        when(uploadedFileRepository.save(any())).thenAnswer(invocation -> withId(invocation.getArgument(0), 10L));
+
+        PresignedUrlResponse response = fileService.issuePresignedUrl(
+                UploadDomain.PROFILE_IMAGE, "me.png", "image/png", UPLOADER_ID);
+
+        assertThat(response.fileId()).isEqualTo(10L);
+        assertThat(response.uploadUrl()).isEqualTo("https://example.com/upload");
+        assertThat(response.fileUrl()).isEqualTo("https://example.com/file");
+    }
+
+    @Test
+    @DisplayName("허용 안 된 확장자면 UNSUPPORTED_FILE_TYPE 예외를 던지고 스토리지를 건드리지 않는다")
+    void issuePresignedUrl_throws_forDisallowedExtension() {
+        assertThatThrownBy(() -> fileService.issuePresignedUrl(
+                UploadDomain.PROFILE_IMAGE, "malicious.svg", "image/svg+xml", UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_FILE_TYPE);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("확장자가 없는 파일명이면 UNSUPPORTED_FILE_TYPE 예외를 던진다")
+    void issuePresignedUrl_throws_whenNoExtension() {
+        assertThatThrownBy(() -> fileService.issuePresignedUrl(
+                UploadDomain.PROFILE_IMAGE, "no-extension", "image/png", UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_FILE_TYPE);
+    }
+
+    @Test
+    @DisplayName("확장자는 허용돼도 contentType이 화이트리스트에 없으면 UNSUPPORTED_FILE_TYPE 예외를 던진다")
+    void issuePresignedUrl_throws_whenContentTypeNotAllowed() {
+        // fileName만 보고 확장자를 검증하면 contentType=text/html로 발급받아 로컬 서빙 엔드포인트가
+        // 그대로 echo하는 저장형 XSS가 가능해진다 — contentType도 반드시 별도로 막아야 한다.
+        assertThatThrownBy(() -> fileService.issuePresignedUrl(
+                UploadDomain.PROFILE_IMAGE, "me.png", "text/html", UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_FILE_TYPE);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("업로더 본인이면 업로드 수신이 성공한다")
+    void receiveUpload_succeeds_forUploader() throws Exception {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+        byte[] bytes = {1, 2, 3};
+        InputStream content = new ByteArrayInputStream(bytes);
+
+        fileService.receiveUpload("profile/key.png", "image/png", content, UPLOADER_ID);
+
+        // 용량 제한을 걸기 위해 원본 스트림을 SizeLimitedInputStream으로 감싸서 넘기므로 참조 동등성이
+        // 아니라 실제로 읽히는 바이트가 같은지로 검증한다.
+        var captor = org.mockito.ArgumentCaptor.forClass(InputStream.class);
+        verify(fileStorageClient).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), captor.capture());
+        assertThat(captor.getValue().readAllBytes()).isEqualTo(bytes);
+    }
+
+    @Test
+    @DisplayName("업로드 용량 제한을 넘기면 FILE_SIZE_EXCEEDED 예외를 던진다")
+    void receiveUpload_throws_whenSizeExceeded() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+        // write() 호출 시 실제로 스트림을 끝까지 읽어야 SizeLimitedInputStream이 한도 초과를 감지한다 —
+        // LocalFileStorageClient가 하듯 여기서도 끝까지 소비해서 검증한다.
+        org.mockito.Mockito.doAnswer(invocation -> {
+            InputStream stream = invocation.getArgument(1);
+            try {
+                stream.readAllBytes();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            return null;
+        }).when(fileStorageClient).write(anyString(), any());
+        InputStream oversized = new ByteArrayInputStream(new byte[11 * 1024 * 1024]);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png", oversized, UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("발급된 적 없는 fileKey면 FILE_NOT_FOUND 예외를 던진다")
+    void receiveUpload_throws_whenFileKeyUnknown() {
+        when(uploadedFileRepository.findByFileKey("unknown")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fileService.receiveUpload("unknown", "image/png", InputStream.nullInputStream(),
+                UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("업로더 본인이 아니면 NO_PERMISSION 예외를 던지고 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenNotUploader() {
+        UploadedFile file = UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID);
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                InputStream.nullInputStream(), OTHER_USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("발급 후 유효 시간이 지나면 UPLOAD_URL_EXPIRED 예외를 던지고 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenUploadUrlExpired() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).minusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UPLOAD_URL_EXPIRED);
+        verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("유효 시간 안이면 이미 올린 키에 다시 올려도 받는다(S3 presigned URL과 같은 동작)")
+    void receiveUpload_acceptsReupload_beforeExpiry() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).plusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        fileService.receiveUpload("profile/key.png", "image/png", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
+        fileService.receiveUpload("profile/key.png", "image/png", new ByteArrayInputStream(new byte[]{2}), UPLOADER_ID);
+
+        verify(fileStorageClient, times(2)).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), any());
+    }
+
+    @Test
+    @DisplayName("업로더가 아니면 만료 여부와 상관없이 NO_PERMISSION을 먼저 던진다")
+    void receiveUpload_checksUploaderBeforeExpiry() {
+        // 만료 검사를 먼저 하면 남의 파일에 대해 발급 시각(만료 여부)이 응답 코드로 드러난다.
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now().minus(EXPIRY).minusMinutes(1));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                new ByteArrayInputStream(new byte[]{1}), OTHER_USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("요청 Content-Type이 발급 때 정한 값과 다르면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenContentTypeMismatch() {
+        assertReceiveUploadRejectsContentType("image/jpeg");
+    }
+
+    @Test
+    @DisplayName("multipart/form-data로 보내면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenMultipart() {
+        // multipart면 Spring이 바디를 먼저 파싱해 빈 스트림만 넘어온다 — 막지 않으면 빈 파일이 200으로 저장된다.
+        assertReceiveUploadRejectsContentType("multipart/form-data; boundary=----x");
+    }
+
+    @Test
+    @DisplayName("Content-Type 헤더가 없으면 UNSUPPORTED_MEDIA_TYPE, 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenContentTypeMissing() {
+        assertReceiveUploadRejectsContentType(null);
+    }
+
+    @Test
+    @DisplayName("Content-Type은 대소문자만 다르면 같은 값으로 본다")
+    void receiveUpload_acceptsContentType_ignoringCase() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        fileService.receiveUpload("profile/key.png", "IMAGE/PNG", new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID);
+
+        verify(fileStorageClient).write(org.mockito.ArgumentMatchers.eq("profile/key.png"), any());
+    }
+
+    @Test
+    @DisplayName("바디가 비어 있으면 EMPTY_FILE 예외를 던지고 스토리지에 쓰지 않는다")
+    void receiveUpload_throws_whenBodyEmpty() {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", "image/png",
+                InputStream.nullInputStream(), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.EMPTY_FILE);
+        verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    // 삭제 성공 경로는 스토리지 삭제가 커밋 이후(afterCommit)에 일어나서 트랜잭션 없는 단위 테스트로는
+    // 검증할 수 없다 — FileServiceDeleteTest(실제 트랜잭션)에서 커밋·롤백 양쪽을 본다.
+
+    @Test
+    @DisplayName("존재하지 않는 fileId를 삭제하려 하면 FILE_NOT_FOUND 예외를 던진다")
+    void delete_throws_whenFileNotFound() {
+        when(uploadedFileRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fileService.delete(99L, UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("업로더 본인이 아니면 삭제 시 NO_PERMISSION 예외를 던진다")
+    void delete_throws_whenNotUploader() {
+        UploadedFile file = withId(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), 5L);
+        when(uploadedFileRepository.findById(5L)).thenReturn(Optional.of(file));
+
+        assertThatThrownBy(() -> fileService.delete(5L, OTHER_USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NO_PERMISSION);
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("DB엔 row가 있지만 실제 파일이 없으면(업로드 전/중) 500이 아니라 FILE_NOT_FOUND 예외를 던진다")
+    void readLocalFile_throws_FILE_NOT_FOUND_whenPhysicalFileMissing() {
+        UploadedFile file = UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID);
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.read("profile/key.png"))
+                .thenThrow(new UncheckedIOException(new NoSuchFileException("profile/key.png")));
+
+        assertThatThrownBy(() -> fileService.readLocalFile("profile/key.png"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_NOT_FOUND);
+    }
+
+    private void assertReceiveUploadRejectsContentType(String requestContentType) {
+        UploadedFile file = issuedAt(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
+                "image/png", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+
+        assertThatThrownBy(() -> fileService.receiveUpload("profile/key.png", requestContentType,
+                new ByteArrayInputStream(new byte[]{1}), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
+        verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    // UploadedFile.id는 GeneratedValue라 create()로는 못 채운다 — 리플렉션으로 저장 후 채워지는 것처럼 흉내낸다.
+    private static UploadedFile withId(UploadedFile file, Long id) {
+        try {
+            Field idField = UploadedFile.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(file, id);
+            return file;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // createdAt(발급 시각)은 JPA Auditing이 저장 시점에 채운다 — 만료 판단 기준이라 리플렉션으로 넣는다.
+    private static UploadedFile issuedAt(UploadedFile file, LocalDateTime createdAt) {
+        try {
+            Field createdAtField = BaseTimeEntity.class.getDeclaredField("createdAt");
+            createdAtField.setAccessible(true);
+            createdAtField.set(file, createdAt);
+            return file;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
