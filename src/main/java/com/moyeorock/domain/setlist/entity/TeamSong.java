@@ -1,11 +1,8 @@
 package com.moyeorock.domain.setlist.entity;
 
-import com.moyeorock.domain.setlist.enums.SongProgress;
 import com.moyeorock.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,13 +11,12 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// setlist 도메인이 team_songs를 소유한다(domains.md "헷갈리는 경계") — team·performance는
-// 이 테이블을 직접 건드리지 않는다.
+// 팀 선택곡 — 독립 팀·공연 팀 모두 고른 곡이 한 행이다(이슈 #85). 팀 쪽에서는 "셋리스트"라고 부르지 않는다.
+// 공연 셋리스트는 Setlist가 따로 갖는다. setlist 도메인이 두 테이블을 모두 소유한다(domains.md "헷갈리는 경계").
 //
-// erd.md §15의 2026-09-16 변경 이후 performance_id·selected_song_id·그 UNIQUE는 삭제됐다.
-// "공연 내 곡 중복 방지"는 더 이상 DB가 강제하지 않고, progress를 SELECTED로 바꾸는 시점에
-// 이 도메인의 Service가 같은 공연 소속 팀들의 team_songs를 조회해 애플리케이션에서 검증해야
-// 한다(후속 구현 필요 — 엔티티만으로는 못 막는다).
+// performanceId는 teams.performance_id를 복사해 둔 값이다 — setlist 도메인은 teams를 직접 조회할 수 없어서
+// "같은 공연의 다른 팀이 고른 곡"을 찾으려면 필요하다. 팀은 공연을 옮기지 않으므로 값이 어긋나지 않는다.
+// 같은 팀이 같은 곡을 두 번 고를 수 없다 — UNIQUE(team_id, song_id).
 @Entity
 @Table(name = "team_songs")
 @Getter
@@ -34,30 +30,18 @@ public class TeamSong extends BaseEntity {
     @Column(name = "team_id", nullable = false)
     private Long teamId;
 
+    // 독립 팀이면 null
+    @Column(name = "performance_id")
+    private Long performanceId;
+
     @Column(name = "song_id", nullable = false)
     private Long songId;
 
-    @Column(name = "sort_order")
-    private Integer sortOrder;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
-    private SongProgress progress;
-
-    public static TeamSong create(Long teamId, Long songId, Integer sortOrder) {
+    public static TeamSong create(Long teamId, Long performanceId, Long songId) {
         TeamSong teamSong = new TeamSong();
         teamSong.teamId = teamId;
+        teamSong.performanceId = performanceId;
         teamSong.songId = songId;
-        teamSong.sortOrder = sortOrder;
-        teamSong.progress = SongProgress.CANDIDATE;
         return teamSong;
-    }
-
-    public void changeProgress(SongProgress progress) {
-        this.progress = progress;
-    }
-
-    public void reorder(int sortOrder) {
-        this.sortOrder = sortOrder;
     }
 }

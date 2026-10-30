@@ -51,6 +51,10 @@ public class Performance extends BaseEntity {
     @Column(name = "created_by")
     private Long createdBy;
 
+    // 셋리스트 확정 시각. null이면 미확정이다(이슈 #85) — 확정되면 팀이 곡을 더 넘길 수 없다.
+    @Column(name = "setlist_confirmed_at")
+    private LocalDateTime setlistConfirmedAt;
+
     public static Performance create(Long groupId, Long createdBy, String title, String description,
             LocalDateTime performedAt, String venue, String posterImage) {
         Performance performance = new Performance();
