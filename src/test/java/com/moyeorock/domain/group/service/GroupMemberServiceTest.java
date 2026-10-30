@@ -325,6 +325,30 @@ class GroupMemberServiceTest {
                 .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
     }
 
+    @Test
+    @DisplayName("현재 모임장이면 isOwner는 true다")
+    void isOwner_returnsTrue_forOwner() {
+        givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, OWNER_ID)).isTrue();
+    }
+
+    @Test
+    @DisplayName("모임장이 아닌 모임원은 isOwner가 false다")
+    void isOwner_returnsFalse_forMember() {
+        givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).isFalse();
+    }
+
+    @Test
+    @DisplayName("모임원이 아니거나 해체된 모임이면 isOwner는 예외 없이 false다")
+    void isOwner_returnsFalse_whenNotActiveMember() {
+        when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID)).thenReturn(Optional.empty());
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).isFalse();
+    }
+
     private void givenGroupExists() {
         when(groupRepository.existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(true);
     }

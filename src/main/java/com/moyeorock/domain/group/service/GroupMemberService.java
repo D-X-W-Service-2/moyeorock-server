@@ -123,6 +123,16 @@ public class GroupMemberService {
         }
     }
 
+    /**
+     * 요청자가 이 모임의 현재 모임장인지. 모임원이 아니거나 해체된 모임이면 {@code false}다.
+     * 막지 않고 답만 한다 — 공연 상세의 {@code canEdit}처럼 화면 표시에 쓴다. 막아야 하면 {@link #ensureOwner}다.
+     */
+    public boolean isOwner(Long groupId, Long userId) {
+        return groupMemberRepository.findActiveMember(groupId, userId)
+                .filter(GroupMember::isOwner)
+                .isPresent();
+    }
+
     /** 모임원이 아니면(해체된 모임 포함) {@code NOT_GROUP_MEMBER}. 모임 상세의 {@code myRole}에 쓴다. */
     public GroupRole getActiveRole(Long groupId, Long userId) {
         return groupMemberRepository.findActiveMember(groupId, userId)
