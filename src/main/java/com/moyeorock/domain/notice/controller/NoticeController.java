@@ -8,6 +8,7 @@ import com.moyeorock.domain.notice.service.NoticeService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +35,7 @@ public class NoticeController {
 
     private final NoticeService noticeService;
 
+    @Operation(summary = "공지 작성")
     @PostMapping("/v1/groups/{groupId}/notices")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<NoticeDetailResponse> create(@AuthUser Long userId, @PathVariable Long groupId,
@@ -41,6 +43,7 @@ public class NoticeController {
         return ApiResponse.success(noticeService.create(userId, groupId, request));
     }
 
+    @Operation(summary = "공지 목록")
     @GetMapping("/v1/groups/{groupId}/notices")
     public ApiResponse<PageResponse<NoticeSummaryResponse>> getNotices(@AuthUser Long userId,
             @PathVariable Long groupId, @RequestParam(required = false) Boolean isPinned,
@@ -48,17 +51,20 @@ public class NoticeController {
         return ApiResponse.success(noticeService.getNotices(userId, groupId, isPinned, pageable));
     }
 
+    @Operation(summary = "공지 상세")
     @GetMapping("/v1/notices/{noticeId}")
     public ApiResponse<NoticeDetailResponse> getNotice(@AuthUser Long userId, @PathVariable Long noticeId) {
         return ApiResponse.success(noticeService.getNotice(userId, noticeId));
     }
 
+    @Operation(summary = "공지 수정")
     @PutMapping("/v1/notices/{noticeId}")
     public ApiResponse<NoticeDetailResponse> update(@AuthUser Long userId, @PathVariable Long noticeId,
             @Valid @RequestBody NoticeUpdateRequest request) {
         return ApiResponse.success(noticeService.update(userId, noticeId, request));
     }
 
+    @Operation(summary = "공지 삭제")
     @DeleteMapping("/v1/notices/{noticeId}")
     public ApiResponse<Void> delete(@AuthUser Long userId, @PathVariable Long noticeId) {
         noticeService.delete(userId, noticeId);
