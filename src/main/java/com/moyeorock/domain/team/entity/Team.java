@@ -60,7 +60,7 @@ public class Team extends BaseEntity {
         return team;
     }
 
-    // 팀 정보 수정(PUT, 전체 교체). status는 여기서 바꾸지 않는다 — 해체는 disband()로만 (dto-spec §2 TeamUpdateRequest).
+    // 팀 정보 수정(PUT, 전체 교체). status는 여기서 바꾸지 않는다 — 해 체는 disband()로만 (dto-spec §2 TeamUpdateRequest).
     public void update(String name, String description, Region region) {
         this.name = name;
         this.description = description;
