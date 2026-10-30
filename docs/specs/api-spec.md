@@ -168,15 +168,21 @@
 
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
-| POST | `/v1/groups/{groupId}/performances` | 공연&nbsp;생성 | `PerformanceCreateRequest` | | 모임장 |
-| GET | `/v1/groups/{groupId}/performances` | 모임&nbsp;공연&nbsp;목록 | | `PageResponse<PerformanceSummaryResponse>` | |
-| GET | `/v1/performances/{id}` | 공연&nbsp;상세 | | `PerformanceDetailResponse` | |
-| PUT | `/v1/performances/{id}` | 공연&nbsp;정보&nbsp;수정 | `PerformanceUpdateRequest` | | 7.4 공지 + 공연 포스터 |
-| PATCH | `/v1/performances/{id}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
-| POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
+| POST | `/v1/groups/{groupId}/performances` | 공연&nbsp;생성 | `PerformanceCreateRequest` | `PerformanceDetailResponse` ※ | 모임장 |
+| GET | `/v1/groups/{groupId}/performances?page=&size=` ※ | 모임&nbsp;공연&nbsp;목록 | | `PageResponse<PerformanceSummaryResponse>` | 모임원 |
+| GET | `/v1/performances/{performanceId}` | 공연&nbsp;상세 | | `PerformanceDetailResponse` | 모임원 |
+| PUT | `/v1/performances/{performanceId}` | 공연&nbsp;정보&nbsp;수정 | `PerformanceUpdateRequest` | `PerformanceDetailResponse` | 모임장 · 7.4 공지 + 공연 포스터 |
+| PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
+| POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 모임원 · 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
 
 > ✅ **개수 논쟁 해소(2026-09-11)**: `API 초안`은 이 표의 6개에 `PUT /v1/performances/{id}/setlist`(공연 셋리스트 확정)까지 더해 7개 행을 공연 도메인 아래 두었다. 다만 소유는 여전히 `docs/conventions/domains.md`가 정한 대로 **setlist 도메인**이다(§9에 배치) — `team_songs` 테이블의 `UNIQUE` 제약을 한 서비스가 검증해야 하기 때문이다. 즉 "공연" 라벨의 원본 행 수는 7, `performance` 도메인이 실제 소유하는 엔드포인트 수는 6이다.
 > `API 초안`의 이 7개 행은 반영 당시(2026-09-10 이전) `인증 여부`·`진행 상태`가 비어 있었다. 모든 API는 인증이 필요하다는 원칙(상단 참고)에 따라 2026-09-11에 전부 "인증 필요"로 채우고 노션도 함께 수정했다.
+> ※ **2026-10-30 대조(이슈 #83)** — `API 초안`(2026-10-08 수정)과 대조해 경로 변수를 `{performanceId}`로, 비고에 노션 Actor를 맞췄다. 어긋나는 곳은 이렇게 정했다.
+> - **생성 응답은 `PerformanceDetailResponse`** — 노션 생성 응답(`id`·`title`·`description`·`performedAt`·`venue`·`posterImage`·`createdAt`)을 모두 포함하는 상세 응답을 쓴다(`docs/conventions/dto-naming.md` 규칙 3 "생성 응답은 상세 재사용")
+> - **`venue`는 필수** — 노션 생성·수정 요청의 Required가 O다. `erd.md`의 "7.1.1 필수 X" 설명을 정정했다(컬럼은 NULL 허용 그대로)
+> - **모임 공연 목록** — 노션 쿼리의 `status`(`UPCOMING`·`PAST` 등)는 `performances.status` 값(`PLANNED|RECRUITING|DONE|CANCELED`)에 없어 반영하지 않았다(공백 #12). 쿼리 파라미터는 `page`·`size`(기본·최대 20)뿐이고, 정렬은 공연일 늦은 순(`performedAt` 내림차순) 고정이라 `sort`는 받지 않는다
+> - **이슈 #83 구현 범위** — 생성·목록·상세·수정 4개. 상세의 `teams`·`myTeamIds`·`setlist`는 명세에 있지만 아직 응답에 없다 — `teams`·`myTeamIds`는 상태 변경·공연 내 팀 생성과 함께 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다
+> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #13)
 
 ---
 
@@ -294,3 +300,5 @@
 | 9 | 경로 단수형 예외 | `join-request` · `recruit-post` 2개는 `API 초안`을 신뢰해 단수형 그대로 반영(2026-09-11 팀 확인). `api-conventions.md`의 "리소스는 복수형" 규칙의 명시적 예외로 기록 |
 | 10 | 파일 삭제 신규 | `DELETE /v1/files/{fileId}`가 `API 초안`에서 새로 확인됨(§10). DTO·구현 담당 확인 필요 |
 | 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
+| 12 | 공연 목록 `status` 필터 | `API 초안` 모임 공연 목록의 쿼리 `status`와 응답 `status` 예시가 `UPCOMING`·`PAST`인데 `performances.status`(`PLANNED|RECRUITING|DONE|CANCELED`)에 없는 값이다. 다가올·지난 공연을 나누는 기준(공연일 vs 상태)부터 정해야 해서 필터는 반영하지 않았다(§8 ※). 노션 정정 필요 |
+| 13 | 공연 상태 값 | `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이다. 상태 변경 구현 때 결정 |

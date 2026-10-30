@@ -194,7 +194,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `title` | `VARCHAR(100)` |  |
 |  | `description` | `TEXT` |  |
 |  | `performed_at` | `DATETIME(6)` |  |
-|  | `venue` | `VARCHAR(100)` | 7.1.1 필수 X |
+|  | `venue` | `VARCHAR(100)` | 필수 — 애플리케이션에서 검증, 컬럼은 NULL 허용 유지. 7.1.1의 "필수 X"는 `API 초안`(2026-10-08)에서 필수로 바뀌었다 |
 |  | `poster_image` | `VARCHAR(500)` | 7.4 |
 |  | `status` | `VARCHAR(20)` | PLANNED\|RECRUITING\|DONE\|CANCELED |
 | FK | `created_by` | `BIGINT` | → users |
