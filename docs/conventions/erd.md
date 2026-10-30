@@ -101,8 +101,11 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `type` | `VARCHAR(10)` | REGULAR\|PROJECT |
 |  | `region` | `VARCHAR(50)` |  |
 |  | `cover_image` | `VARCHAR(500)` |  |
+|  | `status` | `VARCHAR(10) NOT NULL` | ACTIVE\|DISBANDED (기본값 ACTIVE) |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
+
+> 2026-10-29 `status` 추가(이슈 #80) — 모임 해체(`PATCH /v1/groups/{groupId}/status`)는 행을 지우지 않는 soft delete다(`architecture.md` §6). 해체 시 `group_members`·`group_notices`는 그대로 두며, 모임을 거쳐 들어오는 조회가 `DISBANDED`를 걸러 "없는 모임"(404)으로 본다. 모임을 거치지 않는 `recruit_posts`는 대상이 이 모임인 `OPEN` 공고를 같은 트랜잭션에서 `CLOSED`로 바꾼다(행은 지우지 않는다).
 
 ### 5. `group_members`
 
@@ -113,11 +116,13 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `group_id` | `BIGINT` | → groups_ |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `role` | `VARCHAR(10)` | OWNER\|MEMBER |
+|  | `role` | `VARCHAR(10)` | OWNER\|MANAGER\|MEMBER |
 |  | `status` | `VARCHAR(10)` | ACTIVE\|LEFT\|BANNED |
 |  | `joined_at` | `DATETIME(6)` |  |
 
 - **유니크** `(group_id, user_id)`
+- **인덱스** `(user_id)` — 2026-10-29 추가(이슈 #80). 내 모임 목록이 `user_id`로 좁히는데 위 유니크는 `group_id`가 앞이라 탈 수 없다
+- `MANAGER`는 2026-10-05에 값만 추가했다. **지금은 권한이 없고 `MEMBER`와 동일하게 취급한다** — 임원진 전용 동작이 필요해지는 시점에 권한을 붙인다. 컬럼 타입(`VARCHAR(10)`)이 그대로라 마이그레이션은 필요 없다
 
 ### 6. `group_notices`
 
@@ -134,6 +139,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
+- **인덱스** `(group_id, is_pinned, created_at)` ← 공지 목록·고정 필터·홈 미리보기가 모두 "모임으로 좁히고 → 고정 여부로 필터·정렬 → 최신순 → LIMIT" 모양이라 정렬까지 인덱스로 처리한다. V2에서 빠져 있어 2026-10-07 `V6__add_index_to_group_notices.sql`로 추가했다(처음엔 V4였으나 main의 V4·V5와 겹쳐 머지 때 옮겼다)
 
 ---
 

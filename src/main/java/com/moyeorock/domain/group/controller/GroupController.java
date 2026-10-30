@@ -1,0 +1,71 @@
+package com.moyeorock.domain.group.controller;
+
+import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
+import com.moyeorock.domain.group.dto.request.GroupUpdateRequest;
+import com.moyeorock.domain.group.dto.response.GroupDetailResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
+import com.moyeorock.domain.group.service.GroupService;
+import com.moyeorock.global.common.dto.ApiResponse;
+import com.moyeorock.global.common.dto.PageResponse;
+import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/v1/groups")
+@RequiredArgsConstructor
+public class GroupController {
+
+    private final GroupService groupService;
+
+    @Operation(summary = "모임 생성")
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<GroupDetailResponse> create(@AuthUser Long userId,
+            @Valid @RequestBody GroupCreateRequest request) {
+        return ApiResponse.success(groupService.create(userId, request));
+    }
+
+    /** 내 모임 목록. 전체 모임 목록은 두지 않는다 — 검색({@code keyword})도 내 모임 안에서만 한다. */
+    @Operation(summary = "내 모임 목록 (검색)")
+    @GetMapping("/my")
+    public ApiResponse<PageResponse<GroupSummaryResponse>> getMyGroups(@AuthUser Long userId,
+            @RequestParam(required = false) String keyword, @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(groupService.getMyGroups(userId, keyword, pageable));
+    }
+
+    @Operation(summary = "모임 상세 (동아리 홈)")
+    @GetMapping("/{groupId}")
+    public ApiResponse<GroupDetailResponse> getDetail(@AuthUser Long userId, @PathVariable Long groupId) {
+        return ApiResponse.success(groupService.getDetail(userId, groupId));
+    }
+
+    @Operation(summary = "모임 정보 수정")
+    @PutMapping("/{groupId}")
+    public ApiResponse<GroupDetailResponse> update(@AuthUser Long userId, @PathVariable Long groupId,
+            @Valid @RequestBody GroupUpdateRequest request) {
+        return ApiResponse.success(groupService.update(userId, groupId, request));
+    }
+
+    /** 모임 해체. 요청 바디가 없다 — 상태 전이가 ACTIVE → DISBANDED 하나뿐이다. */
+    @Operation(summary = "모임 해체")
+    @PatchMapping("/{groupId}/status")
+    public ApiResponse<Void> disband(@AuthUser Long userId, @PathVariable Long groupId) {
+        groupService.disband(userId, groupId);
+        return ApiResponse.success();
+    }
+}

@@ -63,7 +63,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 |---|---|
 | `ApiResponse<T>` | 모든 응답 봉투 `{success, code, message, data}` — 에러도 같은 모양(`data: null`). §0 규칙 1의 예외로 `record`가 아니라 클래스다(컴포넌트 `success`의 접근자와 인자 없는 팩토리 `success()`가 충돌) |
 | `PageResponse<T>` | `{content, page, size, totalElements, totalPages, last}` |
-| `DeleteResponse` | `{id, deleted}` — hard delete 3곳 공용 |
+| `DeleteResponse` | `{id, deleted}` — 합주·북마크·파일 삭제 공용. 공지 삭제는 노션 `API 초안`(2026-09-30)을 따라 `data: null`이다 |
 
 ---
 
@@ -262,32 +262,32 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 8. group (11)
+## 8. group (13)
 
 패키지 `domain/group`, 공지는 `domain/notice`
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
 | 모임 생성 | POST | `/v1/groups` | `GroupCreateRequest` | `GroupDetailResponse` |
+| 내 모임 목록 (검색) | GET | `/v1/groups/my` | — | `PageResponse<GroupSummaryResponse>` |
 | 모임 상세 (동아리 홈) | GET | `/v1/groups/{id}` | — | `GroupDetailResponse` |
 | 모임 정보 수정 | PUT | `/v1/groups/{id}` | `GroupUpdateRequest` | `GroupDetailResponse` |
+| 모임 해체 | PATCH | `/v1/groups/{groupId}/status` | — | — (`data: null`) |
 | 모임원 목록 | GET | `/v1/groups/{id}/members` | — | `PageResponse<GroupMemberResponse>` |
 | 모임원 역할 변경 | PATCH | `/v1/groups/{groupId}/members/{userId}` | `GroupMemberUpdateRequest` | `GroupMemberResponse` |
-| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` |
+| 모임원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/groups/{groupId}/members/{userId}/status` | — | — (`data: null`) |
 | 공지 목록 | GET | `/v1/groups/{id}/notices` | — | `PageResponse<NoticeSummaryResponse>` |
 | 공지 상세 | GET | `/v1/notices/{id}` | — | `NoticeDetailResponse` |
 | 공지 작성 | POST | `/v1/groups/{id}/notices` | `NoticeCreateRequest` | `NoticeDetailResponse` |
 | 공지 수정 | PUT | `/v1/notices/{id}` | `NoticeUpdateRequest` | `NoticeDetailResponse` |
-| 공지 삭제 | DELETE | `/v1/notices/{id}` | — | `DeleteResponse` |
+| 공지 삭제 | DELETE | `/v1/notices/{id}` | — | — (`data: null`) |
 
 **보조 DTO**
 
 | 클래스 | 설명 |
 |---|---|
-| `GroupSummaryResponse` | `UserActivityResponse`에서 재사용 |
-| `GroupMemberResponse` | team과 동일 구조(`status`는 `GroupMemberStatus`) — 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
-| `GroupMemberStatusUpdateRequest` | `(GroupMemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `BANNED`(강퇴)만 허용 |
-| `GroupMemberStatusResponse` | `(Long groupId, Long userId, GroupMemberStatus status)` — 탈퇴는 `LEFT`, 강퇴는 `BANNED` |
+| `GroupSummaryResponse` | `(Long id, String name, GroupType type, GroupRole role, String coverImage)` — `role`은 내 역할. 내 모임 목록 항목이고 `UserActivityResponse`에서 재사용 |
+| `GroupMemberResponse` | `(Long userId, String nickname, String profileImage, List<UserInstrumentResponse> instruments, GroupRole role, LocalDateTime joinedAt)` — 평탄화 구조. 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
 | `NoticeSummaryResponse` | 목록 항목. `body` 제외 |
 | `NoticeDetailResponse` | 상세 + 생성·수정 응답(지켜야 할 6가지 #3). `body` 포함 |
 
@@ -295,7 +295,17 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 모임원 역할 변경(모임장 위임)은 원래 표에 없어서 추가한 항목이다. 없으면 모임장이 영구히 탈퇴할 수 없다. `GroupMemberUpdateRequest(GroupRole role)`.
 
-`GroupDetailResponse`는 동아리 홈 화면이므로 `notices`(고정 공지 몇 건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
+내 모임 목록·모임 해체는 2026-10-29에 추가했다(이슈 #80). **전체 모임 검색·목록은 만들지 않는다** — 검색은 내 모임 목록의 `keyword`로만 한다. 해체는 요청 바디가 없다(모임원 탈퇴·강퇴와 같은 방식). 상세는 `docs/specs/api-spec.md` §7 ※.
+
+**2026-10-05 확정 사항** — Notion `API 초안`(2026-09-23)이 이 문서의 모임 절(2026-09-14)보다 최신이라 아래를 Notion 기준으로 맞췄다.
+
+- `GroupMemberResponse`는 `user`를 중첩하지 않고 **평탄화**한다(`userId`·`nickname`·`profileImage`). `instruments[]`를 함께 담고, `status`는 담지 않는다 — 목록이 `ACTIVE`만 조회하므로 의미가 없다. `instruments[]` 항목은 `(id, instrument, level)`이고 `customInstrument`는 없다(ETC 폐지, 2026-10-01이 더 최신)
+- 모임원 상태 변경(탈퇴·강퇴)은 **요청 바디가 없다.** 서버가 판단한다 — 요청자 == 대상이면 `LEFT`(본인 탈퇴), 모임장이 타인에게 하면 `BANNED`(강퇴). 그래서 `GroupMemberStatusUpdateRequest`·`GroupMemberStatusResponse`를 쓰지 않는다
+- **공지 응답에 작성자(`author`)를 담지 않는다.** 작성·수정·삭제 권한이 현재 모임장으로 고정이라 화면에서 작성자를 구분할 이유가 없다. `group_notices.author_id` 컬럼은 이력용으로 유지하고 저장 시에만 채운다
+- **공지 권한은 "현재 모임장"이다.** 작성자가 전 모임장이어도 현 모임장만 수정·삭제할 수 있다 — `GroupNotice.isAuthor()`를 권한 판별에 쓰지 않는다
+- `GroupRole`에 `MANAGER`를 추가했다. **값만 있고 권한은 없다**(`MEMBER`와 동일 취급) — `erd.md` §5 참고
+
+`GroupDetailResponse`는 동아리 홈 화면이므로 `pinnedNotices`(고정 공지 최대 3건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
 
 ---
 
@@ -400,14 +410,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 73 |
+| 엔드포인트 | 75 |
 | Request DTO | 34 |
 | Response DTO | 56 |
 | 전역 공통 | 5 |
 
-요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 34개뿐인 이유는 75개 중 **44개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §10)
 
 ### 재사용 상위 5개
 

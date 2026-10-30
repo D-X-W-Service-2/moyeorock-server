@@ -5,6 +5,7 @@ import com.moyeorock.domain.recruit.enums.RecruitStatus;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.common.enums.TargetType;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> {
+
+    // 모임 해체 때 그 모임의 모집 중 공고를 찾는다(idx_recruit_posts_target_group_id).
+    List<RecruitPost> findByTargetGroupIdAndStatus(Long targetGroupId, RecruitStatus status);
 
     /**
      * 조건 4개(targetType·region·instrument·status)라 파생 메서드명 대신 @Query로 뺐다(conventions.md §4).

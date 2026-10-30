@@ -126,15 +126,23 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | POST | `/v1/groups` | 모임&nbsp;생성 | `GroupCreateRequest` | | |
+| GET | `/v1/groups/my?keyword=&page=&size=` ※ | 내&nbsp;모임&nbsp;목록&nbsp;(검색) | | `PageResponse<GroupSummaryResponse>` | |
 | GET | `/v1/groups/{id}` | 모임&nbsp;상세&nbsp;(동아리&nbsp;홈) | | `GroupDetailResponse` | |
 | PUT | `/v1/groups/{id}` | 모임&nbsp;정보&nbsp;수정 | `GroupUpdateRequest` | | |
+| PATCH | `/v1/groups/{groupId}/status` | 모임&nbsp;해체 ※ | — | — (`data: null`) | 모임장 |
 | GET | `/v1/groups/{id}/members?keyword=&page=&size=` ¶ | 모임원&nbsp;목록 | | `PageResponse<>` (구 `GroupMembersResponse`) § | |
 | PATCH | `/v1/groups/{groupId}/members/{userId}` | 모임원&nbsp;역할&nbsp;변경&nbsp;(모임장&nbsp;위임) | `GroupMemberUpdateRequest` | | 모임장 |
-| PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | `GroupMemberStatusUpdateRequest` | `GroupMemberStatusResponse` * | |
+| PATCH | `/v1/groups/{groupId}/members/{userId}/status` | 모임원&nbsp;내보내기·탈퇴 | — | — (`data: null`) * | |
 
 > `API 초안`에서도 원래 역할 변경과 같은 경로(`/members/{userId}`)를 공유하고 있었으나, `docs/conventions/api-conventions.md` §5 규칙(상태 전이는 `/status`)에 맞춰 내보내기·탈퇴 경로에 `/status`를 붙이고 노션도 함께 수정했다(2026-09-11). 과거 "DELETE → PATCH 전환 미완" 문제는 해소됐다.
+> \* **2026-10-05 대조**: 내보내기·탈퇴는 `API 초안`(2026-09-23) 기준으로 **요청·응답 바디가 모두 없다**. 이 문서의 이전 스냅샷(2026-09-14)에 있던 `GroupMemberStatusUpdateRequest`·`GroupMemberStatusResponse`를 걷었다 — 더 최신 문서를 따른 것이다. 상태값은 서버가 판단한다(요청자 == 대상 → `LEFT`, 모임장이 타인 → `BANNED`).
+> 모임원 목록 항목(`GroupMemberResponse`)도 같은 날 `API 초안` 기준으로 평탄화 구조로 교체했다(`docs/specs/dto-spec.md` §7).
 > § 원본 DTO 페이지 `GroupMembersResponse`가 `PageResponse<>`로 개명된 이력이 있다(2026-08-22). 완성형은 `PageResponse<GroupMemberResponse>` (`docs/conventions/dto-naming.md` §8). 필드는 `docs/specs/dto-spec.md` §7 참조. `API 초안`에는 DTO 정보가 없어 이 이력은 갱신되지 않았다.
 > ¶ 모임원 목록의 쿼리 파라미터: `keyword`(닉네임 검색) · `page` · `size` (전부 선택) — `API 초안`에서 확인됐으나 이번 반영(2026-09-11) 당시 누락됐던 것을 2026-09-30 대조로 뒤늦게 확인해 추가했다.
+> ※ **2026-10-29 결정(이슈 #80)** — `API 초안`의 `[추가 필요]` 3행을 이렇게 정리하고 노션도 함께 고쳤다.
+> - **전체 모임 검색·목록(`GET /v1/groups?keyword=&region=`)은 만들지 않는다.** 모임은 전체 목록을 열지 않고 내가 속한 모임만 보여준다. 모임에 들어가는 길은 초대·공고다
+> - **내 모임 목록은 `GET /v1/groups/my`** — 초안의 `/v1/users/me/groups`에서 옮겼다(다른 "내 ~ 목록"은 `/v1/users/me/...` 패턴이라 이 경로만 예외다). 검색은 여기서만 한다: `keyword`(모임 이름 부분 일치, 앞뒤 공백 무시, `%`·`_`는 글자 그대로) · `page` · `size`(기본·최대 20, 넘으면 20으로 자른다), 전부 선택. 정렬은 고정이라 `sort`는 받지 않는다. 내가 ACTIVE 모임원인, 해체되지 않은 모임을 **가입 최신순**으로 준다
+> - **모임 해체는 soft delete다** — 요청 바디 없이 `groups_.status`를 `DISBANDED`로 바꾼다. 모임장만 할 수 있고, 다른 모임원이 남아 있어도 된다. 해체된 모임은 **모임·모임원·공지 엔드포인트 전부에서 404 `GROUP_NOT_FOUND`**(없는 모임)이고 내 모임 목록에서 빠진다. 모임원·공지 행은 지우지 않는다(`architecture.md` §6). 대상이 이 모임인 **모집 중 공고(`OPEN`)는 같은 트랜잭션에서 마감(`CLOSED`)한다** — 공고 목록은 모임을 거치지 않아 해체 여부로 걸러 줄 곳이 없기 때문이다(PR #67 리뷰 반영, 공고 행도 지우지 않는다)
 
 ### notice
 
@@ -143,14 +151,16 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | POST | `/v1/groups/{id}/notices` | 공지&nbsp;작성 | `NoticeCreateRequest` | | 모임장 |
-| GET | `/v1/groups/{id}/notices` | 공지&nbsp;목록 | | `PageResponse<NoticeSummaryResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
+| GET | `/v1/groups/{id}/notices?isPinned=&page=&size=` ¶ | 공지&nbsp;목록 | | `PageResponse<NoticeSummaryResponse>` | 고정글(`is_pinned`) 우선 정렬 * |
 | GET | `/v1/notices/{id}` | 공지&nbsp;상세 | | `NoticeDetailResponse` | ‖ |
 | PUT | `/v1/notices/{id}` | 공지&nbsp;수정 | `NoticeUpdateRequest` | | |
 | DELETE | `/v1/notices/{id}` | 공지&nbsp;삭제 | | | |
 
-> \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 팀 확인 필요.
+> \* "고정글 우선 정렬" · "is_pinned 토글" 메모는 원본에서 알림·북마크 행에 붙어 있었으나 문맥상 공지 기능으로 판단해 옮겼다. 2026-10-07 대조에서 `API 초안`의 공지 목록 Query Parameter 표가 `isPinned`를 "고정 공지만 조회할지 여부"로 적고 있는 것을 확인했으므로 **목록 필터로 확정**한다(별도 토글 엔드포인트가 아니다). 고정 여부를 바꾸는 것은 공지 수정(`PUT /v1/notices/{id}`)의 `isPinned` 필드다.
 > ‖ `API 초안`에도 이 엔드포인트는 없다. **팀 결정으로 목록·상세를 분리해 신규 추가한 엔드포인트**로, 기존 문서의 결정을 그대로 유지한다 — 목록은 `body`를 뺀 `NoticeSummaryResponse`, 상세는 전체 필드를 담는 `NoticeDetailResponse`다(`docs/specs/dto-spec.md` §7).
 > `API 초안`은 공지 수정·삭제를 `/groups/{id}/notices/{id}`(그룹 하위 경로)로 적었으나, 기존 컨벤션(단독 경로 `/notices/{id}`)을 유지하기로 하고 노션도 함께 수정했다(2026-09-11). 생성·목록은 그대로 `/groups/{id}/notices` 아래에 둔다.
+> **2026-10-05 결정** — ① 공지 상세는 `API 초안`에 없던 엔드포인트였는데 이번에 노션에도 페이지를 만들어 양쪽을 맞췄다. ② **공지 응답에 작성자(`author`)를 담지 않는다** — 작성·수정·삭제 권한이 현재 모임장으로 고정이라 구분할 이유가 없다. ③ **공지 권한은 "현재 모임장"이다** — 작성자가 전 모임장이어도 현 모임장만 수정·삭제한다.
+> ¶ 공지 목록의 쿼리 파라미터: `isPinned` · `page` · `size` (전부 선택). **노션 `API 초안`(2026-09-23)에 이미 있던 것이 이 문서의 이전 스냅샷(2026-09-14)에 반영되지 않았던 항목**으로, 2026-10-07 대조에서 가져왔다 — 노션 쪽은 고칠 것이 없었다. `isPinned`를 생략하면 고정글 우선 정렬로 전체를, `true`/`false`면 해당 공지만 최신순으로 내려준다.
 
 ---
 

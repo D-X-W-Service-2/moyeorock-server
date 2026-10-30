@@ -277,4 +277,15 @@ class RecruitPostServiceTest {
 
         assertThat(response.status()).isEqualTo(RecruitStatus.CLOSED);
     }
+
+    @Test
+    @DisplayName("모임 해체 때 그 모임의 모집 중 공고를 모두 마감한다")
+    void closeOpenPostsOfGroup_closesEveryOpenPost() {
+        List<RecruitPost> openPosts = List.of(existingPost(RecruitStatus.OPEN), existingPost(RecruitStatus.OPEN));
+        when(recruitPostRepository.findByTargetGroupIdAndStatus(9L, RecruitStatus.OPEN)).thenReturn(openPosts);
+
+        recruitPostService.closeOpenPostsOfGroup(9L);
+
+        assertThat(openPosts).extracting(RecruitPost::getStatus).containsOnly(RecruitStatus.CLOSED);
+    }
 }
