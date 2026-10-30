@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
@@ -298,6 +299,30 @@ class GroupMemberServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
         verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("모임 표시 정보에는 이름·커버가 담기고 모임원 여부는 확인하지 않는다")
+    void getGroupBrief_returnsNameAndCover_withoutCheckingMembership() {
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE))
+                .thenReturn(Optional.of(Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, "cover.jpg")));
+
+        GroupBriefResponse brief = groupMemberService.getGroupBrief(GROUP_ID);
+
+        assertThat(brief.name()).isEqualTo("홍대 밴드부");
+        assertThat(brief.coverImage()).isEqualTo("cover.jpg");
+        verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("해체됐거나 없는 모임의 표시 정보를 물으면 GROUP_NOT_FOUND를 던진다")
+    void getGroupBrief_throws_whenGroupDisbanded() {
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.getGroupBrief(GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
     }
 
     private void givenGroupExists() {
