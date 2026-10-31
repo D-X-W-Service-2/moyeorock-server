@@ -164,6 +164,15 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
 | `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
 
+**팀 조회·권한 확인용 `TeamMemberService`** (4팀 셋리스트가 부른다. 다른 Service를 부르지 않아서 `TeamService`와 서로 부르는 순환이 생기지 않는다)
+
+| 메서드 | 내용 | 실패 |
+|---|---|---|
+| `ensureLeader(Long teamId, Long userId)` | 활동 중인 팀장인지 확인 | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀장 아님 `403 NOT_TEAM_LEADER` |
+| `ensureActiveMember(Long teamId, Long userId)` | 활동 중인 팀원인지 확인(역할 무관) | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀원 아님 `403 NO_PERMISSION` |
+| `getPerformanceId(Long teamId)` → `Long` | 팀이 속한 공연 id, 독립 팀은 `null`. 해체된 팀도 돌려줌 | 없는 팀 `404 TEAM_NOT_FOUND` |
+| `getNames(Collection<Long> teamIds)` → `Map<Long, String>` | 팀 이름 일괄 조회. **해체된 팀도 포함**(끝난 공연 셋리스트용), 없는 id는 빠짐 | — |
+
 ---
 
 ## 4. rehearsal (6)
