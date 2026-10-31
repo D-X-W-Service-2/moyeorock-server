@@ -209,9 +209,9 @@ public class TeamService {
         return registerTeam(userId, team, genres, instrument);
     }
 
-    /** 공연 종료 시 소속 팀 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
+    /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
     @Transactional
-    public void disbandByPerformance(Long performanceId) {
+    public void disbandAllByPerformance(Long performanceId) {
         teamRepository.findActiveByPerformanceId(performanceId).forEach(Team::disband);
     }
 

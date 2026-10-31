@@ -442,8 +442,8 @@ class TeamServiceTest {
 
         assertThat(response.totalElements()).isEqualTo(2);
         assertThat(response.content()).containsExactly(
-                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(Genre.ROCK, Genre.INDIE), 4),
-                new TeamSummaryResponse(6L, "빈 팀", Region.GYEONGGI, List.of(), 0));
+                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(Genre.ROCK, Genre.INDIE), TeamStatus.ACTIVE, 4),
+                new TeamSummaryResponse(6L, "빈 팀", Region.GYEONGGI, List.of(), TeamStatus.ACTIVE, 0));
     }
 
     @Test
@@ -486,7 +486,7 @@ class TeamServiceTest {
         PageResponse<TeamSummaryResponse> response = teamService.getMyTeams(MEMBER_ID, pageable);
 
         assertThat(response.content()).containsExactly(
-                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(), 2));
+                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(), TeamStatus.ACTIVE, 2));
     }
 
     @Test
@@ -652,14 +652,14 @@ class TeamServiceTest {
 
     @Test
     @DisplayName("공연 종료 시 해체: 그 공연의 ACTIVE 팀이 모두 해체되고, 팀이 없어도 오류가 아니다")
-    void disbandByPerformance_disbandsAllActiveTeams() {
+    void disbandAllByPerformance_disbandsAllActiveTeams() {
         Team first = team();
         Team second = team();
         given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of(first, second));
         given(teamRepository.findActiveByPerformanceId(8L)).willReturn(List.of());
 
-        teamService.disbandByPerformance(7L);
-        teamService.disbandByPerformance(8L);
+        teamService.disbandAllByPerformance(7L);
+        teamService.disbandAllByPerformance(8L);
 
         assertThat(first.getStatus()).isEqualTo(TeamStatus.DISBANDED);
         assertThat(second.getStatus()).isEqualTo(TeamStatus.DISBANDED);
