@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `auth` | 1팀 | (없음 · `users` 읽기) | 3 |
 | `user` | 1팀 | `users` `user_instruments` | 9 |
-| `team` | 2팀 | `teams` `team_genres` `team_members` | 9 |
+| `team` | 2팀 | `teams` `team_genres` `team_members` | 10 |
 | `rehearsal` | 2팀 | `rehearsals` | 6 |
 | `recruit` | 3팀 | `recruit_posts` | 5 |
 | `join` | 3팀 | `join_requests` | 12 |
@@ -45,7 +45,7 @@
 
 한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistConfirmRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
 
-**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다.
+**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team` 소유다.
 
 **공연 참가 단위는 팀이다.** 공연자 개별 관리 API는 없다. 공연에서 팀을 빼는 것 = 팀 해체.
 
@@ -75,7 +75,7 @@
 | 팀 | 도메인 | 엔드포인트 |
 |---|---|---|
 | **1팀** | `auth` `user` `file` | 13 |
-| **2팀** | `team` `rehearsal` | 15 |
+| **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
 | **4팀** | `group` `notice` `performance` `song` `setlist` | 22 |
 
@@ -90,13 +90,14 @@
 | `global/common` `enums` `exception` | **1팀 → 전원** | 나머지 셋이 이것 없이는 시작 못 한다. **최우선** |
 | Security · `@AuthUser` | **1팀 → 전원** | 주입 타입(`Long userId`)을 먼저 확정 |
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
-| 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가. 3팀이 직접 `team_members`를 만들지 않는다 |
-| 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다 |
-| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체 |
+| 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가(`TeamService.addMember`). 3팀이 직접 `team_members`를 만들지 않는다 |
+| 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다(`TeamService.createForPerformance`) |
+| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandByPerformance`) |
+| 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지 |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
-**2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처를 2팀이 먼저 확정하고 공유해야 나머지가 막히지 않는다.
+**2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.
 
 **`PUT /v1/teams/{id}/setlist`는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
 
