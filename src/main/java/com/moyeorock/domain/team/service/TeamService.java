@@ -8,7 +8,9 @@ import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
+import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
 import com.moyeorock.domain.team.dto.response.TeamStatusResponse;
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.entity.TeamGenre;
 import com.moyeorock.domain.team.entity.TeamMember;
@@ -17,16 +19,23 @@ import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
+import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -126,6 +135,38 @@ public class TeamService {
         return TeamMemberStatusResponse.from(target);
     }
 
+    /**
+     * 팀 목록. 해체된 팀은 항상 빠진다(결정 8). 정렬은 쿼리에 고정되어 있어 클라이언트의 sort는 무시한다.
+     * 목록·장르·인원 수 쿼리 결과가 서로 맞아야 해서 readOnly 트랜잭션으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<TeamSummaryResponse> search(Region region, Genre genre, Pageable pageable) {
+        Page<Team> teams = teamRepository.search(region, genre, TeamStatus.ACTIVE, withoutSort(pageable));
+        return PageResponse.from(toSummaries(teams));
+    }
+
+    /** 내 팀 목록. 내가 ACTIVE 팀원이고 팀도 ACTIVE인 팀만, 최근 합류 순이다. */
+    @Transactional(readOnly = true)
+    public PageResponse<TeamSummaryResponse> getMyTeams(Long userId, Pageable pageable) {
+        return PageResponse.from(toSummaries(teamRepository.findMyTeams(userId, withoutSort(pageable))));
+    }
+
+    /**
+     * 팀 상세. 해체된 팀은 없는 팀(TEAM_NOT_FOUND)으로 취급한다. 중간에 user 도메인 Service를 호출하므로
+     * 트랜잭션을 붙이지 않는다(conventions.md §3 — 호출된 Service가 자기 트랜잭션을 열어 바깥에서 감싸도
+     * 같은 시점이 보장되지 않는다).
+     */
+    public TeamDetailResponse getDetail(Long userId, Long teamId) {
+        return toDetail(getActiveTeam(teamId), userId);
+    }
+
+    /** 팀원 목록. ACTIVE 팀원만 합류 순으로 돌려주며, 해체된 팀은 TEAM_NOT_FOUND다. */
+    public TeamMembersResponse getMembers(Long teamId) {
+        getActiveTeam(teamId);
+        List<TeamMember> members = teamMemberRepository.findActiveMembers(teamId);
+        return new TeamMembersResponse(toMemberResponses(members, getUsers(members)));
+    }
+
     // 요청 role이 현재와 같으면 아무 것도 안 한다. LEADER로 바꾸면 위임이라 기존 팀장은 MEMBER가 된다.
     private void applyRole(TeamMember leader, TeamMember target, TeamRole role) {
         if (role == target.getRole()) {
@@ -143,6 +184,15 @@ public class TeamService {
     private Team getTeam(Long teamId) {
         return teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_NOT_FOUND));
+    }
+
+    // 조회 전용: 해체된 팀은 조회에서 걸러진다(architecture.md §6)
+    private Team getActiveTeam(Long teamId) {
+        Team team = getTeam(teamId);
+        if (team.getStatus() != TeamStatus.ACTIVE) {
+            throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
+        }
+        return team;
     }
 
     private void requireActiveTeam(Team team) {
@@ -173,18 +223,10 @@ public class TeamService {
     }
 
     private TeamDetailResponse toDetail(Team team, Long viewerId) {
-        List<Genre> genres = teamGenreRepository.findAllByTeamIdIn(List.of(team.getId())).stream()
-                .sorted(Comparator.comparing(TeamGenre::getId))
-                .map(TeamGenre::getGenre)
-                .toList();
+        List<Genre> genres = groupGenres(List.of(team.getId())).getOrDefault(team.getId(), List.of());
         List<TeamMember> members = teamMemberRepository.findActiveMembers(team.getId());
-        // 탈퇴한 회원은 getSummaries 결과에 없어 user가 null로 내려간다
-        Map<Long, UserSummaryResponse> users =
-                userService.getSummaries(members.stream().map(TeamMember::getUserId).toList());
+        Map<Long, UserSummaryResponse> users = getUsers(members);
 
-        List<TeamMemberResponse> memberResponses = members.stream()
-                .map(m -> TeamMemberResponse.of(m, users.get(m.getUserId())))
-                .toList();
         UserSummaryResponse leader = members.stream()
                 .filter(m -> m.getRole() == TeamRole.LEADER)
                 .findFirst()
@@ -196,6 +238,44 @@ public class TeamService {
                 .map(TeamMember::getRole)
                 .orElse(null);
 
-        return TeamDetailResponse.of(team, genres, leader, memberResponses, myRole);
+        return TeamDetailResponse.of(team, genres, leader, toMemberResponses(members, users), myRole);
+    }
+
+    // 목록 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져온다
+    private Page<TeamSummaryResponse> toSummaries(Page<Team> teams) {
+        List<Long> teamIds = teams.getContent().stream().map(Team::getId).toList();
+        Map<Long, List<Genre>> genres = teamIds.isEmpty() ? Map.of() : groupGenres(teamIds);
+        Map<Long, Integer> counts = teamIds.isEmpty() ? Map.of() : countMembers(teamIds);
+        return teams.map(team -> TeamSummaryResponse.of(team,
+                genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)));
+    }
+
+    // 장르 행의 id 순(저장한 순서)을 유지한다
+    private Map<Long, List<Genre>> groupGenres(List<Long> teamIds) {
+        return teamGenreRepository.findAllByTeamIdIn(teamIds).stream()
+                .sorted(Comparator.comparing(TeamGenre::getId))
+                .collect(Collectors.groupingBy(TeamGenre::getTeamId,
+                        Collectors.mapping(TeamGenre::getGenre, Collectors.toList())));
+    }
+
+    // 팀원이 0명인 팀은 집계 결과에 행이 없어서 호출하는 쪽이 getOrDefault로 0을 채운다
+    private Map<Long, Integer> countMembers(List<Long> teamIds) {
+        return teamMemberRepository.countActiveByTeamIds(teamIds).stream()
+                .collect(Collectors.toMap(TeamMemberCount::getTeamId, count -> (int) count.getCount()));
+    }
+
+    // 탈퇴한 회원은 getSummaries 결과에 없어 user가 null로 내려간다
+    private Map<Long, UserSummaryResponse> getUsers(List<TeamMember> members) {
+        return userService.getSummaries(members.stream().map(TeamMember::getUserId).toList());
+    }
+
+    private List<TeamMemberResponse> toMemberResponses(List<TeamMember> members,
+            Map<Long, UserSummaryResponse> users) {
+        return members.stream().map(m -> TeamMemberResponse.of(m, users.get(m.getUserId()))).toList();
+    }
+
+    // 정렬은 쿼리에 고정되어 있어서 클라이언트가 보낸 sort를 버린다(ORDER BY 중복 방지)
+    private Pageable withoutSort(Pageable pageable) {
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
     }
 }

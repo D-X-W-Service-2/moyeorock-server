@@ -3,6 +3,7 @@ package com.moyeorock.domain.team.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,7 +16,9 @@ import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
+import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
 import com.moyeorock.domain.team.dto.response.TeamStatusResponse;
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.entity.TeamGenre;
 import com.moyeorock.domain.team.entity.TeamMember;
@@ -24,9 +27,11 @@ import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
+import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
@@ -42,6 +47,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -391,5 +400,149 @@ class TeamServiceTest {
     void changeMemberStatus_withOtherStatus_isValidationFailed() {
         assertErrorCode(() -> teamService.changeMemberStatus(LEADER_ID, TEAM_ID, MEMBER_ID,
                 new TeamMemberStatusUpdateRequest(MemberStatus.ACTIVE)), ErrorCode.VALIDATION_FAILED);
+    }
+
+    // ---------- 조회 ----------
+
+    private TeamGenre genre(Long id, Long teamId, Genre genre) {
+        TeamGenre teamGenre = TeamGenre.create(teamId, genre);
+        ReflectionTestUtils.setField(teamGenre, "id", id);
+        return teamGenre;
+    }
+
+    private static TeamMemberCount count(Long teamId, long count) {
+        return new TeamMemberCount() {
+            @Override
+            public Long getTeamId() {
+                return teamId;
+            }
+
+            @Override
+            public long getCount() {
+                return count;
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("팀 목록: ACTIVE 팀만 조회하고 장르·인원 수를 채우며, 팀원이 없는 팀의 인원 수는 0이다")
+    void search_buildsSummaries_withGenresAndCounts() {
+        Team crowded = team();
+        Team empty = Team.create("빈 팀", null, Region.GYEONGGI);
+        ReflectionTestUtils.setField(empty, "id", 6L);
+        Pageable pageable = PageRequest.of(0, 20);
+        given(teamRepository.search(Region.SEOUL, Genre.ROCK, TeamStatus.ACTIVE, pageable))
+                .willReturn(new PageImpl<>(List.of(crowded, empty), pageable, 2));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(genre(2L, TEAM_ID, Genre.INDIE), genre(1L, TEAM_ID, Genre.ROCK)));
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(count(TEAM_ID, 4)));
+
+        PageResponse<TeamSummaryResponse> response = teamService.search(Region.SEOUL, Genre.ROCK, pageable);
+
+        assertThat(response.totalElements()).isEqualTo(2);
+        assertThat(response.content()).containsExactly(
+                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(Genre.ROCK, Genre.INDIE), 4),
+                new TeamSummaryResponse(6L, "빈 팀", Region.GYEONGGI, List.of(), 0));
+    }
+
+    @Test
+    @DisplayName("팀 목록: 클라이언트가 보낸 sort는 버리고 쿼리의 고정 정렬을 쓴다")
+    void search_dropsClientSort() {
+        given(teamRepository.search(eq(null), eq(null), eq(TeamStatus.ACTIVE), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of()));
+
+        teamService.search(null, null, PageRequest.of(2, 10, Sort.by("name")));
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(teamRepository).search(eq(null), eq(null), eq(TeamStatus.ACTIVE), captor.capture());
+        assertThat(captor.getValue().getSort().isUnsorted()).isTrue();
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(2);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("팀 목록: 결과가 비면 장르·인원 수 쿼리를 날리지 않는다")
+    void search_emptyPage_skipsExtraQueries() {
+        Pageable pageable = PageRequest.of(0, 20);
+        given(teamRepository.search(null, null, TeamStatus.ACTIVE, pageable)).willReturn(new PageImpl<>(List.of()));
+
+        PageResponse<TeamSummaryResponse> response = teamService.search(null, null, pageable);
+
+        assertThat(response.content()).isEmpty();
+        verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
+        verify(teamMemberRepository, never()).countActiveByTeamIds(any());
+    }
+
+    @Test
+    @DisplayName("내 팀 목록: 내 팀을 요약으로 돌려준다")
+    void getMyTeams_returnsSummaries() {
+        Pageable pageable = PageRequest.of(0, 20);
+        given(teamRepository.findMyTeams(MEMBER_ID, pageable))
+                .willReturn(new PageImpl<>(List.of(team()), pageable, 1));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 2)));
+
+        PageResponse<TeamSummaryResponse> response = teamService.getMyTeams(MEMBER_ID, pageable);
+
+        assertThat(response.content()).containsExactly(
+                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(), 2));
+    }
+
+    @Test
+    @DisplayName("팀 상세: 팀원이 보면 myRole이 채워지고, 팀원이 아닌 사람이 보면 null이다")
+    void getDetail_myRole_dependsOnViewer() {
+        givenTeam(team());
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        TeamMember leader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        TeamMember member = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of(leader, member));
+        given(userService.getSummaries(List.of(LEADER_ID, MEMBER_ID))).willReturn(Map.of(
+                LEADER_ID, new UserSummaryResponse(LEADER_ID, "홍길동", null),
+                MEMBER_ID, new UserSummaryResponse(MEMBER_ID, "김철수", null)));
+
+        assertThat(teamService.getDetail(MEMBER_ID, TEAM_ID).myRole()).isEqualTo(TeamRole.MEMBER);
+        TeamDetailResponse asStranger = teamService.getDetail(99L, TEAM_ID);
+
+        assertThat(asStranger.myRole()).isNull();
+        assertThat(asStranger.memberCount()).isEqualTo(2);
+        assertThat(asStranger.leader().nickname()).isEqualTo("홍길동");
+    }
+
+    @Test
+    @DisplayName("팀 상세·팀원 목록: 해체된 팀은 없는 팀처럼 TEAM_NOT_FOUND")
+    void reads_disbandedTeam_isNotFound() {
+        givenTeam(disbandedTeam());
+
+        assertErrorCode(() -> teamService.getDetail(LEADER_ID, TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
+        assertErrorCode(() -> teamService.getMembers(TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("팀 상세·팀원 목록: 없는 팀은 TEAM_NOT_FOUND")
+    void reads_unknownTeam_isNotFound() {
+        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+
+        assertErrorCode(() -> teamService.getDetail(LEADER_ID, TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
+        assertErrorCode(() -> teamService.getMembers(TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("팀원 목록: ACTIVE 팀원과 사용자 요약을 합류 순으로 돌려준다")
+    void getMembers_returnsActiveMembersWithUsers() {
+        givenTeam(team());
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of(
+                member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE),
+                member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE)));
+        given(userService.getSummaries(List.of(LEADER_ID, MEMBER_ID)))
+                .willReturn(Map.of(LEADER_ID, new UserSummaryResponse(LEADER_ID, "홍길동", null)));
+
+        TeamMembersResponse response = teamService.getMembers(TEAM_ID);
+
+        assertThat(response.members()).extracting(TeamMemberResponse::role)
+                .containsExactly(TeamRole.LEADER, TeamRole.MEMBER);
+        assertThat(response.members().get(0).user().nickname()).isEqualTo("홍길동");
+        // 탈퇴한 회원은 사용자 요약이 없어 user가 null이다
+        assertThat(response.members().get(1).user()).isNull();
     }
 }
