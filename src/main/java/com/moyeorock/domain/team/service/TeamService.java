@@ -25,15 +25,18 @@ import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -51,10 +54,8 @@ public class TeamService {
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
     public TeamDetailResponse create(Long userId, TeamCreateRequest request) {
-        Team team = teamRepository.save(Team.create(request.name(), request.description(), request.region()));
-        saveGenres(team.getId(), request.genres());
-        teamMemberRepository.save(TeamMember.create(team.getId(), userId, TeamRole.LEADER, request.instrument()));
-        return toDetail(team, userId);
+        Team team = Team.create(request.name(), request.description(), request.region());
+        return registerTeam(userId, team, request.genres(), request.instrument());
     }
 
     /** 팀 정보 수정(전체 교체). 팀장만 가능하고, 해체된 팀은 고칠 수 없다. */
@@ -167,6 +168,53 @@ public class TeamService {
         return new TeamMembersResponse(toMemberResponses(members, getUsers(members)));
     }
 
+    // ---------- 타 도메인용 ----------
+    // 다른 도메인은 이 메서드들(Service)과 응답 DTO만 쓴다. 요청 DTO는 넘기지 않고 값을 하나씩 받는다(conventions.md §6).
+
+    /**
+     * 팀 요약 일괄 조회(3팀 북마크·1팀 내 활동). 해체된 팀과 없는 id는 결과 Map에서 빠지니,
+     * 호출하는 쪽이 없는 id를 "삭제된 항목"으로 처리한다.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, TeamSummaryResponse> getSummaries(List<Long> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) {
+            return Map.of();
+        }
+        return buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
+                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+    }
+
+    /**
+     * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
+     * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
+     */
+    @Transactional
+    public void addMember(Long teamId, Long userId, Instrument instrument) {
+        requireActiveTeam(getTeam(teamId));
+        teamMemberRepository.findByTeamIdAndUserId(teamId, userId).ifPresentOrElse(
+                member -> {
+                    if (member.getStatus() == MemberStatus.ACTIVE) {
+                        throw new BusinessException(ErrorCode.INVALID_STATE);
+                    }
+                    member.rejoin(instrument);
+                },
+                () -> teamMemberRepository.save(TeamMember.create(teamId, userId, TeamRole.MEMBER, instrument)));
+    }
+
+    /** 공연 내 팀 생성(4팀). 만든 사람이 팀장이 된다. 공연 존재·상태 검증은 호출하는 4팀의 몫이다. */
+    @Transactional
+    public TeamDetailResponse createForPerformance(Long userId, Long performanceId, String name,
+            String description, Region region, List<Genre> genres, Instrument instrument) {
+        Team team = Team.createForPerformance(performanceId, name, description, region);
+        return registerTeam(userId, team, genres, instrument);
+    }
+
+    /** 공연 종료 시 소속 팀 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
+    @Transactional
+    public void disbandByPerformance(Long performanceId) {
+        teamRepository.findActiveByPerformanceId(performanceId).forEach(Team::disband);
+    }
+
     // 요청 role이 현재와 같으면 아무 것도 안 한다. LEADER로 바꾸면 위임이라 기존 팀장은 MEMBER가 된다.
     private void applyRole(TeamMember leader, TeamMember target, TeamRole role) {
         if (role == target.getRole()) {
@@ -214,6 +262,14 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_STATE));
     }
 
+    // 새 팀과 장르, 팀장 팀원을 저장하고 상세를 만든다. create와 createForPerformance가 함께 쓴다.
+    private TeamDetailResponse registerTeam(Long userId, Team newTeam, List<Genre> genres, Instrument instrument) {
+        Team team = teamRepository.save(newTeam);
+        saveGenres(team.getId(), genres);
+        teamMemberRepository.save(TeamMember.create(team.getId(), userId, TeamRole.LEADER, instrument));
+        return toDetail(team, userId);
+    }
+
     // 중복 장르는 한 번만 저장한다. (team_id, genre) 유니크 위반을 막는다.
     private void saveGenres(Long teamId, List<Genre> genres) {
         if (genres == null || genres.isEmpty()) {
@@ -241,13 +297,22 @@ public class TeamService {
         return TeamDetailResponse.of(team, genres, leader, toMemberResponses(members, users), myRole);
     }
 
-    // 목록 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져온다
     private Page<TeamSummaryResponse> toSummaries(Page<Team> teams) {
-        List<Long> teamIds = teams.getContent().stream().map(Team::getId).toList();
-        Map<Long, List<Genre>> genres = teamIds.isEmpty() ? Map.of() : groupGenres(teamIds);
-        Map<Long, Integer> counts = teamIds.isEmpty() ? Map.of() : countMembers(teamIds);
-        return teams.map(team -> TeamSummaryResponse.of(team,
-                genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)));
+        return new PageImpl<>(buildSummaries(teams.getContent()), teams.getPageable(), teams.getTotalElements());
+    }
+
+    // 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져온다
+    private List<TeamSummaryResponse> buildSummaries(List<Team> teams) {
+        if (teams.isEmpty()) {
+            return List.of();
+        }
+        List<Long> teamIds = teams.stream().map(Team::getId).toList();
+        Map<Long, List<Genre>> genres = groupGenres(teamIds);
+        Map<Long, Integer> counts = countMembers(teamIds);
+        return teams.stream()
+                .map(team -> TeamSummaryResponse.of(team,
+                        genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)))
+                .toList();
     }
 
     // 장르 행의 id 순(저장한 순서)을 유지한다

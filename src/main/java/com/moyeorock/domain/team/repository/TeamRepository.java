@@ -62,4 +62,11 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     }
 
     List<Team> findAllByIdInAndStatus(Collection<Long> teamIds, TeamStatus status);
+
+    /** 공연 종료 시 해체할 팀. 이미 해체된 팀은 빠지므로 여러 번 불러도 안전하다. */
+    default List<Team> findActiveByPerformanceId(Long performanceId) {
+        return findAllByPerformanceIdAndStatus(performanceId, TeamStatus.ACTIVE);
+    }
+
+    List<Team> findAllByPerformanceIdAndStatus(Long performanceId, TeamStatus status);
 }

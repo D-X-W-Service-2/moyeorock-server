@@ -150,4 +150,19 @@ class TeamRepositoryTest {
 
         assertThat(result).extracting(Team::getName).containsExactly("활동 중");
     }
+
+    @Test
+    @DisplayName("findActiveByPerformanceId는 그 공연의 ACTIVE 팀만 돌려준다")
+    void findActiveByPerformanceId_returnsActiveTeamsOfThatPerformance() {
+        teamRepository.saveAndFlush(Team.createForPerformance(7L, "공연팀 A", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(7L, "해체된 공연팀", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        teamRepository.saveAndFlush(Team.createForPerformance(8L, "다른 공연팀", null, Region.SEOUL));
+        saveTeam("독립 팀", Region.SEOUL);
+
+        List<Team> result = teamRepository.findActiveByPerformanceId(7L);
+
+        assertThat(result).extracting(Team::getName).containsExactly("공연팀 A");
+    }
 }

@@ -545,4 +545,123 @@ class TeamServiceTest {
         // 탈퇴한 회원은 사용자 요약이 없어 user가 null이다
         assertThat(response.members().get(1).user()).isNull();
     }
+
+    // ---------- 타 도메인용 ----------
+
+    @Test
+    @DisplayName("요약 일괄 조회: 해체된 팀과 없는 id는 결과에서 빠지고 인원 수가 채워진다")
+    void getSummaries_returnsOnlyActiveTeams() {
+        given(teamRepository.findActiveByIdIn(List.of(TEAM_ID, 6L))).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 3)));
+
+        Map<Long, TeamSummaryResponse> result = teamService.getSummaries(List.of(TEAM_ID, 6L));
+
+        assertThat(result).containsOnlyKeys(TEAM_ID);
+        assertThat(result.get(TEAM_ID).memberCount()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("요약 일괄 조회: id가 없거나 비었으면 조회하지 않고 빈 Map이다")
+    void getSummaries_withoutIds_returnsEmpty() {
+        assertThat(teamService.getSummaries(null)).isEmpty();
+        assertThat(teamService.getSummaries(List.of())).isEmpty();
+        verify(teamRepository, never()).findActiveByIdIn(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 처음 들어오는 사람은 MEMBER로 새로 저장된다")
+    void addMember_newPerson_isSavedAsMember() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, null);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM);
+
+        ArgumentCaptor<TeamMember> saved = ArgumentCaptor.forClass(TeamMember.class);
+        verify(teamMemberRepository).save(saved.capture());
+        assertThat(saved.getValue().getUserId()).isEqualTo(MEMBER_ID);
+        assertThat(saved.getValue().getRole()).isEqualTo(TeamRole.MEMBER);
+        assertThat(saved.getValue().getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(saved.getValue().getInstrument()).isEqualTo(Instrument.DRUM);
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 탈퇴했거나 강퇴당했던 사람은 새 행 없이 기존 행이 되살아난다")
+    void addMember_formerMember_isReactivated() {
+        givenTeam(team());
+        TeamMember left = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT);
+        givenMember(MEMBER_ID, left);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.EL_GT);
+
+        assertThat(left.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(left.getInstrument()).isEqualTo(Instrument.EL_GT);
+        verify(teamMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 강퇴당했던 사람도 다시 들어올 수 있다")
+    void addMember_removedMember_canRejoin() {
+        givenTeam(team());
+        TeamMember removed = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.REMOVED);
+        givenMember(MEMBER_ID, removed);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.BASS);
+
+        assertThat(removed.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 이미 팀원이면 INVALID_STATE, 해체된 팀이면 INVALID_STATE, 없는 팀이면 TEAM_NOT_FOUND")
+    void addMember_rejects_alreadyMember_disbandedTeam_unknownTeam() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE));
+        assertErrorCode(() -> teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.BASS), ErrorCode.INVALID_STATE);
+
+        givenTeam(disbandedTeam());
+        assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.INVALID_STATE);
+
+        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.TEAM_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("공연 내 팀 생성: performanceId를 가진 팀이 만들어지고 만든 사람이 팀장이 된다")
+    void createForPerformance_savesTeamWithPerformanceId() {
+        given(teamRepository.save(any(Team.class))).willAnswer(inv -> {
+            Team saved = inv.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", TEAM_ID);
+            return saved;
+        });
+        TeamMember leader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of(leader));
+        given(userService.getSummaries(List.of(LEADER_ID))).willReturn(Map.of());
+
+        TeamDetailResponse response = teamService.createForPerformance(LEADER_ID, 7L, "공연팀", null,
+                Region.SEOUL, List.of(Genre.BALLAD), Instrument.BASS);
+
+        ArgumentCaptor<Team> team = ArgumentCaptor.forClass(Team.class);
+        verify(teamRepository).save(team.capture());
+        assertThat(team.getValue().getPerformanceId()).isEqualTo(7L);
+        ArgumentCaptor<TeamMember> member = ArgumentCaptor.forClass(TeamMember.class);
+        verify(teamMemberRepository).save(member.capture());
+        assertThat(member.getValue().getRole()).isEqualTo(TeamRole.LEADER);
+        assertThat(response.myRole()).isEqualTo(TeamRole.LEADER);
+    }
+
+    @Test
+    @DisplayName("공연 종료 시 해체: 그 공연의 ACTIVE 팀이 모두 해체되고, 팀이 없어도 오류가 아니다")
+    void disbandByPerformance_disbandsAllActiveTeams() {
+        Team first = team();
+        Team second = team();
+        given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of(first, second));
+        given(teamRepository.findActiveByPerformanceId(8L)).willReturn(List.of());
+
+        teamService.disbandByPerformance(7L);
+        teamService.disbandByPerformance(8L);
+
+        assertThat(first.getStatus()).isEqualTo(TeamStatus.DISBANDED);
+        assertThat(second.getStatus()).isEqualTo(TeamStatus.DISBANDED);
+    }
 }
