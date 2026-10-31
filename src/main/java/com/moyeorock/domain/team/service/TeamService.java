@@ -209,6 +209,20 @@ public class TeamService {
         return registerTeam(userId, team, genres, instrument);
     }
 
+    /**
+     * 공연 상세에 보여줄 팀 요약(4팀). 해체된 팀은 빠지므로 끝난 공연(팀이 모두 해체됨)은 빈 목록이다.
+     * 장르·인원 수 쿼리 결과가 서로 맞아야 해서 readOnly 트랜잭션으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public List<TeamSummaryResponse> getActiveSummaries(Long performanceId) {
+        return buildSummaries(teamRepository.findActiveByPerformanceId(performanceId));
+    }
+
+    /** 내가 그 공연에서 속한 팀 id(4팀). 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록이다. */
+    public List<Long> findMyTeamIds(Long performanceId, Long userId) {
+        return teamRepository.findMyTeamIdsInPerformance(performanceId, userId);
+    }
+
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
     @Transactional
     public void disbandAllByPerformance(Long performanceId) {

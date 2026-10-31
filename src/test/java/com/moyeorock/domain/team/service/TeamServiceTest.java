@@ -570,6 +570,39 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("공연의 팀 요약: 그 공연의 활성 팀을 장르·인원 수와 함께 돌려준다")
+    void getActiveSummaries_returnsTeamsOfPerformance() {
+        given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 3)));
+
+        List<TeamSummaryResponse> result = teamService.getActiveSummaries(7L);
+
+        assertThat(result).containsExactly(
+                new TeamSummaryResponse(TEAM_ID, "무명밴드", Region.SEOUL, List.of(), TeamStatus.ACTIVE, 3));
+    }
+
+    @Test
+    @DisplayName("공연의 팀 요약: 팀이 없는(끝난) 공연은 빈 목록이고 추가 조회도 하지 않는다")
+    void getActiveSummaries_withoutTeams_returnsEmptyWithoutExtraQueries() {
+        given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of());
+
+        assertThat(teamService.getActiveSummaries(7L)).isEmpty();
+        verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
+        verify(teamMemberRepository, never()).countActiveByTeamIds(any());
+    }
+
+    @Test
+    @DisplayName("내 팀 id: 같은 공연의 여러 팀에 속해 있으면 모두 돌려주고, 없으면 빈 목록이다")
+    void findMyTeamIds_returnsAllTeamIdsOfThePerformance() {
+        given(teamRepository.findMyTeamIdsInPerformance(7L, MEMBER_ID)).willReturn(List.of(5L, 6L));
+        given(teamRepository.findMyTeamIdsInPerformance(7L, 99L)).willReturn(List.of());
+
+        assertThat(teamService.findMyTeamIds(7L, MEMBER_ID)).containsExactly(5L, 6L);
+        assertThat(teamService.findMyTeamIds(7L, 99L)).isEmpty();
+    }
+
+    @Test
     @DisplayName("팀원 추가: 처음 들어오는 사람은 MEMBER로 새로 저장된다")
     void addMember_newPerson_isSavedAsMember() {
         givenTeam(team());

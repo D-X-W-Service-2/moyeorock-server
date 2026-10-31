@@ -63,10 +63,35 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     List<Team> findAllByIdInAndStatus(Collection<Long> teamIds, TeamStatus status);
 
-    /** 공연 종료 시 해체할 팀. 이미 해체된 팀은 빠지므로 여러 번 불러도 안전하다. */
+    /**
+     * 공연에 속한 활성 팀(공연 상세의 팀 요약, 공연 종료 시 해체 대상). 이미 해체된 팀은 빠지므로 여러 번 불러도 안전하다.
+     * 순서가 흔들리지 않도록 id 순으로 고정한다.
+     */
     default List<Team> findActiveByPerformanceId(Long performanceId) {
-        return findAllByPerformanceIdAndStatus(performanceId, TeamStatus.ACTIVE);
+        return findAllByPerformanceIdAndStatusOrderByIdAsc(performanceId, TeamStatus.ACTIVE);
     }
 
-    List<Team> findAllByPerformanceIdAndStatus(Long performanceId, TeamStatus status);
+    List<Team> findAllByPerformanceIdAndStatusOrderByIdAsc(Long performanceId, TeamStatus status);
+
+    /**
+     * 내가 그 공연에서 속한 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어서(4팀 결정) 목록이다.
+     * 내가 ACTIVE 팀원이고 팀도 ACTIVE인 경우만 센다 — 위 규칙을 한 곳에 고정하려고 감쌌다.
+     */
+    default List<Long> findMyTeamIdsInPerformance(Long performanceId, Long userId) {
+        return findTeamIdsByPerformanceAndMember(performanceId, userId, MemberStatus.ACTIVE, TeamStatus.ACTIVE);
+    }
+
+    @Query("""
+            SELECT t.id FROM Team t
+            JOIN TeamMember m ON m.teamId = t.id
+            WHERE t.performanceId = :performanceId
+              AND m.userId = :userId
+              AND m.status = :memberStatus
+              AND t.status = :teamStatus
+            ORDER BY t.id
+            """)
+    List<Long> findTeamIdsByPerformanceAndMember(@Param("performanceId") Long performanceId,
+            @Param("userId") Long userId,
+            @Param("memberStatus") MemberStatus memberStatus,
+            @Param("teamStatus") TeamStatus teamStatus);
 }

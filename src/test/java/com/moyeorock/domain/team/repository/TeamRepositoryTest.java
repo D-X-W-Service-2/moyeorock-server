@@ -165,4 +165,38 @@ class TeamRepositoryTest {
 
         assertThat(result).extracting(Team::getName).containsExactly("공연팀 A");
     }
+
+    @Test
+    @DisplayName("findMyTeamIdsInPerformance는 내가 그 공연에서 ACTIVE 팀원인 ACTIVE 팀의 id를 모두 돌려준다")
+    void findMyTeamIdsInPerformance_returnsAllMyActiveTeamsOfThatPerformance() {
+        Long me = 1L;
+        Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "첫째", null, Region.SEOUL));
+        Team second = teamRepository.saveAndFlush(Team.createForPerformance(7L, "둘째", null, Region.SEOUL));
+        Team left = teamRepository.saveAndFlush(Team.createForPerformance(7L, "탈퇴한 팀", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(7L, "해체된 팀", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        Team otherPerformance = teamRepository.saveAndFlush(Team.createForPerformance(8L, "다른 공연", null, Region.SEOUL));
+        Team othersTeam = teamRepository.saveAndFlush(Team.createForPerformance(7L, "남의 팀", null, Region.SEOUL));
+        saveMember(first, me, MemberStatus.ACTIVE);
+        saveMember(second, me, MemberStatus.ACTIVE);
+        saveMember(left, me, MemberStatus.LEFT);
+        saveMember(disbanded, me, MemberStatus.ACTIVE);
+        saveMember(otherPerformance, me, MemberStatus.ACTIVE);
+        saveMember(othersTeam, 2L, MemberStatus.ACTIVE);
+
+        List<Long> result = teamRepository.findMyTeamIdsInPerformance(7L, me);
+
+        assertThat(result).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("findActiveByPerformanceId는 id 순으로 돌려준다")
+    void findActiveByPerformanceId_isOrderedById() {
+        Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "먼저", null, Region.SEOUL));
+        Team second = teamRepository.saveAndFlush(Team.createForPerformance(7L, "나중", null, Region.SEOUL));
+
+        assertThat(teamRepository.findActiveByPerformanceId(7L)).extracting(Team::getId)
+                .containsExactly(first.getId(), second.getId());
+    }
 }
