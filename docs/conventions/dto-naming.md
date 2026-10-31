@@ -1,6 +1,6 @@
 # moyeorock DTO 명명 규약
 
-대상: 전체 73개 엔드포인트(파일 삭제 신규분 포함, 2026-09-11) · 14 도메인
+대상: 전체 74개 엔드포인트(파일 삭제·내 팀 목록 신규분 포함, 2026-10-31) · 14 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
 **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
@@ -120,7 +120,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 3. team (9)
+## 3. team (10)
 
 패키지 `domain/team`
 
@@ -129,18 +129,19 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 팀 생성 | POST | `/v1/teams` | `TeamCreateRequest` | `TeamDetailResponse` |
 | 팀 목록 | GET | `/v1/teams` | — | `PageResponse<TeamSummaryResponse>` |
 | 팀 상세 | GET | `/v1/teams/{id}` | — | `TeamDetailResponse` |
-| 팀 정보 수정 | PUT | `/v1/teams/{id}` | `TeamUpdateRequest` | `TeamDetailResponse` |
+| 팀 정보 수정 | PUT | `/v1/teams/{id}` | `TeamUpdateRequest` | — (`data: null`) |
 | 팀 해체 | PATCH | `/v1/teams/{id}/status` | `TeamStatusUpdateRequest` | `TeamStatusResponse` |
 | 팀원 목록 | GET | `/v1/teams/{id}/members` | — | `TeamMembersResponse` |
 | 팀원 역할·세션 변경 | PATCH | `/v1/teams/{teamId}/members/{userId}` | `TeamMemberUpdateRequest` | `TeamMemberResponse` |
 | 팀원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/teams/{teamId}/members/{userId}/status` | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` |
 | 팀원 추천 (AI) | GET | `/v1/teams/{id}/members/recommendations` | — | `TeamMemberRecommendationResponse` |
+| 내 팀 목록 | GET | `/v1/users/me/teams` | — | `PageResponse<TeamSummaryResponse>` |
 
 **보조 DTO**
 
 | 클래스 | 설명 |
 |---|---|
-| `TeamSummaryResponse` | 목록 항목. activity·join·invitation·recruit에서도 재사용 |
+| `TeamSummaryResponse` | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)`. 목록 항목. activity·join·invitation·recruit에서도 재사용 |
 | `TeamMemberResponse` | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` |
 | `TeamMembersResponse` | `(List<TeamMemberResponse> members)` |
 | `TeamMemberStatusUpdateRequest` | `(MemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `REMOVED`(강퇴)만 허용 |
@@ -148,9 +149,29 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
-`TeamDetailResponse`는 참조가 가장 많다. `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(setlist) · `PerformanceSummaryResponse`를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
+`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`setlist`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(setlist) · `PerformanceSummaryResponse`를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
 
 `TeamMemberUpdateRequest(TeamRole role, Instrument instrument)` — 두 필드 모두 `null` 허용이고, 보낸 것만 반영한다. `role = LEADER`면 팀장 위임이다.
+
+**다른 도메인이 부르는 `TeamService` 메서드** (요청 DTO는 넘기지 않고 값을 하나씩 받는다 — `docs/conventions/conventions.md` §6)
+
+| 메서드 | 쓰는 쪽 | 내용 |
+|---|---|---|
+| `getSummaries(List<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
+| `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE` |
+| `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
+| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
+| `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
+
+**팀 조회·권한 확인용 `TeamMemberService`** (4팀 셋리스트가 부른다. 다른 Service를 부르지 않아서 `TeamService`와 서로 부르는 순환이 생기지 않는다)
+
+| 메서드 | 내용 | 실패 |
+|---|---|---|
+| `ensureLeader(Long teamId, Long userId)` | 활동 중인 팀장인지 확인 | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀장 아님 `403 NOT_TEAM_LEADER` |
+| `ensureActiveMember(Long teamId, Long userId)` | 활동 중인 팀원인지 확인(역할 무관) | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀원 아님 `403 NO_PERMISSION` |
+| `getPerformanceId(Long teamId)` → `Long` | 팀이 속한 공연 id, 독립 팀은 `null`. 해체된 팀도 돌려줌 | 없는 팀 `404 TEAM_NOT_FOUND` |
+| `getNames(Collection<Long> teamIds)` → `Map<Long, String>` | 팀 이름 일괄 조회. **해체된 팀도 포함**(끝난 공연 셋리스트용), 없는 id는 빠짐 | — |
 
 ---
 
@@ -400,14 +421,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 73 |
+| 엔드포인트 | 74 |
 | Request DTO | 34 |
 | Response DTO | 56 |
 | 전역 공통 | 5 |
 
-요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 34개뿐인 이유는 74개 중 **43개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10 · §2 ‡)
 
 ### 재사용 상위 5개
 

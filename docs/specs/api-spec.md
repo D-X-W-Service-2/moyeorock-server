@@ -34,20 +34,23 @@
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/teams` | 팀&nbsp;생성 | `TeamCreateRequest` | |
-| GET | `/v1/teams` ¶ | 팀&nbsp;목록 | | `PageResponse<TeamsummaryResponse>` |
+| POST | `/v1/teams` | 팀&nbsp;생성 | `TeamCreateRequest` | `TeamDetailResponse` |
+| GET | `/v1/teams` ¶ | 팀&nbsp;목록 | | `PageResponse<TeamSummaryResponse>` |
 | GET | `/v1/teams/{id}` | 팀&nbsp;상세 | | `TeamDetailResponse` |
 | PUT | `/v1/teams/{id}` | 팀&nbsp;정보&nbsp;수정 | `TeamUpdateRequest` | |
 | PATCH | `/v1/teams/{id}/status` | 팀&nbsp;해체 | `TeamStatusUpdateRequest` | `TeamStatusResponse` * |
 | GET | `/v1/teams/{id}/members` | 팀원&nbsp;목록 | | `TeamMembersResponse` |
-| PATCH | `/v1/teams/{teamId}/members/{userId}` | 팀원&nbsp;역할&nbsp;변경 | `TeamMemberUpdateRequest` | |
+| PATCH | `/v1/teams/{teamId}/members/{userId}` | 팀원&nbsp;역할&nbsp;변경 | `TeamMemberUpdateRequest` | `TeamMemberResponse` * |
 | PATCH | `/v1/teams/{teamId}/members/{userId}/status` | 팀원&nbsp;내보내기·탈퇴 | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` * |
 | GET | `/v1/teams/{id}/members/recommendations?instrument=` | 팀원&nbsp;추천&nbsp;(AI) | | `TeamMemberRecommendationResponse` |
+| GET | `/v1/users/me/teams` ‡ | 내&nbsp;팀&nbsp;목록 | | `PageResponse<TeamSummaryResponse>` |
 
-> ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` · `status` (전부 선택).
-> 팀원 내보내기·탈퇴는 `API 초안`에서도 `/status` 접미사가 붙은 완성형으로 확인됐다(2026-09-11) — 과거 DELETE→PATCH 전환 미완 문제는 해소됐다.
-> `TeamsummaryResponse`는 원본 표기 그대로다. 컨벤션대로면 `TeamSummaryResponse` — 구현 시 교정하고 원본에 알릴 것.
-
+> ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` (선택). `status`는 받지 않는다 — 해체된 팀은 항상 목록에서 제외한다(2026-10-31 결정, 노션 팀 목록 페이지에도 "현재 사용하지 않음"으로 반영). 정렬은 최신순 고정(클라이언트 `sort` 무시), 페이지 크기는 기본 20·상한 20.
+> ‡ 내 팀 목록은 노션 `API 초안`에 `[추가 필요]`로 올라온 신규 엔드포인트이며, 2팀 소유로 확정했다(2026-10-31). 경로는 `/users/me` 아래지만 소유는 team이다. 내가 ACTIVE 팀원이고 팀도 ACTIVE인 팀만 최근 합류 순으로 돌려준다.
+> 팀 정보 수정은 응답 바디가 없다(`data: null`, 노션 기준).
+> 팀을 개별로 해체(`PATCH /v1/teams/{id}/status`)하면 그 팀이 고른 곡(선택곡)도 함께 삭제한다. 해체된 팀이 곡을 쥐고 있으면 다른 팀이 그 곡을 고를 수 없기 때문이다(4팀 결정, 2026-10-31). 공연 종료로 인한 일괄 해체에서는 삭제하지 않는다. 삭제는 4팀 `SetlistService.deleteByTeam`을 부르는 방식이며, 이 메서드가 생긴 뒤 연결한다.
+> 해체된 팀의 상세·팀원 목록은 `404 TEAM_NOT_FOUND`다(2026-10-31 결정). 해체된 팀은 요약 조회(`getSummaries`)에서도 빠진다.
+> 팀원 내보내기·탈퇴는 `API 초안`에서도 `/status` 접미사가 붙은 완성형으로 확인됐다(2026-09-11) — 과거 DELETE→PATCH 전환 미완 문제는 해소됐다. 상태값은 `LEFT`(본인 탈퇴)·`REMOVED`(강퇴)이며, 노션 행 제목의 `KICKED`는 표기 오류다.
 ---
 
 ## §3. 합주 (rehearsal) — 2팀
@@ -284,3 +287,4 @@
 | 9 | 경로 단수형 예외 | `join-request` · `recruit-post` 2개는 `API 초안`을 신뢰해 단수형 그대로 반영(2026-09-11 팀 확인). `api-conventions.md`의 "리소스는 복수형" 규칙의 명시적 예외로 기록 |
 | 10 | 파일 삭제 신규 | `DELETE /v1/files/{fileId}`가 `API 초안`에서 새로 확인됨(§10). DTO·구현 담당 확인 필요 |
 | 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
+| 12 | 내 팀 목록 신규 | ✅ 확정(2026-10-31) — 노션 `API 초안`에 `[추가 필요]`로 올라온 `GET /v1/users/me/teams`(§2 ‡)를 2팀 소유로 확정하고 `docs/conventions/domains.md`·`docs/conventions/dto-naming.md` 총계(73 → 74)에 반영했다. 노션 쪽은 제목의 `[추가 필요]`와 담당자·진행 상태 정리가 남아 있다 |
