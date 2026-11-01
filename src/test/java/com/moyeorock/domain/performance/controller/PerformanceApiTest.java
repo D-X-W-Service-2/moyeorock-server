@@ -13,10 +13,15 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 보안 필터 체인·요청 검증·JSON 직렬화·에러 응답까지 실제 HTTP 흐름으로 확인한다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다. 모임원 가입 API(3팀)가 아직 없어
- * 모임원은 Repository로 직접 넣는다.
+ * 모임원은 Repository로 직접 넣는다. 공연 내 팀 생성 API가 생기기 전이라 팀은 {@code TeamService}로 만든다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -58,6 +63,9 @@ class PerformanceApiTest {
 
     @Autowired
     private GroupMemberRepository groupMemberRepository;
+
+    @Autowired
+    private TeamService teamService;
 
     private long ownerId;
     private long memberId;
@@ -93,7 +101,8 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.data.createdBy.nickname").value("모임장"))
                 .andExpect(jsonPath("$.data.canEdit").value(true))
                 .andExpect(jsonPath("$.data.createdAt").exists())
-                .andExpect(jsonPath("$.data.teams").doesNotExist());
+                .andExpect(jsonPath("$.data.teams").isEmpty())
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
     }
 
     @Test
@@ -148,6 +157,27 @@ class PerformanceApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(performanceId))
                 .andExpect(jsonPath("$.data.canEdit").value(false));
+    }
+
+    @Test
+    @DisplayName("공연 상세는 참여 팀과 요청자가 속한 팀 id를 담는다 — 팀에 없는 모임장은 myTeamIds가 비어 있다")
+    void getDetail_includesTeamsAndMyTeamIds() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        long teamId = teamService.createForPerformance(memberId, performanceId, "무명밴드", null, Region.SEOUL,
+                List.of(Genre.ROCK), Instrument.BASS).id();
+
+        getDetail(memberId, performanceId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams.length()").value(1))
+                .andExpect(jsonPath("$.data.teams[0].id").value(teamId))
+                .andExpect(jsonPath("$.data.teams[0].name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.teams[0].memberCount").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds.length()").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds[0]").value(teamId));
+        getDetail(ownerId, performanceId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams.length()").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
     }
 
     @Test

@@ -17,8 +17,13 @@ import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -35,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PerformanceServiceTest {
@@ -55,6 +61,9 @@ class PerformanceServiceTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private TeamService teamService;
 
     @InjectMocks
     private PerformanceService performanceService;
@@ -162,6 +171,24 @@ class PerformanceServiceTest {
         givenDetailParts();
 
         assertThat(performanceService.getDetail(OWNER_ID, PERFORMANCE_ID).canEdit()).isTrue();
+    }
+
+    @Test
+    @DisplayName("공연 상세의 참여 팀과 내가 속한 팀 id는 TeamService에서 받는다")
+    void getDetail_fillsTeamsAndMyTeamIds_fromTeamService() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        givenDetailParts();
+        TeamSummaryResponse team = new TeamSummaryResponse(5L, "무명밴드", Region.SEOUL, List.of(Genre.ROCK),
+                TeamStatus.ACTIVE, 3);
+        when(teamService.getActiveSummaries(PERFORMANCE_ID)).thenReturn(List.of(team));
+        when(teamService.findMyTeamIds(PERFORMANCE_ID, MEMBER_ID)).thenReturn(List.of(5L));
+
+        PerformanceDetailResponse response = performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID);
+
+        assertThat(response.teams()).containsExactly(team);
+        assertThat(response.myTeamIds()).containsExactly(5L);
     }
 
     @Test

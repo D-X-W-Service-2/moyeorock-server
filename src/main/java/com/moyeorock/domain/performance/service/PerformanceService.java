@@ -7,6 +7,7 @@ import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -23,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 공연 생성·목록·상세·수정. 모임 권한과 모임 정보는 {@code GroupService}가 아니라 {@code GroupMemberService}로만
  * 받는다 — 나중에 모임 홈의 다가오는 공연 때문에 {@code GroupService → PerformanceService}가 생겨도 순환하지 않게.
  *
- * <p>공연 상태 변경·공연 내 팀 생성과 상세의 {@code teams}·{@code myTeamIds}는 2팀 TeamService(#79)가 생긴 뒤,
+ * <p>참여 팀({@code teams})과 내가 속한 팀({@code myTeamIds})은 2팀 {@code TeamService}로 받는다.
  * 상세의 {@code setlist}는 셋리스트 도메인 구현 때 붙인다.
  */
 @Service
@@ -33,6 +34,7 @@ public class PerformanceService {
     private final PerformanceRepository performanceRepository;
     private final GroupMemberService groupMemberService;
     private final UserService userService;
+    private final TeamService teamService;
 
     /** 모임장만 만든다. 새 공연은 {@code PLANNED}로 시작하고, 만든 사람이 곧 모임장이라 {@code canEdit}은 true다. */
     @Transactional
@@ -41,7 +43,7 @@ public class PerformanceService {
         Performance performance = performanceRepository.save(Performance.create(
                 groupId, userId, request.title(), request.description(), request.performedAt(),
                 request.venue(), request.posterImage()));
-        return toDetail(performance, true);
+        return toDetail(performance, userId, true);
     }
 
     /**
@@ -64,7 +66,7 @@ public class PerformanceService {
     public PerformanceDetailResponse getDetail(Long userId, Long performanceId) {
         Performance performance = getPerformanceOrThrow(performanceId);
         groupMemberService.ensureActiveMember(performance.getGroupId(), userId);
-        return toDetail(performance, groupMemberService.isOwner(performance.getGroupId(), userId));
+        return toDetail(performance, userId, groupMemberService.isOwner(performance.getGroupId(), userId));
     }
 
     /** 모임장만 고친다. ensureOwner를 통과했으니 요청자가 곧 모임장이다 — 역할을 다시 묻지 않는다. */
@@ -74,15 +76,18 @@ public class PerformanceService {
         groupMemberService.ensureOwner(performance.getGroupId(), userId);
         performance.update(request.title(), request.description(), request.performedAt(), request.venue(),
                 request.posterImage());
-        return toDetail(performance, true);
+        return toDetail(performance, userId, true);
     }
 
-    private PerformanceDetailResponse toDetail(Performance performance, boolean canEdit) {
+    // 생성·상세·수정이 같은 응답이라 참여 팀도 한 곳에서 채운다 — 막 만든 공연이면 둘 다 빈 목록이다.
+    private PerformanceDetailResponse toDetail(Performance performance, Long userId, boolean canEdit) {
         return PerformanceDetailResponse.of(
                 performance,
                 groupMemberService.getGroupBrief(performance.getGroupId()),
+                teamService.getActiveSummaries(performance.getId()),
                 getCreator(performance),
-                canEdit);
+                canEdit,
+                teamService.findMyTeamIds(performance.getId(), userId));
     }
 
     // 만든 사람이 탈퇴했으면 null이다 — getSummaries가 탈퇴 회원을 결과에서 뺀다.
