@@ -113,7 +113,7 @@ performances.status = DONE
 
 Hard delete는 5곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`). 뒤의 둘은 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다.
 
-**예외 — 팀 개별 해체 시 셋리스트 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행을 하드 삭제한다(`TeamService → SetlistService`). `setlists`의 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없기 때문이다. 공연 종료(`DONE`)로 인한 일괄 해체에서는 지우지 않는다 — 끝난 공연의 셋리스트를 남긴다. `team_songs`는 어느 경우든 그대로 둔다(팀 상태로 걸러진다).
+**예외 — 팀 개별 해체 시 셋리스트 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`의 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없기 때문이다. 공연 종료(`DONE`)로 인한 일괄 해체에서는 지우지 않는다 — 끝난 공연의 셋리스트를 남긴다. `team_songs`는 어느 경우든 그대로 둔다(팀 상태로 걸러진다).
 
 ## 7. 알려진 한계 (v0)
 
