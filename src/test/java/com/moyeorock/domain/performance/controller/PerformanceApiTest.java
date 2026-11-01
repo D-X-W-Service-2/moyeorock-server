@@ -233,6 +233,57 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
     }
 
+    @Test
+    @DisplayName("모임장이 공연을 종료하면 200과 바뀐 상태를 돌려주고, 소속 팀이 해체돼 상세의 teams가 빈다")
+    void changeStatus_toDone_disbandsTeams() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        teamService.createForPerformance(memberId, performanceId, "무명밴드", null, Region.SEOUL,
+                List.of(Genre.ROCK), Instrument.BASS);
+
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(performanceId))
+                .andExpect(jsonPath("$.data.status").value("DONE"));
+        getDetail(memberId, performanceId)
+                .andExpect(jsonPath("$.data.status").value("DONE"))
+                .andExpect(jsonPath("$.data.teams").isEmpty())
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
+    }
+
+    @Test
+    @DisplayName("상태 값이 없거나 ERD에 없는 값(노션의 ENDED 등)이면 400 VALIDATION_FAILED다")
+    void changeStatus_withInvalidStatus_returns400() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        changeStatus(ownerId, performanceId, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        changeStatus(ownerId, performanceId, "{\"status\":\"ENDED\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("모임장이 아닌 모임원이 상태를 바꾸면 403 NOT_GROUP_OWNER다")
+    void changeStatus_byMember_returns403() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        changeStatus(memberId, performanceId, "{\"status\":\"RECRUITING\"}")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+    }
+
+    @Test
+    @DisplayName("끝난 공연의 상태를 바꾸면 409 INVALID_STATE다")
+    void changeStatus_ofFinishedPerformance_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"CANCELED\"}").andExpect(status().isOk());
+
+        changeStatus(ownerId, performanceId, "{\"status\":\"PLANNED\"}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
     }
@@ -266,6 +317,12 @@ class PerformanceApiTest {
 
     private ResultActions getDetail(long userId, long performanceId) throws Exception {
         return mockMvc.perform(get("/v1/performances/" + performanceId).header("Authorization", bearer(userId)));
+    }
+
+    private ResultActions changeStatus(long userId, long performanceId, String body) throws Exception {
+        return mockMvc.perform(patch("/v1/performances/" + performanceId + "/status")
+                .header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     private ResultActions updatePerformance(long userId, long performanceId) throws Exception {

@@ -81,4 +81,9 @@ public class Performance extends BaseEntity {
     public void changeStatus(PerformanceStatus status) {
         this.status = status;
     }
+
+    // 끝난 공연(종료·취소). 소속 팀이 모두 해체돼 있어 상태를 되돌리거나 팀을 새로 만들 수 없다.
+    public boolean isFinished() {
+        return status == PerformanceStatus.DONE || status == PerformanceStatus.CANCELED;
+    }
 }
