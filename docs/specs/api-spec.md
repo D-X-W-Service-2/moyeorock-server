@@ -29,6 +29,7 @@
 > `PUT /v1/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/conventions/dto-naming.md` §2).
 > § 타인 프로필 조회는 로그인 필수다(이슈 #90 P-5). 탈퇴 회원과 없는 id는 404 `USER_NOT_FOUND`, 정지(SUSPENDED) 회원은 노출한다(P-7, 목록 조회 `getSummaries`와 맞춤). 본인 id로 불러도 같은 형태다(P-8). `activities`는 `isActivityPublic=false`면 `null`이고(P-3), 공개면 내 활동과 같은 조립이다(비공개 사용자는 활동 조회 자체를 하지 않는다). id가 숫자가 아니면 400 `VALIDATION_FAILED`.
 > ◇ 내 활동은 다른 `/me`와 같이 ACTIVE 사용자만 통과한다(아니면 404 `USER_NOT_FOUND`). 세 목록은 각 팀 Service가 ACTIVE 필터·정렬까지 맡고 user는 조립만 한다(이슈 #90). `teams`는 2팀 `TeamService.findMemberships`(최근 합류 순). `groups`·`performances`는 4팀 메서드(이슈 #95)가 들어오기 전까지 빈 목록이다(2026-11-02).
+> \* 탈퇴는 직책 보유자에게 막힌다(10/7 결정, 10/30 재확인): 팀장인 활동 중인 팀이 있으면 `409 WITHDRAW_BLOCKED_BY_ROLE`이고 `message`에 어느 팀인지 담는다(예: `팀 '무명밴드'의 팀장을 위임한 뒤 탈퇴할 수 있습니다.`). 모임장(해체 전) 차단과 탈퇴 시 모임 멤버십 `LEFT` 전환은 4팀 후속 메서드가 들어오면 같은 코드로 잇는다. 판정은 2팀 `TeamService.findLedTeams`(PR #97). Notion 탈퇴 페이지에 에러 응답 추가 필요(2026-11-02).
 > ‡ 온보딩 등록은 재호출이 멱등(값만 갱신)이라 201이 아니라 200이다. 명세 표에 응답 코드가 없어 서버가 정한 값이다. Notion 반영 필요. 프로필 수정·온보딩 응답은 갱신된 `UserMeResponse` 전체다(PR #57 Service 반환 그대로, Controller는 #89).
 
 ---

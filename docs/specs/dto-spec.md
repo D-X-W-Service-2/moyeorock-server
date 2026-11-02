@@ -81,6 +81,12 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "withdrawnAt": "2026-08-11T14:02:00" }
 ```
 
+직책 보유자는 탈퇴가 막힌다(`docs/specs/api-spec.md` §1 \*). 봉투는 다른 에러와 같고 `message`만 상황 문장이다(2026-11-02).
+
+```json
+{ "success": false, "code": "WITHDRAW_BLOCKED_BY_ROLE", "message": "팀 '무명밴드'의 팀장을 위임한 뒤 탈퇴할 수 있습니다.", "data": null }
+```
+
 ### OnboardingCreateRequest
 
 ```json

@@ -62,6 +62,7 @@ public enum ErrorCode {
     // user
     USER_NOT_FOUND(NOT_FOUND, "존재하지 않는 사용자입니다."),
     NICKNAME_DUPLICATED(CONFLICT, "이미 사용 중인 닉네임입니다."),
+    WITHDRAW_BLOCKED_BY_ROLE(CONFLICT, "모임장·팀장 직책을 정리한 뒤 탈퇴할 수 있습니다."),
 
     // team
     TEAM_NOT_FOUND(NOT_FOUND, "존재하지 않는 팀입니다."),
@@ -88,13 +89,16 @@ public enum ErrorCode {
 
 ```java
 throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
+throw new BusinessException(ErrorCode.WITHDRAW_BLOCKED_BY_ROLE, "팀 '무명밴드'의 팀장을 위임한 뒤 탈퇴할 수 있습니다.");
 ```
+
+두 번째 생성자는 **상황 값을 문장에 담아야 할 때만** 쓴다(어느 팀 때문에 막혔는지 등). `code`·`status`는 `ErrorCode` 그대로이고 `message`만 바뀐다. 프론트는 분기를 `code`로 하고 `message`는 그대로 보여주는 용도다(2026-11-02, 회원 탈퇴 차단에서 도입).
 
 ### `GlobalExceptionHandler`
 
 | 잡는 예외 | 응답 |
 |---|---|
-| `BusinessException` | `ErrorCode`의 status·code·message |
+| `BusinessException` | `ErrorCode`의 status·code + 예외의 message(기본 생성자면 `ErrorCode` 메시지, 두 번째 생성자면 넘긴 문장) |
 | `MethodArgumentNotValidException` | 400 `VALIDATION_FAILED` + `message`에 첫 필드 오류 `"필드: 사유"` (필드 오류가 없으면 `ErrorCode` 메시지) |
 | `HttpMessageNotReadableException` | 400 `VALIDATION_FAILED` (깨진 JSON · 없는 enum 값 등 바디 파싱 실패) |
 | `AccessDeniedException` | 403 `NO_PERMISSION` |

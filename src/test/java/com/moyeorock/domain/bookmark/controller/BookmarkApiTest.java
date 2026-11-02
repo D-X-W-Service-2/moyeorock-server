@@ -15,7 +15,7 @@ import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
-import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.domain.user.service.UserWithdrawService;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
@@ -56,7 +56,7 @@ class BookmarkApiTest {
     private UserRepository userRepository;
 
     @Autowired
-    private UserService userService;
+    private UserWithdrawService userWithdrawService;
 
     @Autowired
     private TeamService teamService;
@@ -139,7 +139,7 @@ class BookmarkApiTest {
     @DisplayName("없는 사용자·탈퇴한 사용자를 저장하면 404 USER_NOT_FOUND다")
     void create_missingOrWithdrawnTarget_returns404() throws Exception {
         User withdrawn = saveUser("탈퇴예정");
-        userService.withdraw(withdrawn.getId());
+        userWithdrawService.withdraw(withdrawn.getId());
 
         create(OWNER, "USER", 999_999L).andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
@@ -252,7 +252,7 @@ class BookmarkApiTest {
     void list_withdrawnTarget_hasNullTarget() throws Exception {
         User target = saveUser("나갈사람");
         createAndGetId(OWNER, target.getId());
-        userService.withdraw(target.getId());
+        userWithdrawService.withdraw(target.getId());
 
         mockMvc.perform(get(BASE).header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk())
