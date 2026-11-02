@@ -184,10 +184,10 @@
 > ※ **2026-10-30 대조(이슈 #83)** — `API 초안`(2026-10-08 수정)과 대조해 경로 변수를 `{performanceId}`로, 비고에 노션 Actor를 맞췄다. 어긋나는 곳은 이렇게 정했다.
 > - **생성 응답은 `PerformanceDetailResponse`** — 노션 생성 응답(`id`·`title`·`description`·`performedAt`·`venue`·`posterImage`·`createdAt`)을 모두 포함하는 상세 응답을 쓴다(`docs/conventions/dto-naming.md` 규칙 3 "생성 응답은 상세 재사용")
 > - **`venue`는 필수** — 노션 생성·수정 요청의 Required가 O다. `erd.md`의 "7.1.1 필수 X" 설명을 정정했다(컬럼은 NULL 허용 그대로)
-> - **모임 공연 목록** — 다가올·지난 구분은 쿼리 `period`로 받는다(2026-11-02, PR #84 리뷰, 공백 #12). 기준은 공연일이 아니라 **공연 상태**다 — `performances.status`는 그대로 두고 목록에서만 `PLANNED`·`RECRUITING` → `UPCOMING`, `DONE`·`CANCELED` → `PAST`로 묶는다. `period`는 선택이고 없으면 전체, 없는 값은 `400 VALIDATION_FAILED`. 응답 항목의 `status`는 실제 공연 상태(`PLANNED` 등)다. 정렬은 고정이라 `sort`는 받지 않는다 — `UPCOMING`은 공연일 가까운 순, `PAST`와 전체는 공연일 최근 순, 공연일이 같으면 id 순(같은 방향). `page`·`size`는 기본·최대 20
+> - **모임 공연 목록** — 다가올·지난 구분은 쿼리 `period`로 받는다(2026-11-02, PR #84 리뷰, 공백 #13). 기준은 공연일이 아니라 **공연 상태**다 — `performances.status`는 그대로 두고 목록에서만 `PLANNED`·`RECRUITING` → `UPCOMING`, `DONE`·`CANCELED` → `PAST`로 묶는다. `period`는 선택이고 없으면 전체, 없는 값은 `400 VALIDATION_FAILED`. 응답 항목의 `status`는 실제 공연 상태(`PLANNED` 등)다. 정렬은 고정이라 `sort`는 받지 않는다 — `UPCOMING`은 공연일 가까운 순, `PAST`와 전체는 공연일 최근 순, 공연일이 같으면 id 순(같은 방향). `page`·`size`는 기본·최대 20
 >   - 모임장이 `DONE`으로 바꾸기 전에는 날짜가 지난 공연도 `UPCOMING`에 남는다. 화면 안내로 푼다
 > - **이슈 #83 구현 범위** — 생성·목록·상세·수정 4개. 상세의 `teams`·`myTeamIds`·`setlist`는 명세에 있지만 아직 응답에 없다 — `teams`·`myTeamIds`는 상태 변경·공연 내 팀 생성과 함께 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다
-> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #13)
+> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #14)
 
 ---
 
