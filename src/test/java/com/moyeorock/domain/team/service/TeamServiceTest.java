@@ -616,6 +616,28 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("내가 팀장인 팀: 활동 중인 팀의 요약을 장르·인원 수와 함께 돌려준다")
+    void findLedTeams_returnsSummariesOfTeamsILead() {
+        given(teamRepository.findActiveTeamsLedBy(LEADER_ID)).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 4)));
+
+        List<TeamSummaryResponse> result = teamService.findLedTeams(LEADER_ID);
+
+        assertThat(result).extracting(TeamSummaryResponse::id, TeamSummaryResponse::memberCount)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(TEAM_ID, 4));
+    }
+
+    @Test
+    @DisplayName("내가 팀장인 팀: 없으면 장르·인원 수를 조회하지 않고 빈 목록이다")
+    void findLedTeams_withoutTeams_returnsEmpty() {
+        given(teamRepository.findActiveTeamsLedBy(LEADER_ID)).willReturn(List.of());
+
+        assertThat(teamService.findLedTeams(LEADER_ID)).isEmpty();
+        verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
+    }
+
+    @Test
     @DisplayName("요약 일괄 조회(해체 포함): 해체된 팀도 담고 없는 id만 빠진다")
     void getSummariesIncludingDisbanded_includesDisbandedTeams() {
         given(teamRepository.findAllById(List.of(TEAM_ID, 99L))).willReturn(List.of(disbandedTeam()));

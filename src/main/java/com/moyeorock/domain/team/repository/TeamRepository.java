@@ -2,6 +2,7 @@ package com.moyeorock.domain.team.repository;
 
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.enums.MemberStatus;
+import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Region;
@@ -142,4 +143,26 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             """)
     List<Team> findPerformanceTeamsByMember(@Param("userId") Long userId,
             @Param("memberStatus") MemberStatus memberStatus);
+
+    /**
+     * 내가 팀장인 활동 중인 팀(회원 탈퇴 차단). 팀원 행이 ACTIVE·LEADER이고 팀도 ACTIVE인 경우만 센다.
+     * 해체해도 팀원 행은 남으므로 팀 상태로 한 번 걸러야 한다 — 규칙을 한 곳에 고정하려고 감쌌다.
+     */
+    default List<Team> findActiveTeamsLedBy(Long userId) {
+        return findTeamsByMemberRole(userId, MemberStatus.ACTIVE, TeamRole.LEADER, TeamStatus.ACTIVE);
+    }
+
+    @Query("""
+            SELECT t FROM Team t
+            JOIN TeamMember m ON m.teamId = t.id
+            WHERE m.userId = :userId
+              AND m.status = :memberStatus
+              AND m.role = :role
+              AND t.status = :teamStatus
+            ORDER BY t.id
+            """)
+    List<Team> findTeamsByMemberRole(@Param("userId") Long userId,
+            @Param("memberStatus") MemberStatus memberStatus,
+            @Param("role") TeamRole role,
+            @Param("teamStatus") TeamStatus teamStatus);
 }

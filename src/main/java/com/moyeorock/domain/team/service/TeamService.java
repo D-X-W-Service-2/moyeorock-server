@@ -218,6 +218,16 @@ public class TeamService {
     }
 
     /**
+     * 내가 팀장인 활동 중인 팀 요약(1팀 회원 탈퇴 차단). 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에
+     * 막혔는지 안내하는 데 쓴다. 해체된 팀은 빠지고 팀 id 순이며 페이징은 없다.
+     * 팀, 장르, 인원 수 쿼리 결과가 서로 맞아야 해서 readOnly 트랜잭션으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public List<TeamSummaryResponse> findLedTeams(Long userId) {
+        return buildSummaries(teamRepository.findActiveTeamsLedBy(userId));
+    }
+
+    /**
      * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
      * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
      *

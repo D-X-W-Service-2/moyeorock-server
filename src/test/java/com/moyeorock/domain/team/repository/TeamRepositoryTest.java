@@ -56,7 +56,11 @@ class TeamRepositoryTest {
     }
 
     private TeamMember saveMember(Team team, Long userId, MemberStatus status) {
-        TeamMember member = TeamMember.create(team.getId(), userId, TeamRole.MEMBER, Instrument.BASS);
+        return saveMember(team, userId, TeamRole.MEMBER, status);
+    }
+
+    private TeamMember saveMember(Team team, Long userId, TeamRole role, MemberStatus status) {
+        TeamMember member = TeamMember.create(team.getId(), userId, role, Instrument.BASS);
         if (status != MemberStatus.ACTIVE) {
             member.updateStatus(status);
         }
@@ -210,6 +214,28 @@ class TeamRepositoryTest {
         List<Team> result = teamRepository.findMyPerformanceTeams(me);
 
         assertThat(result).extracting(Team::getId).containsExactly(active.getId(), disbanded.getId());
+    }
+
+    @Test
+    @DisplayName("findActiveTeamsLedBy는 내가 ACTIVE 팀장인 ACTIVE 팀만 id 순으로 돌려준다")
+    void findActiveTeamsLedBy_returnsOnlyActiveTeamsILead() {
+        Long me = 1L;
+        Team first = saveTeam("첫째", Region.SEOUL);
+        Team second = saveTeam("둘째", Region.SEOUL);
+        Team disbanded = saveDisbandedTeam("해체됨", Region.SEOUL);
+        Team asMember = saveTeam("팀원으로만", Region.SEOUL);
+        Team left = saveTeam("탈퇴함", Region.SEOUL);
+        Team othersTeam = saveTeam("남의 팀", Region.SEOUL);
+        saveMember(first, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(second, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(disbanded, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(asMember, me, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        saveMember(left, me, TeamRole.LEADER, MemberStatus.LEFT);
+        saveMember(othersTeam, 2L, TeamRole.LEADER, MemberStatus.ACTIVE);
+
+        List<Team> result = teamRepository.findActiveTeamsLedBy(me);
+
+        assertThat(result).extracting(Team::getId).containsExactly(first.getId(), second.getId());
     }
 
     @Test
