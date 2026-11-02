@@ -11,6 +11,7 @@ import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -35,6 +36,7 @@ public class RecruitPostController {
 
     private final RecruitPostService recruitPostService;
 
+    @Operation(summary = "공고 작성")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RecruitPostDetailResponse> create(@AuthUser Long userId,
@@ -42,23 +44,27 @@ public class RecruitPostController {
         return ApiResponse.success(recruitPostService.create(userId, request));
     }
 
+    @Operation(summary = "공고 목록")
     @GetMapping
     public ApiResponse<PageResponse<RecruitPostSummaryResponse>> search(RecruitPostSearchCondition condition,
             @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(recruitPostService.search(condition, pageable));
     }
 
+    @Operation(summary = "공고 상세")
     @GetMapping("/{postId}")
     public ApiResponse<RecruitPostDetailResponse> getDetail(@AuthUser Long userId, @PathVariable Long postId) {
         return ApiResponse.success(recruitPostService.getDetail(userId, postId));
     }
 
+    @Operation(summary = "공고 수정")
     @PutMapping("/{postId}")
     public ApiResponse<RecruitPostDetailResponse> update(@AuthUser Long userId, @PathVariable Long postId,
             @Valid @RequestBody RecruitPostUpdateRequest request) {
         return ApiResponse.success(recruitPostService.update(userId, postId, request));
     }
 
+    @Operation(summary = "공고 마감·삭제")
     @PatchMapping("/{postId}/status")
     public ApiResponse<RecruitPostStatusResponse> updateStatus(@AuthUser Long userId, @PathVariable Long postId,
             @Valid @RequestBody RecruitPostStatusUpdateRequest request) {
