@@ -1,6 +1,6 @@
 # 도메인 지도
 
-14개 도메인 · 16개 테이블. 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
+14개 도메인 · 17개 테이블(`files` 포함, `global/file`은 도메인 아님). 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
 
 > **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
 
@@ -8,7 +8,7 @@
 
 | 도메인 | 담당 | 소유 테이블 | 개수 |
 |---|---|---|---|
-| `auth` | 1팀 | (없음 · `users` 읽기) | 3 |
+| `auth` | 1팀 | (없음 · `users` 읽기·가입 시 생성) | 4 |
 | `user` | 1팀 | `users` `user_instruments` | 9 |
 | `team` | 2팀 | `teams` `team_genres` `team_members` | 9 |
 | `rehearsal` | 2팀 | `rehearsals` | 6 |
@@ -74,7 +74,7 @@
 
 | 팀 | 도메인 | 엔드포인트 |
 |---|---|---|
-| **1팀** | `auth` `user` `file` | 13 |
+| **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 15 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
 | **4팀** | `group` `notice` `performance` `song` `setlist` | 22 |
