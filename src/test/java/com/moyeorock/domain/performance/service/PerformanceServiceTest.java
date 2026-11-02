@@ -15,6 +15,7 @@ import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.entity.Performance;
+import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
@@ -101,7 +102,7 @@ class PerformanceServiceTest {
         doThrow(new BusinessException(ErrorCode.NOT_GROUP_MEMBER))
                 .when(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
 
-        assertThatThrownBy(() -> performanceService.getList(MEMBER_ID, GROUP_ID, PageRequest.of(0, 20)))
+        assertThatThrownBy(() -> performanceService.getList(MEMBER_ID, GROUP_ID, null, PageRequest.of(0, 20)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
@@ -113,9 +114,33 @@ class PerformanceServiceTest {
     void getList_dropsClientSort() {
         when(performanceRepository.findByGroupIdOrderByPerformedAtDescIdDesc(any(), any())).thenReturn(Page.empty());
 
-        performanceService.getList(MEMBER_ID, GROUP_ID, PageRequest.of(1, 10, Sort.by("title")));
+        performanceService.getList(MEMBER_ID, GROUP_ID, null, PageRequest.of(1, 10, Sort.by("title")));
 
         verify(performanceRepository).findByGroupIdOrderByPerformedAtDescIdDesc(GROUP_ID, PageRequest.of(1, 10));
+    }
+
+    @Test
+    @DisplayName("period=UPCOMING이면 PLANNED·RECRUITING만 공연일 가까운 순으로 조회한다")
+    void getList_withUpcoming_queriesPlannedAndRecruitingAscending() {
+        when(performanceRepository.findByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(any(), any(), any()))
+                .thenReturn(Page.empty());
+
+        performanceService.getList(MEMBER_ID, GROUP_ID, PerformancePeriod.UPCOMING, PageRequest.of(0, 20));
+
+        verify(performanceRepository).findByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(GROUP_ID,
+                List.of(PerformanceStatus.PLANNED, PerformanceStatus.RECRUITING), PageRequest.of(0, 20));
+    }
+
+    @Test
+    @DisplayName("period=PAST면 DONE·CANCELED만 공연일 최근 순으로 조회한다")
+    void getList_withPast_queriesDoneAndCanceledDescending() {
+        when(performanceRepository.findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(any(), any(), any()))
+                .thenReturn(Page.empty());
+
+        performanceService.getList(MEMBER_ID, GROUP_ID, PerformancePeriod.PAST, PageRequest.of(0, 20));
+
+        verify(performanceRepository).findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(GROUP_ID,
+                List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED), PageRequest.of(0, 20));
     }
 
     @Test

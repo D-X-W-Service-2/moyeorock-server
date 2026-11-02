@@ -632,7 +632,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - **2026-10-30 `API 초안` 대조(이슈 #83)**: `teamCount`를 빼고 `createdAt`을 넣었다
-- `status`는 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)다. 노션 예시의 `UPCOMING`은 ERD에 없는 값이다(`api-spec.md` 공백 #12)
+- `status`는 실제 공연 상태 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)다. 목록 쿼리 `period`(`UPCOMING`·`PAST`)는 거르는 데만 쓰고 응답 `status`로 내리지 않는다 — 노션 예시의 `"status": "UPCOMING"`은 `PLANNED`로 노션 정정 완료(2026-11-02, `api-spec.md` §8 ※·공백 #12)
 
 ### PerformanceDetailResponse
 

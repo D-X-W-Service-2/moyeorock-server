@@ -13,6 +13,8 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
+import com.moyeorock.domain.performance.enums.PerformanceStatus;
+import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.global.security.JwtProvider;
@@ -34,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 보안 필터 체인·요청 검증·JSON 직렬화·에러 응답까지 실제 HTTP 흐름으로 확인한다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다. 모임원 가입 API(3팀)가 아직 없어
- * 모임원은 Repository로 직접 넣는다.
+ * 모임원은 Repository로 직접 넣는다. 공연 상태 변경 API는 이 PR에 없어서 지난 공연은 Repository로 상태를 바꿔 만든다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -66,6 +68,9 @@ class PerformanceApiTest {
 
     @Autowired
     private GroupMemberRepository groupMemberRepository;
+
+    @Autowired
+    private PerformanceRepository performanceRepository;
 
     private long ownerId;
     private long memberId;
@@ -145,6 +150,35 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.data.content[0].createdAt").exists())
                 .andExpect(jsonPath("$.data.totalElements").value(2))
                 .andExpect(jsonPath("$.data.last").value(false));
+    }
+
+    @Test
+    @DisplayName("period=UPCOMING은 PLANNED·RECRUITING 공연을 가까운 순으로, PAST는 DONE·CANCELED 공연을 주고 status는 실제 상태다")
+    void getList_filtersByPeriod() throws Exception {
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "겨울 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER).replace("2026 정기공연", "가을 공연"));
+        long doneId = createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "끝난 공연"));
+        performanceRepository.findById(doneId).orElseThrow().changeStatus(PerformanceStatus.DONE);
+
+        getList(memberId, "UPCOMING")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(2))
+                .andExpect(jsonPath("$.data.content[0].title").value("가을 공연"))
+                .andExpect(jsonPath("$.data.content[0].status").value("PLANNED"))
+                .andExpect(jsonPath("$.data.content[1].title").value("겨울 공연"));
+        getList(memberId, "PAST")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].title").value("끝난 공연"))
+                .andExpect(jsonPath("$.data.content[0].status").value("DONE"));
+    }
+
+    @Test
+    @DisplayName("없는 period 값(노션의 ONGOING 등)이면 400 VALIDATION_FAILED다")
+    void getList_withInvalidPeriod_returns400() throws Exception {
+        getList(memberId, "ONGOING")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -265,6 +299,11 @@ class PerformanceApiTest {
         String json = createPerformance(userId, body).andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(json, "$.data.id")).longValue();
+    }
+
+    private ResultActions getList(long userId, String period) throws Exception {
+        return mockMvc.perform(get("/v1/groups/" + groupId + "/performances?period=" + period)
+                .header("Authorization", bearer(userId)));
     }
 
     private ResultActions getDetail(long userId, long performanceId) throws Exception {
