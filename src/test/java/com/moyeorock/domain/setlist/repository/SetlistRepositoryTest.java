@@ -70,4 +70,16 @@ class SetlistRepositoryTest {
                 .containsExactly(tuple(5L, 88L), tuple(9L, 104L));
         assertThat(setlistRepository.findAllByPerformanceIdOrderByTeamIdAscIdAsc(8L)).hasSize(1);
     }
+
+    @Test
+    @DisplayName("셋리스트에 곡이 남은 팀 id는 그 공연 것만 중복 없이 팀 id 순으로 준다")
+    void findTeamIds_distinctInTeamOrder() {
+        setlistRepository.save(Setlist.create(7L, 9L, 104L));
+        setlistRepository.save(Setlist.create(7L, 5L, 88L));
+        setlistRepository.save(Setlist.create(7L, 5L, 91L));
+        setlistRepository.saveAndFlush(Setlist.create(8L, 3L, 88L));
+
+        assertThat(setlistRepository.findTeamIdsByPerformanceId(7L)).containsExactly(5L, 9L);
+        assertThat(setlistRepository.findTeamIdsByPerformanceId(99L)).isEmpty();
+    }
 }

@@ -1,6 +1,7 @@
 package com.moyeorock.domain.performance.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,6 +12,7 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
+import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
@@ -39,7 +41,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 공연 셋리스트 조회·넘기기를 실제 HTTP 흐름으로 확인한다. 공연 내 팀 생성 API(#104)와 가입·곡 등록 API가 아직 없어서
+ * 공연 셋리스트 조회·넘기기·확정·확정 해제를 실제 HTTP 흐름으로 확인한다. 공연 내 팀 생성 API(#104)와 가입·곡 등록 API가 아직 없어서
  * 공연 팀은 2팀 TeamService.createForPerformance로, 모임원은 Repository로, 곡은 Repository로 넣는다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
@@ -189,10 +191,127 @@ class PerformanceSetlistApiTest {
                 .andExpect(jsonPath("$.code").value("NOT_GROUP_MEMBER"));
     }
 
+    @Test
+    @DisplayName("모임장이 고른 곡만 순서대로 확정되고 나머지는 빠진다 → 넘기기 409 → 해제하면 순서가 비고 다시 넘길 수 있다")
+    void confirm_thenUnconfirm_flow() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "," + bohemianId + "]").andExpect(status().isOk());
+        submit(leaderBId, teamBId, "[" + wonderwallId + "]").andExpect(status().isOk());
+
+        confirm(ownerId, item(teamBId, wonderwallId, 1) + "," + item(teamAId, creepId, 2))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.confirmed").value(true))
+                .andExpect(jsonPath("$.data.setlist.length()").value(2))
+                .andExpect(jsonPath("$.data.setlist[0].song.title").value("Wonderwall"))
+                .andExpect(jsonPath("$.data.setlist[0].sortOrder").value(1))
+                .andExpect(jsonPath("$.data.setlist[1].song.title").value("Creep"))
+                .andExpect(jsonPath("$.data.setlist[1].sortOrder").value(2));
+        getSetlist(leaderAId)
+                .andExpect(jsonPath("$.data.confirmed").value(true))
+                .andExpect(jsonPath("$.data.setlist.length()").value(2));
+        submit(leaderAId, teamAId, "[" + bohemianId + "]")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+
+        unconfirm(ownerId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.confirmed").value(false))
+                .andExpect(jsonPath("$.data.setlist.length()").value(2))
+                .andExpect(jsonPath("$.data.setlist[0].sortOrder").doesNotExist());
+        submit(leaderAId, teamAId, "[" + creepId + "," + bohemianId + "]")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.setlist.length()").value(3));
+    }
+
+    @Test
+    @DisplayName("확정된 셋리스트도 다시 확정할 수 있다 — 남아 있는 곡 안에서 고르고 순서를 바꾼다")
+    void reconfirm_withinConfirmedSongs() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "," + bohemianId + "]").andExpect(status().isOk());
+        confirm(ownerId, item(teamAId, creepId, 1) + "," + item(teamAId, bohemianId, 2)).andExpect(status().isOk());
+
+        confirm(ownerId, item(teamAId, bohemianId, 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.setlist.length()").value(1))
+                .andExpect(jsonPath("$.data.setlist[0].song.title").value("Bohemian Rhapsody"));
+    }
+
+    @Test
+    @DisplayName("팀이 넘기지 않은 곡이나 다른 팀 곡으로 적은 항목은 409 SONG_NOT_TEAM_CANDIDATE, 이 공연 팀이 아니면 404 TEAM_NOT_FOUND다")
+    void confirm_rejectsNonCandidates() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "]").andExpect(status().isOk());
+        submit(leaderBId, teamBId, "[" + wonderwallId + "]").andExpect(status().isOk());
+
+        confirm(ownerId, item(teamAId, bohemianId, 1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SONG_NOT_TEAM_CANDIDATE"));
+        confirm(ownerId, item(teamAId, wonderwallId, 1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SONG_NOT_TEAM_CANDIDATE"));
+        long independentTeamId = createIndependentTeam(leaderAId);
+        confirm(ownerId, item(independentTeamId, creepId, 1))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+        getSetlist(ownerId)
+                .andExpect(jsonPath("$.data.confirmed").value(false))
+                .andExpect(jsonPath("$.data.setlist.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("빈 목록·순서가 1부터 빈틈없지 않은 요청은 400, 모임장이 아니면 403 NOT_GROUP_OWNER다")
+    void confirm_invalidRequestOrNotOwner() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "," + bohemianId + "]").andExpect(status().isOk());
+
+        confirm(ownerId, "")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        confirm(ownerId, item(teamAId, creepId, 1) + "," + item(teamAId, bohemianId, 3))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        confirm(leaderAId, item(teamAId, creepId, 1))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+        unconfirm(leaderAId)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+    }
+
+    @Test
+    @DisplayName("확정되지 않은 셋리스트의 해제, 끝난 공연의 확정·해제는 409 INVALID_STATE다")
+    void confirmAndUnconfirm_invalidState() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "]").andExpect(status().isOk());
+        unconfirm(ownerId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        confirm(ownerId, item(teamAId, creepId, 1)).andExpect(status().isOk());
+
+        performanceRepository.findById(performanceId).orElseThrow().changeStatus(PerformanceStatus.DONE);
+
+        confirm(ownerId, item(teamAId, creepId, 1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        unconfirm(ownerId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
     private ResultActions submit(long userId, long teamId, String songIdsJson) throws Exception {
         return mockMvc.perform(put("/v1/performances/" + performanceId + "/setlist/teams/" + teamId)
                 .header("Authorization", bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"songIds\":" + songIdsJson + "}"));
+    }
+
+    private ResultActions confirm(long userId, String itemsJson) throws Exception {
+        return mockMvc.perform(put("/v1/performances/" + performanceId + "/setlist")
+                .header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"items\":[" + itemsJson + "]}"));
+    }
+
+    private ResultActions unconfirm(long userId) throws Exception {
+        return mockMvc.perform(patch("/v1/performances/" + performanceId + "/setlist/unconfirm")
+                .header("Authorization", bearer(userId)));
+    }
+
+    private static String item(long teamId, long songId, int sortOrder) {
+        return "{\"teamId\":%d,\"songId\":%d,\"sortOrder\":%d}".formatted(teamId, songId, sortOrder);
     }
 
     private ResultActions getSetlist(long userId) throws Exception {

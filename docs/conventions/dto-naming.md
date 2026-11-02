@@ -363,7 +363,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `PerformanceStatusResponse` | `(Long id, PerformanceStatus status)` |
 | `SetlistResponse` | `(Long performanceId, boolean confirmed, List<SetlistItemResponse> setlist)` — 공연 셋리스트 조회·넘기기·확정 공통. 확정 전에는 넘겨진 곡 전체(`sortOrder` null), 확정 후에는 확정곡만 |
 | `SetlistSubmitRequest` | `(List<Long> songIds)` — 그 팀의 선택곡 안에서 고른다. 그 팀이 넘긴 곡 전체를 바꾼다 |
-| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다 |
+| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다. `SetlistService`에는 같은 모양의 값 `SetlistService.ConfirmItem`으로 바꿔 넘긴다 |
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 

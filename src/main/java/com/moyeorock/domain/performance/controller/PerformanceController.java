@@ -2,6 +2,7 @@ package com.moyeorock.domain.performance.controller;
 
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistConfirmRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
@@ -18,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -84,5 +86,20 @@ public class PerformanceController {
     public ApiResponse<SetlistResponse> submitSetlist(@AuthUser Long userId, @PathVariable Long performanceId,
             @PathVariable Long teamId, @Valid @RequestBody SetlistSubmitRequest request) {
         return ApiResponse.success(performanceService.submitSetlist(userId, performanceId, teamId, request));
+    }
+
+    /** 팀들이 넘긴 곡 중 요청한 곡만 순서대로 남긴다(나머지는 빠짐). 순서는 1부터 빈틈없이, 끝난 공연은 409. */
+    @Operation(summary = "공연 셋리스트 확정")
+    @PutMapping("/v1/performances/{performanceId}/setlist")
+    public ApiResponse<SetlistResponse> confirmSetlist(@AuthUser Long userId, @PathVariable Long performanceId,
+            @Valid @RequestBody SetlistConfirmRequest request) {
+        return ApiResponse.success(performanceService.confirmSetlist(userId, performanceId, request));
+    }
+
+    /** 확정 시각과 순서를 비워 팀이 다시 넘길 수 있게 한다. 확정 전이거나 끝난 공연이면 409. */
+    @Operation(summary = "공연 셋리스트 확정 해제")
+    @PatchMapping("/v1/performances/{performanceId}/setlist/unconfirm")
+    public ApiResponse<SetlistResponse> unconfirmSetlist(@AuthUser Long userId, @PathVariable Long performanceId) {
+        return ApiResponse.success(performanceService.unconfirmSetlist(userId, performanceId));
     }
 }

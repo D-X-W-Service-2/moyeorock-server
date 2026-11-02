@@ -13,6 +13,7 @@ import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistConfirmRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.SetlistResponse;
@@ -398,9 +399,113 @@ class PerformanceServiceTest {
         verifyNoInteractions(teamMemberService, setlistService);
     }
 
+    @Test
+    @DisplayName("모임장이 확정하면 항목을 SetlistService 값으로 바꿔 맡기고, 확정 시각을 찍어 확정곡을 돌려준다")
+    void confirmSetlist_delegatesAndMarksConfirmed() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        when(teamMemberService.getPerformanceId(9L)).thenReturn(PERFORMANCE_ID);
+        when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
+        when(setlistService.getSetlist(PERFORMANCE_ID, true)).thenReturn(List.of());
+
+        SetlistResponse response = performanceService.confirmSetlist(OWNER_ID, PERFORMANCE_ID, confirmRequest());
+
+        verify(groupMemberService).ensureOwner(GROUP_ID, OWNER_ID);
+        verify(setlistService).confirm(PERFORMANCE_ID, List.of(
+                new SetlistService.ConfirmItem(9L, 120L, 1), new SetlistService.ConfirmItem(5L, 88L, 2)));
+        assertThat(performance.isSetlistConfirmed()).isTrue();
+        assertThat(response.confirmed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("모임장이 아니면 확정도 확정 해제도 할 수 없고 셋리스트를 건드리지 않는다")
+    void confirmAndUnconfirm_throw_whenNotOwner() {
+        Performance performance = givenPerformance();
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_OWNER)).when(groupMemberService).ensureOwner(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.confirmSetlist(MEMBER_ID, PERFORMANCE_ID, confirmRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        assertThatThrownBy(() -> performanceService.unconfirmSetlist(MEMBER_ID, PERFORMANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        verifyNoInteractions(teamMemberService, setlistService);
+        assertThat(performance.isSetlistConfirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("끝난 공연(DONE·CANCELED)은 확정할 수 없다(INVALID_STATE)")
+    void confirmSetlist_throws_whenFinished() {
+        Performance performance = givenPerformance();
+
+        for (PerformanceStatus finished : List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED)) {
+            performance.changeStatus(finished);
+            assertThatThrownBy(() -> performanceService.confirmSetlist(OWNER_ID, PERFORMANCE_ID, confirmRequest()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_STATE);
+        }
+        verifyNoInteractions(teamMemberService, setlistService);
+        assertThat(performance.isSetlistConfirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("이 공연 소속이 아닌 팀(독립 팀 포함)이 섞이면 TEAM_NOT_FOUND이고 셋리스트를 건드리지 않는다")
+    void confirmSetlist_throws_whenTeamNotInPerformance() {
+        givenPerformance();
+        when(teamMemberService.getPerformanceId(9L)).thenReturn(null);
+
+        assertThatThrownBy(() -> performanceService.confirmSetlist(OWNER_ID, PERFORMANCE_ID, confirmRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.TEAM_NOT_FOUND);
+        verifyNoInteractions(setlistService);
+    }
+
+    @Test
+    @DisplayName("모임장이 확정을 해제하면 순서를 비우게 맡기고 확정 시각을 지운다")
+    void unconfirmSetlist_clearsConfirmation() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        performance.confirmSetlist(LocalDateTime.now());
+        when(setlistService.getSetlist(PERFORMANCE_ID, false)).thenReturn(List.of());
+
+        SetlistResponse response = performanceService.unconfirmSetlist(OWNER_ID, PERFORMANCE_ID);
+
+        verify(setlistService).unconfirm(PERFORMANCE_ID);
+        assertThat(performance.isSetlistConfirmed()).isFalse();
+        assertThat(response.confirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("확정되지 않았거나 끝난 공연이면 확정 해제는 INVALID_STATE다")
+    void unconfirmSetlist_throws_whenNotConfirmedOrFinished() {
+        Performance performance = givenPerformance();
+
+        assertThatThrownBy(() -> performanceService.unconfirmSetlist(OWNER_ID, PERFORMANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        performance.confirmSetlist(LocalDateTime.now());
+        performance.changeStatus(PerformanceStatus.DONE);
+        assertThatThrownBy(() -> performanceService.unconfirmSetlist(OWNER_ID, PERFORMANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        verifyNoInteractions(setlistService);
+        assertThat(performance.isSetlistConfirmed()).isTrue();
+    }
+
     private PerformanceCreateRequest createRequest() {
         return new PerformanceCreateRequest("2026 정기공연", "1년에 한 번 하는 정기공연입니다.", PERFORMED_AT,
                 "홍대 롤링홀", "poster.jpg");
+    }
+
+    private SetlistConfirmRequest confirmRequest() {
+        return new SetlistConfirmRequest(List.of(
+                new SetlistConfirmRequest.Item(9L, 120L, 1), new SetlistConfirmRequest.Item(5L, 88L, 2)));
     }
 
     private PerformanceUpdateRequest updateRequest() {

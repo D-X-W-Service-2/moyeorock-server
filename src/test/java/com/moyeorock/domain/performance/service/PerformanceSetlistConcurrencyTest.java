@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.performance.entity.Performance;
-import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.AfterEach;
@@ -20,7 +19,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 셋리스트 넘기기의 강제 증가 낙관적 락이 실제 MySQL에서 "읽은 뒤 공연이 바뀐" 경우를 잡는지 확인한다(이슈 #103).
+ * 셋리스트 넘기기의 강제 증가 낙관적 락이 실제 MySQL에서 "읽은 뒤 공연이 바뀐" 경우를 잡는지, 거꾸로 확정이
+ * 읽은 뒤 넘기기가 먼저 커밋된 경우도 잡는지 확인한다(이슈 #103).
  * 일반 OPTIMISTIC은 REPEATABLE READ 스냅샷 때문에 이 경우를 못 잡아서 강제 증가로 바꿨다 — 그 회귀를 막는 테스트다.
  *
  * <p>넘기기와 확정·해제가 따로 커밋되어야 엇갈릴 수 있으므로 클래스에 {@code @Transactional}을 붙이지 않고,
@@ -51,7 +51,22 @@ class PerformanceSetlistConcurrencyTest {
         assertThatThrownBy(() -> submit.executeWithoutResult(status -> {
             performanceRepository.findByIdForSetlistSubmit(performanceId).orElseThrow();
             confirm.executeWithoutResult(inner -> performanceRepository.findById(performanceId).orElseThrow()
-                    .changeStatus(PerformanceStatus.RECRUITING));
+                    .confirmSetlist(LocalDateTime.now()));
+        })).isInstanceOf(OptimisticLockingFailureException.class);
+    }
+
+    @Test
+    @DisplayName("확정이 공연을 읽은 뒤 넘기기가 먼저 커밋하면, 확정은 커밋 때 낙관적 락 실패다 — 넘겨진 곡을 못 본 채 확정되지 않는다")
+    void confirmFails_whenSubmitCommittedAfterRead() {
+        Long performanceId = savePerformance();
+        TransactionTemplate confirm = new TransactionTemplate(transactionManager);
+        TransactionTemplate submit = new TransactionTemplate(transactionManager);
+        submit.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        assertThatThrownBy(() -> confirm.executeWithoutResult(status -> {
+            Performance performance = performanceRepository.findById(performanceId).orElseThrow();
+            submit.executeWithoutResult(inner -> performanceRepository.findByIdForSetlistSubmit(performanceId).orElseThrow());
+            performance.confirmSetlist(LocalDateTime.now());
         })).isInstanceOf(OptimisticLockingFailureException.class);
     }
 

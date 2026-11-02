@@ -69,6 +69,7 @@ public enum ErrorCode {
     // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
     SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),
     SONG_ALREADY_IN_SETLIST(HttpStatus.CONFLICT, "같은 공연의 다른 팀이 이미 넘긴 곡입니다."),
+    SONG_NOT_TEAM_CANDIDATE(HttpStatus.CONFLICT, "팀이 셋리스트로 넘긴 곡만 확정할 수 있습니다."),
 
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다.");

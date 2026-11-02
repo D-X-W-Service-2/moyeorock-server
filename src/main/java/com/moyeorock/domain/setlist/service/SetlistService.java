@@ -17,7 +17,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -120,7 +122,47 @@ public class SetlistService {
         }
     }
 
+    /**
+     * 셋리스트 확정 — 요청 항목만 남기고 순서를 매긴다. 요청에 없는 행은 지운다. 공연·모임장·팀 소속은 부르는 쪽이 확인한다.
+     * 같은 곡 중복이나 순서가 1부터 빈틈없이 매겨지지 않았으면 VALIDATION_FAILED, 그 팀이 넘긴 곡이 아니면
+     * SONG_NOT_TEAM_CANDIDATE다. 이미 확정된 셋리스트도 다시 확정할 수 있다(남아 있는 곡 안에서).
+     */
+    @Transactional
+    public void confirm(Long performanceId, List<ConfirmItem> items) {
+        Set<Long> songIds = items.stream().map(ConfirmItem::songId).collect(Collectors.toSet());
+        Set<Integer> sortOrders = items.stream().map(ConfirmItem::sortOrder).collect(Collectors.toSet());
+        Set<Integer> expected = IntStream.rangeClosed(1, items.size()).boxed().collect(Collectors.toSet());
+        if (songIds.size() != items.size() || !sortOrders.equals(expected)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        Map<Long, Setlist> rows = setlistRepository.findAllByPerformanceId(performanceId).stream()
+                .collect(Collectors.toMap(Setlist::getSongId, Function.identity()));
+        for (ConfirmItem item : items) {
+            Setlist row = rows.get(item.songId());
+            if (row == null || !row.getTeamId().equals(item.teamId())) {
+                throw new BusinessException(ErrorCode.SONG_NOT_TEAM_CANDIDATE);
+            }
+        }
+
+        setlistRepository.deleteAll(rows.values().stream().filter(row -> !songIds.contains(row.getSongId())).toList());
+        items.forEach(item -> rows.get(item.songId()).changeSortOrder(item.sortOrder()));
+    }
+
+    /** 확정 해제 — 행은 그대로 두고 순서만 비운다. 공연·모임장·확정 여부는 부르는 쪽이 확인한다. */
+    @Transactional
+    public void unconfirm(Long performanceId) {
+        setlistRepository.findAllByPerformanceId(performanceId).forEach(Setlist::clearSortOrder);
+    }
+
     // ---------- 타 도메인용 ----------
+
+    /**
+     * 셋리스트에 곡이 남아 있는 팀 id(팀 id 순). 해체된 팀도 들어간다 — 끝난 공연의 참여 팀을 이 기준으로 보여준다(#96).
+     * 확정된 셋리스트라면 확정곡이 있는 팀만 남는다.
+     */
+    public List<Long> findTeamIds(Long performanceId) {
+        return setlistRepository.findTeamIdsByPerformanceId(performanceId);
+    }
 
     /** 팀 선택곡 목록(2팀 팀 상세의 songs). 권한은 묻지 않는다 — 부르는 쪽이 확인한다. 저장한 순서다. */
     public List<TeamSongResponse> getTeamSongs(Long teamId) {
@@ -143,5 +185,12 @@ public class SetlistService {
     // 곡이 카탈로그에서 지워졌으면(지금은 지우는 경로가 없다) song이 null로 내려간다
     private List<TeamSongResponse> toResponses(List<TeamSong> teamSongs, Map<Long, SongSummaryResponse> songs) {
         return teamSongs.stream().map(t -> TeamSongResponse.of(t, songs.get(t.getSongId()))).toList();
+    }
+
+    /**
+     * 확정 항목 한 줄 — PerformanceService가 요청 DTO({@code SetlistConfirmRequest})를 이 값으로 바꿔 넘긴다.
+     * 요청 DTO를 도메인 밖으로 넘기지 않기 위한 값이다(dto-naming.md §9).
+     */
+    public record ConfirmItem(Long teamId, Long songId, int sortOrder) {
     }
 }

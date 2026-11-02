@@ -3,6 +3,7 @@ package com.moyeorock.domain.performance.service;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistConfirmRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
@@ -121,6 +122,48 @@ public class PerformanceService {
         }
 
         setlistService.submit(performanceId, teamId, request.songIds());
+        return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, false));
+    }
+
+    /**
+     * 셋리스트 확정(모임장). 팀들이 넘긴 곡 중 요청한 곡만 순서대로 남기고 나머지는 지운다. 확정된 셋리스트도 다시 확정할 수 있다.
+     * 끝난 공연은 INVALID_STATE(끝난 공연의 셋리스트는 기록), 이 공연 소속이 아닌 팀이 섞이면 TEAM_NOT_FOUND다.
+     * 공연 행을 고치므로 버전이 올라, 그사이 커밋된 넘기기나 겹친 넘기기 중 늦은 쪽이 409가 된다(이슈 #103).
+     */
+    @Transactional
+    public SetlistResponse confirmSetlist(Long userId, Long performanceId, SetlistConfirmRequest request) {
+        Performance performance = getPerformanceOrThrow(performanceId);
+        groupMemberService.ensureOwner(performance.getGroupId(), userId);
+        if (performance.isFinished()) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+        request.items().stream().map(SetlistConfirmRequest.Item::teamId).distinct().forEach(teamId -> {
+            if (!performanceId.equals(teamMemberService.getPerformanceId(teamId))) {
+                throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
+            }
+        });
+
+        setlistService.confirm(performanceId, request.items().stream()
+                .map(item -> new SetlistService.ConfirmItem(item.teamId(), item.songId(), item.sortOrder()))
+                .toList());
+        performance.confirmSetlist(LocalDateTime.now());
+        return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, true));
+    }
+
+    /**
+     * 셋리스트 확정 해제(모임장). 남아 있던 곡은 그대로 두고 순서·확정 시각만 비워, 팀이 다시 넘길 수 있게 한다.
+     * 확정되지 않았거나 끝난 공연이면 INVALID_STATE다.
+     */
+    @Transactional
+    public SetlistResponse unconfirmSetlist(Long userId, Long performanceId) {
+        Performance performance = getPerformanceOrThrow(performanceId);
+        groupMemberService.ensureOwner(performance.getGroupId(), userId);
+        if (performance.isFinished() || !performance.isSetlistConfirmed()) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+
+        setlistService.unconfirm(performanceId);
+        performance.unconfirmSetlist();
         return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, false));
     }
 

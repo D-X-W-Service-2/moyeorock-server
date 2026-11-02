@@ -16,6 +16,13 @@ public interface SetlistRepository extends JpaRepository<Setlist, Long> {
     // 확정 후 셋리스트 — 모임장이 정한 순서
     List<Setlist> findAllByPerformanceIdOrderBySortOrderAscIdAsc(Long performanceId);
 
+    // 확정·확정 해제 — 순서와 상관없이 그 공연의 행 전부
+    List<Setlist> findAllByPerformanceId(Long performanceId);
+
+    // 셋리스트에 곡이 남아 있는 팀(팀 id 순) — 끝난 공연의 참여 팀 기준
+    @Query("SELECT DISTINCT s.teamId FROM Setlist s WHERE s.performanceId = :performanceId ORDER BY s.teamId")
+    List<Long> findTeamIdsByPerformanceId(@Param("performanceId") Long performanceId);
+
     // 같은 공연의 다른 팀이 이미 넘긴 곡이 있는지(넘기기 사전 검사 — 동시에 넘기면 UNIQUE(performance_id, song_id)가 막는다)
     boolean existsByPerformanceIdAndTeamIdNotAndSongIdIn(Long performanceId, Long teamId, Collection<Long> songIds);
 

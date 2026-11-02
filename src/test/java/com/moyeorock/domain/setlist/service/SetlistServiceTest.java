@@ -44,6 +44,7 @@ class SetlistServiceTest {
     private static final Long TEAM_ID = 5L;
     private static final Long LEADER_ID = 10L;
     private static final Long PERFORMANCE_ID = 7L;
+    private static final Long OTHER_TEAM_ID = 9L;
     private static final SongSummaryResponse BOHEMIAN = new SongSummaryResponse(88L, "Bohemian Rhapsody", "Queen");
     private static final SongSummaryResponse CREEP = new SongSummaryResponse(104L, "Creep", "Radiohead");
 
@@ -260,6 +261,73 @@ class SetlistServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.SONG_ALREADY_IN_SETLIST);
+    }
+
+    @Test
+    @DisplayName("확정은 요청한 곡에 순서를 매기고 요청에 없는 곡은 지운다")
+    void confirm_ordersRequestedRows_andDeletesOthers() {
+        Setlist bohemian = Setlist.create(PERFORMANCE_ID, TEAM_ID, 88L);
+        Setlist creep = Setlist.create(PERFORMANCE_ID, TEAM_ID, 104L);
+        Setlist wonderwall = Setlist.create(PERFORMANCE_ID, OTHER_TEAM_ID, 120L);
+        when(setlistRepository.findAllByPerformanceId(PERFORMANCE_ID)).thenReturn(List.of(bohemian, creep, wonderwall));
+
+        setlistService.confirm(PERFORMANCE_ID, List.of(
+                new SetlistService.ConfirmItem(OTHER_TEAM_ID, 120L, 1),
+                new SetlistService.ConfirmItem(TEAM_ID, 104L, 2)));
+
+        verify(setlistRepository).deleteAll(List.of(bohemian));
+        assertThat(wonderwall.getSortOrder()).isEqualTo(1);
+        assertThat(creep.getSortOrder()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("같은 곡이 두 번이거나 순서가 1부터 빈틈없지 않으면 VALIDATION_FAILED이고 셋리스트를 읽지도 않는다")
+    void confirm_throws_whenDuplicateSongOrInvalidSortOrder() {
+        List<List<SetlistService.ConfirmItem>> invalid = List.of(
+                List.of(new SetlistService.ConfirmItem(TEAM_ID, 88L, 1), new SetlistService.ConfirmItem(TEAM_ID, 88L, 2)),
+                List.of(new SetlistService.ConfirmItem(TEAM_ID, 88L, 1), new SetlistService.ConfirmItem(TEAM_ID, 104L, 3)),
+                List.of(new SetlistService.ConfirmItem(TEAM_ID, 88L, 1), new SetlistService.ConfirmItem(TEAM_ID, 104L, 1)),
+                List.of(new SetlistService.ConfirmItem(TEAM_ID, 88L, 0), new SetlistService.ConfirmItem(TEAM_ID, 104L, 1)));
+
+        for (List<SetlistService.ConfirmItem> items : invalid) {
+            assertThatThrownBy(() -> setlistService.confirm(PERFORMANCE_ID, items))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        }
+        verifyNoInteractions(setlistRepository);
+    }
+
+    @Test
+    @DisplayName("넘겨지지 않은 곡이거나 다른 팀이 넘긴 곡을 그 팀 곡으로 확정하면 SONG_NOT_TEAM_CANDIDATE이고 아무것도 지우지 않는다")
+    void confirm_throws_whenNotTeamCandidate() {
+        when(setlistRepository.findAllByPerformanceId(PERFORMANCE_ID))
+                .thenReturn(List.of(Setlist.create(PERFORMANCE_ID, TEAM_ID, 88L)));
+
+        assertThatThrownBy(() -> setlistService.confirm(PERFORMANCE_ID,
+                List.of(new SetlistService.ConfirmItem(TEAM_ID, 104L, 1))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SONG_NOT_TEAM_CANDIDATE);
+        assertThatThrownBy(() -> setlistService.confirm(PERFORMANCE_ID,
+                List.of(new SetlistService.ConfirmItem(OTHER_TEAM_ID, 88L, 1))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SONG_NOT_TEAM_CANDIDATE);
+        verify(setlistRepository, never()).deleteAll(anyList());
+    }
+
+    @Test
+    @DisplayName("확정 해제는 행을 남기고 순서만 비운다")
+    void unconfirm_clearsSortOrder() {
+        Setlist bohemian = Setlist.create(PERFORMANCE_ID, TEAM_ID, 88L);
+        bohemian.changeSortOrder(1);
+        when(setlistRepository.findAllByPerformanceId(PERFORMANCE_ID)).thenReturn(List.of(bohemian));
+
+        setlistService.unconfirm(PERFORMANCE_ID);
+
+        assertThat(bohemian.getSortOrder()).isNull();
+        verify(setlistRepository, never()).deleteAll(anyList());
     }
 
     @Test
