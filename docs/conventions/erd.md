@@ -199,6 +199,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `status` | `VARCHAR(20)` | PLANNED\|RECRUITING\|DONE\|CANCELED |
 | FK | `created_by` | `BIGINT` | → users |
 | ＋ | `setlist_confirmed_at` | `DATETIME(6)` | 셋리스트 확정 시각. NULL이면 미확정 — 확정되면 팀이 곡을 더 넘길 수 없다(2026-10-30, 이슈 #85). 모임장이 확정을 해제하면 다시 NULL(2026-11-02) |
+| ＋ | `version` | `BIGINT NOT NULL DEFAULT 0` | 낙관적 락 버전(`@Version`). 셋리스트 넘기기가 확정·해제와 겹치면 늦은 넘기기를 409로 막는다(2026-11-02, 이슈 #103, V13). 공연 수정·상태 변경도 버전을 올린다 |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 

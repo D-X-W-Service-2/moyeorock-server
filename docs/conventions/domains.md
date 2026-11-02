@@ -20,7 +20,7 @@
 | `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 10 |
 | `song` | 4팀 | `songs` | 2 |
-| `setlist` | 4팀 | `team_songs` `setlists` | 1 |
+| `setlist` | 4팀 | `team_songs` `setlists` | 2 |
 | `dashboard` | 3팀 | (없음) | 1 |
 
 > **엔드포인트 상세 명세(요청·응답 구조)는 `docs/specs/`에 있다** (`api-spec.md` · `dto-spec.md`). 정본은 노션 `API 명세서 v0`, `docs/specs/`는 대조 날짜가 명시된 스냅샷이다.
@@ -81,7 +81,9 @@
 | **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 26 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 27 |
+
+> 팀 곡 추천(AI)은 song·setlist 중 소유가 정해지지 않아(`docs/specs/api-spec.md` 공백 #5) 위 개수에 넣지 않았다 — `docs/conventions/dto-naming.md` §10(5개)과 합계가 1 다른 이유다. setlist 2개는 팀 선택곡 저장·조회(조회는 2026-11-02, 이슈 #103 신규).
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 

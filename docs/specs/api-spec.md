@@ -179,11 +179,15 @@
 | PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
 | POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 모임원 · 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
 | GET | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;조회 ◆ | | `SetlistResponse` | 모임원 · 확정 전엔 넘겨진 곡 전체, 확정 후엔 확정곡만 |
-| PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | 셋리스트로&nbsp;넘기기 ◆ | `SetlistSubmitRequest` | `SetlistResponse` | 공연 팀 팀장 · 확정 후 409(해제하면 다시 가능) |
-| PUT | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;확정 ◆ | `SetlistConfirmRequest` | `SetlistResponse` | 모임장 · 넘겨진 곡만, 요청에 없는 곡은 빠짐 |
+| PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | 셋리스트로&nbsp;넘기기 ◆ | `SetlistSubmitRequest` | `SetlistResponse` | 공연 팀 팀장 · 확정 후 409(해제하면 다시 가능) ♪ |
+| PUT | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;확정 ◆ | `SetlistConfirmRequest` | `SetlistResponse` | 모임장 · 넘겨진 곡만, 요청에 없는 곡은 빠짐 · 끝난 공연은 409 ♪ |
 | PATCH | `/v1/performances/{performanceId}/setlist/unconfirm` | 공연&nbsp;셋리스트&nbsp;확정&nbsp;해제 ◆ | — | `SetlistResponse` | 모임장 · 미확정·끝난·취소된 공연이면 409 |
 
 > ◆ **2026-10-30 셋리스트 흐름 변경(이슈 #85)** — 팀 선택곡(`team_songs`)과 공연 셋리스트(`setlists`)를 테이블로 나누고(`erd.md` §15·§18), 공연 단위 셋리스트 4개(확정 해제 포함)를 **performance가 받는다**(`docs/conventions/domains.md` "헷갈리는 경계"). 확정 시각이 `performances.setlist_confirmed_at`이라 `PerformanceService`가 공연·확정 여부·모임장을 확인하고 행 처리는 `SetlistService`에 맡긴다. 조회·넘기기는 신규, 확정은 기존 행(`API 초안` 2026-10-30 수정 반영). 확정 요청 DTO 이름은 `dto-naming.md` §9의 `SetlistConfirmRequest`다(노션도 2026-11-02에 `SetlistUpdateRequest`에서 맞췄다). **확정 해제는 2026-11-02에 추가했다**(PR #87 리뷰) — 확정 뒤에는 팀이 곡을 넘길 수 없고 모임장은 넘겨진 곡 안에서만 고를 수 있어, 해제가 없으면 확정 때 뺀 곡을 다시 넣을 길이 없었다. 해제하면 확정 시각과 `sort_order`를 비우고 팀이 다시 넘길 수 있다. 노션에 페이지를 새로 만들었고, 구현은 셋리스트 API 때 한다.
+> ♪ **2026-11-02 셋리스트 구현 결정(이슈 #103)**
+> - **넘기기 에러** — 그 팀 선택곡에 없는 곡 `409 SONG_NOT_SELECTED_BY_TEAM`, 같은 공연의 다른 팀이 이미 넘긴 곡 `409 SONG_ALREADY_IN_SETLIST`, 없는 곡 `404 SONG_NOT_FOUND`, 이 공연 소속이 아닌 팀 `404 TEAM_NOT_FOUND`, 확정된 셋리스트 `409 INVALID_STATE`
+> - **확정 에러** — 그 팀이 넘기지 않은 곡 `409 SONG_NOT_TEAM_CANDIDATE`(노션 그대로), 이 공연 소속이 아닌 팀 `404 TEAM_NOT_FOUND`, **끝난 공연(`DONE`·`CANCELED`)은 확정도 `409 INVALID_STATE`**(해제와 같게 — 끝난 공연의 셋리스트는 기록)
+> - **동시성은 낙관적 락** — 두 팀이 같은 곡을 동시에 넘기면 `UNIQUE(performance_id, song_id)`가 늦은 쪽을 막아 `409 SONG_ALREADY_IN_SETLIST`. 넘기기와 확정·해제가 겹치면 `performances.version`(`@Version`)으로 늦은 넘기기를 `409 INVALID_STATE`로 막는다(`erd.md` §9)
 > 이전 기록(2026-09-11): `API 초안`이 셋리스트 확정을 공연 도메인 행으로 적었지만 당시 소유는 setlist였다 — `team_songs` 하나에 팀 선택과 확정이 섞여 있어 한 서비스가 `UNIQUE`를 검증해야 했기 때문이다. 테이블을 나누면서 그 이유가 사라졌다.
 > `API 초안`의 이 7개 행은 반영 당시(2026-09-10 이전) `인증 여부`·`진행 상태`가 비어 있었다. 모든 API는 인증이 필요하다는 원칙(상단 참고)에 따라 2026-09-11에 전부 "인증 필요"로 채우고 노션도 함께 수정했다.
 > ※ **2026-10-30 대조(이슈 #83)** — `API 초안`(2026-10-08 수정)과 대조해 경로 변수를 `{performanceId}`로, 비고에 노션 Actor를 맞췄다. 어긋나는 곳은 이렇게 정했다.
@@ -207,17 +211,21 @@
 | GET | `/v1/teams/{teamId}/songs/recommendations` | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 |
 
 > ¶ `API 초안`에서 `page`·`size` 페이징 파라미터가 명시적으로 추가됐다(2026-09-11).
+> 🚧 추천 2개(내 취향 추천곡·팀 곡 추천)는 추천 방식(룰 기반/외부 모델)과 소유 도메인이 정해지지 않아 셋리스트 구현(이슈 #103) 범위에서 뺐다(2026-11-02).
 > ⚠️ `docs/conventions/domains.md`는 song 2개로 집계한다. 팀 곡 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.** `API 초안`은 이 3개를 모두 "노래 / 셋리스트"로 묶어만 두어 이 논쟁을 해소하지 못한다. 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
 
 ### setlist
 
-`team_songs`(팀 선택곡)·`setlists`(공연 셋리스트) 두 테이블을 소유한다(2026-10-30, 이슈 #85). 엔드포인트는 팀 선택곡 저장 하나이고, 공연 셋리스트 조회·넘기기·확정·확정 해제는 §8에서 performance가 받는다. performance·team은 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다.
+`team_songs`(팀 선택곡)·`setlists`(공연 셋리스트) 두 테이블을 소유한다(2026-10-30, 이슈 #85). 엔드포인트는 팀 선택곡 저장·조회 2개이고, 공연 셋리스트 조회·넘기기·확정·확정 해제는 §8에서 performance가 받는다. performance·team은 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다.
 
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | PUT | `/v1/teams/{teamId}/songs` | 팀&nbsp;선택곡&nbsp;저장 | `TeamSongsSaveRequest` | `TeamSongsResponse` | 팀장 · 독립 팀 포함. 기존 선택곡 전체 대체 |
+| GET | `/v1/teams/{teamId}/songs` | 팀&nbsp;선택곡&nbsp;조회 ♩ | | `TeamSongsResponse` | 팀원 · 독립 팀 포함 |
 
 > 2026-10-30 변경: 경로 `/v1/teams/{id}/setlist` → `/v1/teams/{teamId}/songs`, 이름 "팀 셋리스트 저장" → "팀 선택곡 저장", 요청에서 `sortOrder`·`progress`를 뺐다(`API 초안` 수정 반영). 선택곡을 바꿔도 이미 넘긴 셋리스트는 바뀌지 않고, 셋리스트 확정 뒤 곡 추가는 UI에서 막는다.
+> ♩ **2026-11-02 신규(이슈 #103)** — 노션 `API 초안`에 "[추가 필요] 팀 선택곡 조회"가 `GET /v1/teams/{teamId}/setlist`(팀원, 내용 없음)로 올라와 있었다. 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않기로 해서 경로를 저장과 같은 `/songs`로 맞추고 응답은 저장 응답 `TeamSongsResponse`를 그대로 쓴다. 해체된 팀은 `404 TEAM_NOT_FOUND`, 팀원이 아니면 `403 NO_PERMISSION`(2팀 `TeamMemberService.ensureActiveMember`)
+> 선택곡 저장 에러 — 없는 곡이 섞이면 `404 SONG_NOT_FOUND`, 같은 곡 중복·`songIds` 누락은 `400 VALIDATION_FAILED`, 팀장이 아니면 `403 NOT_TEAM_LEADER`, 해체·없는 팀 `404 TEAM_NOT_FOUND`
 
 ---
 
@@ -329,7 +337,7 @@
 | 2 | 합주(rehearsal) 제외 | `API 초안`의 합주 행이 `v1/fee/...`(`studentFeeId`) 등 무관한 경로에 엔드포인트 누락까지 있어 이번 반영에서 제외했다(§3). 팀 정리 후 별도 반영 필요 |
 | 3 | 총 개수 | 파일 도메인에 `DELETE /v1/files/{fileId}`가 추가되며 전체 개수가 바뀌었다. `docs/conventions/domains.md`·`docs/conventions/dto-naming.md`의 총계 갱신 필요 |
 | 4 | performance 6 vs 7 | ✅ 해소(§8) — 원본 행 수는 7(셋리스트 확정 포함), `performance` 도메인 소유 개수는 6. **2026-10-30 갱신(이슈 #85)**: 공연 셋리스트 조회·넘기기가 생기고 셋리스트 3개를 performance가 받게 돼 `performance` 소유는 9. **2026-11-02**: 셋리스트 확정 해제가 더해져 10 |
-| 5 | song 3 vs 2 | 여전히 미해소(§9) — `API 초안`도 song·setlist 소유를 구분하지 않는다 |
+| 5 | song 3 vs 2 | 여전히 미해소(§9) — `API 초안`도 song·setlist 소유를 구분하지 않는다. 2026-11-02: 추천 2개는 이슈 #103 범위에서 빼고 방식과 함께 따로 정한다 |
 | 6 | 위치 불명 메모 | 원본의 "모임장" 단독 메모 2건은 인접 행(공연 생성·곡 검색)에 붙어 있었으나 대상 불확실 |
 | 7 | 내보내기 PATCH | ✅ 해소 — 팀·모임 모두 `/status` 접미사로 확정, 노션도 2026-09-11 수정 반영(§2, §7) |
 | 8 | 모임원 목록 응답 | `GroupMembersResponse` → `PageResponse<>` 개명 이력은 `API 초안`에 DTO 정보가 없어 갱신되지 않았다. 완성형은 `PageResponse<GroupMemberResponse>` (§7 §) |
