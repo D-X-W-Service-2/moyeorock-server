@@ -100,6 +100,34 @@ public class GroupMemberService {
         groupMemberRepository.save(GroupMember.create(groupId, userId, GroupRole.OWNER));
     }
 
+    /**
+     * 모임원 추가(3팀 가입·초대 승인). 일반 모임원(MEMBER)으로 들어온다. 호출한 쪽의 트랜잭션에 참여한다.
+     * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(팀의 {@code addMember}와 같다).
+     * 이미 모임원이면 ALREADY_MEMBER, 없거나 해체된 모임이면 GROUP_NOT_FOUND다.
+     *
+     * <p>모임 행을 먼저 잠그므로 호출하는 쪽은 이 메서드를 트랜잭션 앞쪽에서 불러 달라(팀의 {@code addMember}와 같은 이유).
+     */
+    @Transactional
+    public void addMember(Long groupId, Long userId) {
+        lockActiveGroup(groupId);
+        groupMemberRepository.findByGroupIdAndUserId(groupId, userId).ifPresentOrElse(
+                member -> {
+                    if (member.getStatus() == GroupMemberStatus.ACTIVE) {
+                        throw new BusinessException(ErrorCode.ALREADY_MEMBER);
+                    }
+                    member.rejoin();
+                },
+                () -> groupMemberRepository.save(GroupMember.create(groupId, userId, GroupRole.MEMBER)));
+    }
+
+    /**
+     * 요청자가 이 모임의 활동 중인 모임원인지. 없거나 해체된 모임이면 {@code false}다.
+     * 막지 않고 답만 한다 — 가입 신청·초대의 "이미 소속" 판단에 쓴다. 막아야 하면 {@link #ensureActiveMember}다.
+     */
+    public boolean isActiveMember(Long groupId, Long userId) {
+        return groupMemberRepository.findActiveMember(groupId, userId).isPresent();
+    }
+
     public void ensureOwner(Long groupId, Long userId) {
         ensureGroupExists(groupId);
         getOwnerOrThrow(groupId, userId);

@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 // 경로가 단수형 recruit-post다 — api-spec.md §4 "경로 표기": `API 초안`을 신뢰해 반영한
-// api-conventions.md §5 "리소스는 복수형" 규칙의 명시적 예외(join-request와 함께 2개뿐).
+// api-conventions.md §5 "리소스는 복수형" 규칙의 명시적 예외(이제 이것 하나뿐 — join-requests는 복수형으로 맞췄다).
 @RestController
 @RequestMapping("/v1/recruit-post")
 @RequiredArgsConstructor
