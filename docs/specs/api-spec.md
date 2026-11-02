@@ -5,7 +5,7 @@
 - **절 번호**: 이 파일과 `docs/specs/dto-spec.md`에서만 쓰는 좌표다
 - **인증**: 모든 API는 유저 인증 필요. 예외(auth 4개)는 §11에 별도 표기
 - **DTO 필드 정의**: `docs/specs/dto-spec.md` 참조. `API 초안`에는 DTO 정보가 없어 DTO 이름은 기존 `docs/conventions/dto-naming.md` 정의를 그대로 따른다. `*` 표시 Response는 원본 표에 비어 있으나 DTO 페이지의 이름·태그로 매칭한 것이다
-- **경로 표기**: 초안은 가입 신청·공고를 단수형(`join-request` · `recruit-post`)으로 적었다. `docs/conventions/api-conventions.md` §5 "리소스는 복수형" 규칙과 어긋나지만, 초안 값을 그대로 신뢰해 반영하기로 했다(2026-09-11 팀 확인). 다른 리소스(`teams` `groups` `invitations` `bookmarks` 등)는 여전히 복수형이다 — `join-request` · `recruit-post` 2개만 예외다
+- **경로 표기**: 공고는 단수형 `recruit-post`다. `docs/conventions/api-conventions.md` §5 "리소스는 복수형" 규칙과 어긋나지만, 초안 값을 그대로 신뢰해 반영하기로 했다(2026-09-11 팀 확인, 2026-11-03 현행 유지). 가입 신청은 초안이 처음엔 단수형(`join-request`)이었다가 복수형(`join-requests`)으로 바뀌어 2026-11-03에 복수형으로 맞췄다. 다른 리소스(`teams` `groups` `invitations` `bookmarks` 등)도 복수형이다 — `recruit-post` 하나만 예외다. 노션 `API 초안`의 공고 행은 아직 복수형(`/v1/recruit-posts`)으로 남아 있어 노션 쪽 정리가 필요하다
 
 ---
 
@@ -94,15 +94,18 @@
 
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
-| POST | `/v1/join-request` | 가입&nbsp;신청 | `JoinRequestCreateRequest` | | |
-| GET | `/v1/join-request` ¶ | 받은&nbsp;신청&nbsp;목록 | | `PageResponse<JoinRequestResponse>` | 모임장/팀장 |
-| GET | `/v1/users/me/join-request?status=` | 내&nbsp;신청&nbsp;목록 | | `PageResponse<JoinRequestResponse>` | |
-| PATCH | `/v1/join-request/{id}/approve` | 신청&nbsp;승인 | | `JoinApprovedResponse` * | 모임장/팀장 |
-| PATCH | `/v1/join-request/{id}/reject` | 신청&nbsp;거절 | | `JoinDecisionResponse` * | 모임장/팀장 |
-| PATCH | `/v1/join-request/{id}/cancel` | 신청&nbsp;취소 | | `JoinDecisionResponse` * | 신청자 본인 |
+| POST | `/v1/join-requests` | 가입&nbsp;신청 | `JoinRequestCreateRequest` | `JoinRequestResponse` (201) | |
+| GET | `/v1/join-requests` ¶ | 받은&nbsp;신청&nbsp;목록 | | `PageResponse<JoinRequestResponse>` | 모임장/팀장 |
+| GET | `/v1/users/me/join-requests?status=` | 내&nbsp;신청&nbsp;목록 | | `PageResponse<JoinRequestResponse>` | |
+| PATCH | `/v1/join-requests/{id}/status` | 신청&nbsp;승인·거절·취소 | `JoinRequestStatusUpdateRequest` | `JoinApprovedResponse`(승인) / `JoinDecisionResponse`(거절·취소) * | 승인·거절 모임장/팀장, 취소 신청자 본인 |
 
-> ¶ 받은 신청 목록의 쿼리 파라미터: `targetType` · `targetId` · `status` (전부 선택).
-> 경로가 단수형 `join-request`다 — 상단 "경로 표기" 참고. `join_requests` 테이블명은 그대로다.
+> ¶ 받은 신청 목록의 쿼리 파라미터: `targetType` · `targetId` · `status`. **`targetType`·`targetId`는 필수다**(권한을 대상 단위로 확인하므로. Notion은 "전부 선택"이라 적었지만 대상 없이는 모임장/팀장을 정할 수 없다 — 명세에 없는 서버 정책). 정렬은 최신순 고정.
+> **상태 변경**: 바디 `{"status": "APPROVED" | "REJECTED" | "CANCELED"}`(Notion 초안에는 바디 설명이 없어 서버가 정했다). `PENDING`은 400, 이미 처리된 신청은 409 `INVALID_STATE`, 권한 없는 사람은 403(`NOT_TEAM_LEADER`·`NOT_GROUP_OWNER`, 취소는 신청자가 아니면 `NO_PERMISSION`)이다. 권한을 먼저 보고 상태를 본다. 승인하면 팀원/모임원(`MEMBER`)이 된다. 승인 시점에 이미 소속이면 409 `ALREADY_MEMBER`이고 신청은 대기로 남는다.
+> **신청 검증**: 팀 대상은 `instrument` 필수(없으면 400), 모임 대상은 `instrument`를 저장하지 않는다. `message`는 선택(최대 500자). 같은 사람·같은 대상에 대기(`PENDING`) 신청이나 초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`(신청·초대를 가리지 않음), 이미 팀원/모임원이면 409 `ALREADY_MEMBER`, 팀장/모임장이 자기 팀·모임에 신청하면 400이다. 거절·취소된 뒤에는 다시 신청할 수 있다.
+> **공고를 거친 신청(`recruitPostId`)**: 없는 공고 404 `RECRUIT_POST_NOT_FOUND`, 마감된 공고 409 `INVALID_STATE`, 요청 대상과 다른 대상의 공고·모집하지 않는 세션(팀 공고)·내가 쓴 공고는 400이다. **정원은 검사하지 않는다** — 신청은 항상 받고 팀장이 승인 때 판단한다. 공고가 마감된 뒤에도 이미 들어온 대기 신청은 승인할 수 있다. 공고 상세의 `wantedSlots[].appliedCount`는 그 세션의 대기 신청 수, `myJoinRequest`는 내가 그 공고에 낸 가장 최근 신청(`{id, status}`, 없으면 `null`)이다.
+> **알림**(트랜잭션 안에서 이벤트 발행): 팀 신청 → 팀장 `TEAM_APPLY`, 모임 신청 → 모임장 `RECRUIT_POST_APPLIED`(모임용 전용 타입이 없어 대신 썼다), 승인·거절 → 신청자 `JOIN_REQUEST_APPROVED`·`JOIN_REQUEST_REJECTED`. 취소는 알리지 않는다.
+> 응답의 `target`은 팀이면 이름·지역·장르, 모임이면 이름만 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체된 대상은 내 신청 목록에서도 빼지 않고 `target`에 `id`만 남는다. `applicant`는 탈퇴한 신청자면 `null`이다.
+> 경로는 복수형 `join-requests`다 — 상단 "경로 표기" 참고. `join_requests` 테이블명은 그대로다.
 
 ---
 
@@ -115,11 +118,12 @@
 | POST | `/v1/invitations` | 초대&nbsp;보내기 | `InvitationCreateRequest` | |
 | GET | `/v1/invitations` ¶ | 보낸&nbsp;초대&nbsp;목록 | | `PageResponse<InvitationResponse>` |
 | GET | `/v1/users/me/invitations?status=` | 받은&nbsp;초대&nbsp;목록 | | `PageResponse<InvitationResponse>` |
-| PATCH | `/v1/invitations/{id}/accept` | 초대&nbsp;수락 | | `JoinApprovedResponse` * |
-| PATCH | `/v1/invitations/{id}/decline` | 초대&nbsp;거절 | | `JoinDecisionResponse` * |
-| PATCH | `/v1/invitations/{id}/cancel` | 초대&nbsp;취소 | | `JoinDecisionResponse` * |
+| PATCH | `/v1/invitations/{id}/status` | 초대&nbsp;수락·거절·취소 | `InvitationStatusUpdateRequest` | `JoinApprovedResponse`(수락) / `JoinDecisionResponse`(거절·취소) * |
 
-> ¶ 보낸 초대 목록의 쿼리 파라미터: `targetType` · `targetId` · `status` (전부 선택).
+> ¶ 보낸 초대 목록의 쿼리 파라미터: `targetType` · `targetId` · `status`. **보낸 목록은 `targetType`·`targetId`가 필수**(팀장/모임장 권한을 대상 단위로 확인). 받은 목록은 내 초대만 보이므로 `targetType`·`targetId`(함께 줘야 함)·`status`는 거르는 용도의 선택이다(Notion은 받은 목록도 대상을 필수로 적었으나 복사된 표로 보인다 — 서버 정책).
+> **상태 변경**: 바디 `{"status": "ACCEPTED" | "DECLINED" | "CANCELED"}`. 수락·거절은 초대받은 본인, 취소는 팀장/모임장이 한다. 수락하면 팀원/모임원이 되고 응답 `status`는 `APPROVED`(수락)·`REJECTED`(거절)·`CANCELED`로 가입 신청과 같은 값이다. 신청 id로 초대 경로를 부르면(또는 반대) 404 `JOIN_REQUEST_NOT_FOUND`다.
+> **초대 검증**: 팀장/모임장만 보낼 수 있다(403·404). 자기 자신 400, 없는 사용자 404 `USER_NOT_FOUND`, 이미 소속 409 `ALREADY_MEMBER`, 대기 중인 신청·초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`, 팀 초대는 `instrument` 필수다.
+> **알림**: 초대 → 초대받은 사람 `TEAM_INVITE`·`GROUP_INVITE`, 수락·거절 → 초대한 사람 `INVITATION_ACCEPTED`·`INVITATION_DECLINED`. 취소는 알리지 않는다. 경로는 모두 복수형 `invitations`다.
 
 ---
 
@@ -333,9 +337,9 @@
 | 6 | 위치 불명 메모 | 원본의 "모임장" 단독 메모 2건은 인접 행(공연 생성·곡 검색)에 붙어 있었으나 대상 불확실 |
 | 7 | 내보내기 PATCH | ✅ 해소 — 팀·모임 모두 `/status` 접미사로 확정, 노션도 2026-09-11 수정 반영(§2, §7) |
 | 8 | 모임원 목록 응답 | `GroupMembersResponse` → `PageResponse<>` 개명 이력은 `API 초안`에 DTO 정보가 없어 갱신되지 않았다. 완성형은 `PageResponse<GroupMemberResponse>` (§7 §) |
-| 9 | 경로 단수형 예외 | `join-request` · `recruit-post` 2개는 `API 초안`을 신뢰해 단수형 그대로 반영(2026-09-11 팀 확인). `api-conventions.md`의 "리소스는 복수형" 규칙의 명시적 예외로 기록 |
+| 9 | 경로 단수형 예외 | `recruit-post` 하나가 `API 초안`을 신뢰해 단수형 그대로 반영된 예외다(2026-09-11 팀 확인, 2026-11-03 현행 유지). `join-request`는 초안이 복수형으로 바뀌어 `join-requests`로 맞췄다. 노션의 공고 행은 아직 복수형이라 노션 정리 필요 |
 | 10 | 파일 삭제 신규 | `DELETE /v1/files/{fileId}`가 `API 초안`에서 새로 확인됨(§10). DTO·구현 담당 확인 필요 |
-| 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
+| 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정 → **2026-11-03 join 구현에서 세션별 마감 없이 가기로 했다**(정원을 검사하지 않고 팀장이 승인 때 판단, `appliedCount`는 세션별 대기 수만 보여줌). 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
 | 12 | 내 팀 목록 신규 | ✅ 확정(2026-10-31) — 노션 `API 초안`에 `[추가 필요]`로 올라온 `GET /v1/users/me/teams`(§2 ‡)를 2팀 소유로 확정하고 `docs/conventions/domains.md`·`docs/conventions/dto-naming.md` 총계(73 → 74)에 반영했다. 노션 쪽은 제목의 `[추가 필요]`와 담당자·진행 상태 정리가 남아 있다 |
 | 13 | 공연 목록 `status` 필터 | ✅ 결정(2026-11-02, PR #84 리뷰) — 쿼리 이름을 `period`로 바꾸고 공연 상태로 묶는다(`UPCOMING`=`PLANNED`·`RECRUITING`, `PAST`=`DONE`·`CANCELED`, §8 ※). 응답 `status`는 실제 상태. 노션 정정 완료(2026-11-02). 원래 내용: `API 초안` 모임 공연 목록의 쿼리 `status`와 응답 `status` 예시가 `UPCOMING`·`PAST`인데 `performances.status`(`PLANNED|RECRUITING|DONE|CANCELED`)에 없는 값이다. 다가올·지난 공연을 나누는 기준(공연일 vs 상태)부터 정해야 해서 필터는 반영하지 않았었다 |
 | 14 | 공연 상태 값 | `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이다. 상태 변경 구현 때 결정 |
