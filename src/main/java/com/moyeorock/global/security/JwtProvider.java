@@ -43,7 +43,12 @@ public class JwtProvider {
                     .parseSignedClaims(token)
                     .getPayload();
 
-            return new JwtPayload(claims.get(USER_ID_CLAIM, Long.class));
+            Long userId = claims.get(USER_ID_CLAIM, Long.class);
+            if (userId == null) {
+                // userId 클레임이 없는 토큰(예: 카카오 가입용 signupToken)은 액세스 토큰이 아니다
+                throw new InvalidTokenException("유효하지 않은 토큰입니다.", null);
+            }
+            return new JwtPayload(userId);
         } catch (JwtException | IllegalArgumentException e) {
             throw new InvalidTokenException("유효하지 않은 토큰입니다.", e);
         }

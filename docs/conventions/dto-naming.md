@@ -1,6 +1,6 @@
 # moyeorock DTO 명명 규약
 
-대상: 전체 73개 엔드포인트(파일 삭제 신규분 포함, 2026-09-11) · 14 도메인
+대상: 전체 75개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28, 내 팀 목록 신규분 2026-10-31 포함) · 14 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
 **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
@@ -61,27 +61,28 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 클래스 | 용도 |
 |---|---|
-| `ApiResponse<T>` | 모든 응답 봉투 `{success, data, error}` |
-| `ErrorResponse` | `{code, message, fieldErrors}` |
-| `FieldErrorResponse` | `{field, reason}` |
+| `ApiResponse<T>` | 모든 응답 봉투 `{success, code, message, data}` — 에러도 같은 모양(`data: null`). §0 규칙 1의 예외로 `record`가 아니라 클래스다(컴포넌트 `success`의 접근자와 인자 없는 팩토리 `success()`가 충돌) |
 | `PageResponse<T>` | `{content, page, size, totalElements, totalPages, last}` |
 | `DeleteResponse` | `{id, deleted}` — hard delete 3곳 공용 |
 
 ---
 
-## 1. auth (3)
+## 1. auth (4)
 
 패키지 `domain/auth`
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 카카오 회원가입·로그인 | POST | `/v1/auth/kakao` | `UserOAuth2CodeRequest` | `AuthTokenResponse` |
+| 카카오 인증 (로그인 / 신규 판별) | POST | `/v1/auth/kakao?code=` | `UserOAuth2CodeRequest` (Query) | `KakaoAuthResponse` |
+| 카카오 가입 완료 (약관 동의) | POST | `/v1/auth/kakao/signup` | `KakaoSignupRequest` | `AuthTokenResponse` |
 | 이메일 회원가입 | POST | `/v1/auth/signup` | `UserSignupRequest` | `AuthTokenResponse` |
 | 이메일 로그인 | POST | `/v1/auth/login` | `UserLoginRequest` | `AuthTokenResponse` |
 
-요청 3개는 이미 정해둔 이름을 그대로 썼다.
+요청 3개(`UserOAuth2CodeRequest` `UserSignupRequest` `UserLoginRequest`)는 이미 정해둔 이름을 그대로 썼고, `KakaoSignupRequest`와 `KakaoAuthResponse`는 카카오 가입을 2단계로 나누면서(2026-09-28) 추가했다. `UserOAuth2CodeRequest`는 쿼리 파라미터 `code` 하나라 클래스를 만들지 않고 `@RequestParam`으로 받는다.
 
-`AuthTokenResponse(String accessToken, Long userId, String nickname, boolean onboardingCompleted)` 하나를 세 곳에서 공유한다. 회원가입 직후 바로 로그인 상태로 넘기는 전제이고, 가입만 하고 로그인 화면으로 되돌릴 거면 `UserSignupResponse`를 따로 둬야 한다.
+`KakaoAuthResponse(boolean isNewUser, AuthTokenResponse auth, String signupToken, String kakaoNickname)`는 카카오 인증 한 번에 "기존 회원 로그인"과 "신규 가입 필요" 두 경우를 담는다. 인가 코드가 1회용이라 신규 판정 뒤 다시 호출할 수 없어서 한 응답 타입으로 묶었다. 기존 회원이면 `auth`만, 신규면 `signupToken`·`kakaoNickname`만 채운다.
+
+`AuthTokenResponse(String accessToken, Long userId, String nickname, boolean onboardingCompleted)` 하나를 세 곳(카카오 가입 완료·이메일 가입·이메일 로그인)에서 공유하고, `KakaoAuthResponse.auth`에도 같은 객체를 담는다. 회원가입 직후 바로 로그인 상태로 넘기는 전제이고, 가입만 하고 로그인 화면으로 되돌릴 거면 `UserSignupResponse`를 따로 둬야 한다.
 
 `onboardingCompleted`를 여기 넣은 이유는 로그인 직후 온보딩 화면으로 보낼지 대시보드로 보낼지를 프론트가 추가 호출 없이 판단하게 하려는 것이다.
 
@@ -122,7 +123,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 3. team (9)
+## 3. team (10)
 
 패키지 `domain/team`
 
@@ -131,18 +132,19 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 팀 생성 | POST | `/v1/teams` | `TeamCreateRequest` | `TeamDetailResponse` |
 | 팀 목록 | GET | `/v1/teams` | — | `PageResponse<TeamSummaryResponse>` |
 | 팀 상세 | GET | `/v1/teams/{id}` | — | `TeamDetailResponse` |
-| 팀 정보 수정 | PUT | `/v1/teams/{id}` | `TeamUpdateRequest` | `TeamDetailResponse` |
+| 팀 정보 수정 | PUT | `/v1/teams/{id}` | `TeamUpdateRequest` | — (`data: null`) |
 | 팀 해체 | PATCH | `/v1/teams/{id}/status` | `TeamStatusUpdateRequest` | `TeamStatusResponse` |
 | 팀원 목록 | GET | `/v1/teams/{id}/members` | — | `TeamMembersResponse` |
 | 팀원 역할·세션 변경 | PATCH | `/v1/teams/{teamId}/members/{userId}` | `TeamMemberUpdateRequest` | `TeamMemberResponse` |
 | 팀원 상태 변경(탈퇴·강퇴) | PATCH | `/v1/teams/{teamId}/members/{userId}/status` | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` |
 | 팀원 추천 (AI) | GET | `/v1/teams/{id}/members/recommendations` | — | `TeamMemberRecommendationResponse` |
+| 내 팀 목록 | GET | `/v1/users/me/teams` | — | `PageResponse<TeamSummaryResponse>` |
 
 **보조 DTO**
 
 | 클래스 | 설명 |
 |---|---|
-| `TeamSummaryResponse` | 목록 항목. activity·join·invitation·recruit에서도 재사용 |
+| `TeamSummaryResponse` | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)`. 목록 항목. activity·join·invitation·recruit에서도 재사용 |
 | `TeamMemberResponse` | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` |
 | `TeamMembersResponse` | `(List<TeamMemberResponse> members)` |
 | `TeamMemberStatusUpdateRequest` | `(MemberStatus status)` — `LEFT`(본인 탈퇴) 또는 `REMOVED`(강퇴)만 허용 |
@@ -150,9 +152,30 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
-`TeamDetailResponse`는 참조가 가장 많다. `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(setlist) · `PerformanceSummaryResponse`를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
+`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`setlist`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(setlist) · `PerformanceSummaryResponse`를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
 
 `TeamMemberUpdateRequest(TeamRole role, Instrument instrument)` — 두 필드 모두 `null` 허용이고, 보낸 것만 반영한다. `role = LEADER`면 팀장 위임이다.
+
+**다른 도메인이 부르는 `TeamService` 메서드** (요청 DTO는 넘기지 않고 값을 하나씩 받는다 — `docs/conventions/conventions.md` §6)
+
+| 메서드 | 쓰는 쪽 | 내용 |
+|---|---|---|
+| `getSummaries(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
+| `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE` |
+| `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
+| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
+| `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
+| `findMemberships(Long userId)` → `List<TeamMembershipResponse>` | 1팀 user(내 활동) | 내가 속한 활동 중인 팀마다 `(TeamSummaryResponse team, TeamRole role, Instrument instrument)`. 팀·팀원 모두 `ACTIVE`만, 최근 합류 순, 페이징 없음. 역할·악기는 `team_members`에만 있어 1팀이 직접 읽을 수 없어서 만들었다 |
+
+**팀 조회·권한 확인용 `TeamMemberService`** (4팀 셋리스트가 부른다. 다른 Service를 부르지 않아서 `TeamService`와 서로 부르는 순환이 생기지 않는다)
+
+| 메서드 | 내용 | 실패 |
+|---|---|---|
+| `ensureLeader(Long teamId, Long userId)` | 활동 중인 팀장인지 확인 | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀장 아님 `403 NOT_TEAM_LEADER` |
+| `ensureActiveMember(Long teamId, Long userId)` | 활동 중인 팀원인지 확인(역할 무관) | 없는·해체된 팀 `404 TEAM_NOT_FOUND`, 팀원 아님 `403 NO_PERMISSION` |
+| `getPerformanceId(Long teamId)` → `Long` | 팀이 속한 공연 id, 독립 팀은 `null`. 해체된 팀도 돌려줌 | 없는 팀 `404 TEAM_NOT_FOUND` |
+| `getNames(Collection<Long> teamIds)` → `Map<Long, String>` | 팀 이름 일괄 조회. **해체된 팀도 포함**(끝난 공연 셋리스트용), 없는 id는 빠짐 | — |
 
 ---
 
@@ -402,14 +425,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 73 |
-| Request DTO | 34 |
-| Response DTO | 56 |
+| 엔드포인트 | 75 |
+| Request DTO | 35 |
+| Response DTO | 57 |
 | 전역 공통 | 5 |
 
-요청 DTO가 34개뿐인 이유는 73개 중 **42개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 35개뿐인 이유는 75개 중 **43개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분 반영 — `docs/specs/api-spec.md` §7 ‖ · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
 
 ### 재사용 상위 5개
 
@@ -425,7 +448,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ### 착수 순서상 먼저 만들어야 하는 것
 
-1. `global/common/dto` 5개 — 나머지 전부가 의존한다
+1. `global/common/dto` 3개 — 나머지 전부가 의존한다
 2. `global/common/enums` — DTO 필드 타입이 여기 있다
 3. `UserSummaryResponse` — 재사용 1위
 4. 이후 도메인별 병렬

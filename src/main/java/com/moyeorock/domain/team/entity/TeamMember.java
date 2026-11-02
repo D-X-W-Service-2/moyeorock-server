@@ -70,6 +70,20 @@ public class TeamMember {
         this.role = newRole;
     }
 
+    // 세션(악기) 변경. 팀원 역할·세션 변경 API가 보낸 값만 반영한다.
+    public void changeInstrument(Instrument instrument) {
+        this.instrument = instrument;
+    }
+
+    // 탈퇴(LEFT)·강퇴(REMOVED)했던 사람이 다시 들어올 때 새 행 대신 기존 행을 되살린다 — (team_id, user_id) 유니크 때문.
+    // 팀장은 위임 없이 나갈 수 없어서 기존 행의 역할은 MEMBER지만, 안전하게 MEMBER로 맞추고 합류 시각도 새로 잡는다.
+    public void rejoin(Instrument instrument) {
+        this.status = MemberStatus.ACTIVE;
+        this.role = TeamRole.MEMBER;
+        this.instrument = instrument;
+        this.joinedAt = LocalDateTime.now();
+    }
+
     // 탈퇴(LEFT)·강퇴(REMOVED) 상태 변경. 두 상태를 별도 메서드로 안 쪼갠 이유는 dto-naming.md의
     // TeamMemberStatusUpdateRequest(status)가 이미 LEFT/REMOVED 중 하나를 값으로 받아 넘기는
     // 구조라, Service 쪽 분기(본인 탈퇴 vs 리더의 강퇴) 없이 엔티티는 그 값을 그대로 반영만 하면 된다.

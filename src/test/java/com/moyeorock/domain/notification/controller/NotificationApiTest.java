@@ -150,10 +150,10 @@ class NotificationApiTest {
 
         read(ME, "{\"ids\":[" + tooMany + "]}")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         read(ME, "{\"ids\":[1,null]}")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
         String exactly100 = LongStream.rangeClosed(1, 100).mapToObj(String::valueOf).collect(Collectors.joining(","));
         read(ME, "{\"ids\":[" + exactly100 + "]}").andExpect(status().isOk());

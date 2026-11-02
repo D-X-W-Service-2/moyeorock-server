@@ -7,12 +7,12 @@
 ## 공용 참조 객체 — 확정 (2026-08-27, 1팀)
 
 원본 JSON 예시가 문자열로만 참조하던 객체들. `docs/conventions/dto-naming.md`의 정식 이름으로 매핑하고 필드를 확정했다.
-패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/conventions/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투 5종만 둔다.
+패키지는 `global/common/dto`가 아니라 **각 소유 도메인의 `dto/response/`다** — 응답 DTO는 도메인 간 import가 허용된다 (`docs/conventions/dto-naming.md` §0 패키지 규칙). `global/common/dto`에는 봉투·공통 응답 3종(`ApiResponse` `PageResponse` `DeleteResponse`)만 둔다.
 
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
 | `UserSummary` | `UserSummaryResponse` | user (1팀) | `(Long id, String nickname, String profileImage)` | **제안** — 재사용 1위라 최소로. 세션·지역이 필요한 곳(팀원·추천)은 감싸는 DTO가 이미 별도 필드로 가짐 |
-| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **제안** — 2팀 확인 필요 |
+| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. 해체된 팀은 요약 조회에서 빠지므로 지금은 항상 `ACTIVE`다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
 | `MemberItem` | `TeamMemberResponse` | team (2팀) | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` | 확정 (`dto-naming.md` §3) |
 | `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
@@ -23,7 +23,7 @@
 
 DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3개는 **팀 경계를 넘는 의존의 시작점**이라 착수 전에 정하지 않으면 서로를 블로킹한다.
 
-1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 5종·enums 다음 3순위로 못 박힌 이유.
+1. **`UserSummaryResponse` (1팀 소유)** — 재사용 1위. team·group·join·invitation·recruit가 전부 참조하므로(`docs/conventions/dto-naming.md` §12), 1팀이 확정을 미루면 **2·3·4팀 전원이 대기**하게 된다. dto-naming.md 착수 순서에서 공통 DTO·enums 다음 3순위로 못 박힌 이유.
 2. **`TeamSummaryResponse` (2팀 소유)** — 방향이 반대인 케이스. 1팀이 만들 `GET /v1/users/me/activities`(`UserActivityResponse.TeamActivity`)와 `GET /v1/users/{id}`(`UserProfileResponse.activities`)가 이걸 참조하므로(`docs/conventions/dto-naming.md` §0 예시 코드), 미확정이면 **1팀 user API 2개가 완성 불가**. 소유는 2팀이지만 1팀이 기다리는 쪽이라 착수 전 합의가 필요해 위 표에 제안을 올렸다.
 3. **`PageResponse<T>` (1팀 소유, global/common)** — 모든 팀의 목록 API가 import하는 클래스. 확정이 늦으면 각 팀이 임시 포장을 만들었다가 갈아엎게 된다. 필드는 이미 dto-naming.md §0에 있으므로 구현만 선행하면 된다.
 
@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `RehearsalUpdateRequest`
+`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>` · `RehearsalUpdateRequest`
 
 ---
 
@@ -183,6 +183,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 외부(독립) 팀은 `performance`가 null.
 
+> 구현은 `performance`·`setlist`를 응답에서 **뺐다**(2026-10-31). 둘 다 4팀 소유 DTO(`PerformanceSummaryResponse` `TeamSongResponse`)가 필요한데 아직 없다. 4팀 DTO가 생기면 필드를 추가한다. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀은 상세 대신 `404`다.
+
 ```json
 {
   "id": 5,
@@ -215,6 +217,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### TeamUpdateRequest
 
+전체 교체(PUT)이며 응답 바디는 없다(`data: null`).
+
 ```json
 {
   "name": "무명밴드",
@@ -246,10 +250,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "role": "LEADER", "instrument": "DRUM" }
 ```
 
-### TeamMemberRemoveResponse
+### TeamMemberStatusResponse
+
+구 `TeamMemberRemoveResponse`. 탈퇴는 `LEFT`, 강퇴는 `REMOVED`로 내려간다.
 
 ```json
 { "teamId": 5, "userId": 30, "status": "REMOVED" }
+```
+
+```json
+{ "teamId": 5, "userId": 31, "status": "LEFT" }
 ```
 
 ### TeamMemberRecommendationResponse
@@ -850,11 +860,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ```json
 {
+  "fileId": 101,
   "uploadUrl": "https://moyeorock.s3.ap-northeast-2.amazonaws.com/performance/uuid.png?X-Amz-...",
   "fileUrl": "https://cdn.moyeorock.com/performance/uuid.png",
   "expiresAt": "2026-08-11T16:10:00"
 }
 ```
+
+- `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
+- `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
+- 허용 확장자는 `jpg` · `jpeg` · `png` · `webp`뿐이고, `contentType`도 `image/jpeg` · `image/png` · `image/webp`만 받는다. 둘 중 하나라도 어긋나면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+- 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
 
 ### DashboardResponse
 
@@ -871,13 +887,63 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## §11. 로그인 (auth)
 
+2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
+
 ### UserOAuth2CodeRequest
 
-Body가 아니라 **Query 파라미터**다.
+Body가 아니라 **Query 파라미터**다. 프론트가 카카오 로그인 리다이렉트로 받은 인가 코드를 그대로 넘긴다.
 
 ```
-http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
+POST /v1/auth/kakao?code=abc123exampleAuthCode
 ```
+
+`code`는 필수. 누락·공백이면 400 `VALIDATION_FAILED`. 인가 코드는 1회용이다.
+
+### KakaoAuthResponse
+
+카카오 인증 응답. 이 API는 계정을 만들지 않는다. `kakao_id`가 이미 있으면 `auth`에 로그인 토큰을, 없으면 `signupToken`과 `kakaoNickname`을 채운다.
+
+기존 회원 (로그인 완료):
+
+```json
+{
+  "isNewUser": false,
+  "auth": {
+    "accessToken": "string",
+    "userId": 12,
+    "nickname": "string",
+    "onboardingCompleted": true
+  }
+}
+```
+
+신규 (가입 필요):
+
+```json
+{
+  "isNewUser": true,
+  "signupToken": "string",
+  "kakaoNickname": "string"
+}
+```
+
+| 필드 | Nullable | 설명 |
+|---|---|---|
+| `isNewUser` | X | true면 신규(가입 필요), false면 기존 회원(로그인 완료) |
+| `auth` | O | 기존 회원일 때만. `AuthTokenResponse`. 신규면 null |
+| `signupToken` | O | 신규일 때만. 서버가 서명한 가입용 토큰(10분 만료, `kakao_id`·카카오 닉네임 포함). `POST /v1/auth/kakao/signup`에 그대로 전달 |
+| `kakaoNickname` | O | 신규일 때만. 카카오 프로필 닉네임(약관 화면 표시용) |
+
+### KakaoSignupRequest
+
+```json
+{
+  "signupToken": "string",
+  "privacyAgreed": true
+}
+```
+
+> 이 요청에서 계정이 생성된다. `signupToken`은 카카오 인증 응답 값 그대로(10분 만료). `privacyAgreed`는 true만 허용하고 false·누락이면 400. `privacy_agreed_at`은 서버 시각으로 저장한다.
 
 ### UserSignupRequest
 
@@ -885,12 +951,15 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
 {
   "email": "string",
   "password": "string",
-  "name": "string"
+  "name": "string",
+  "privacyAgreed": true
 }
 ```
 
-> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 로그인도 프로필 name을 같은 방식으로 사용.
-> 미결: `nickname` UNIQUE라 동명 가입자 충돌 시 처리(임시 닉네임 suffix 등) 확정 필요.
+> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 가입도 프로필 닉네임을 같은 방식으로 사용.
+> **임시 닉네임 충돌 (2026-09-28 확정)**: `nickname`이 UNIQUE라 이미 쓰는 닉네임이면 서버가 `_`+영숫자 4자를 붙여 저장한다(예: `서준_a3f9`, 20자 이내). 중복 때문에 가입이 실패하지 않는다.
+> **비밀번호 규칙 (2026-09-28 확정)**: 8~64자, 영문·숫자·특수문자를 각각 1자 이상 포함, 공백 불가. 위반 시 400. 가입에서만 검사한다.
+> `privacyAgreed`는 true만 허용하고 false·누락이면 400. 서버가 동의 시각을 `privacy_agreed_at`에 저장한다.
 
 ### UserLoginRequest
 
@@ -900,3 +969,20 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
   "password": "string"
 }
 ```
+
+> 로그인에서는 비밀번호 규칙을 검사하지 않고(빈 값만 400) 일치 여부만 본다.
+
+### AuthTokenResponse
+
+카카오 가입 완료·이메일 가입·이메일 로그인이 공용으로 쓰고, `KakaoAuthResponse.auth`에도 담긴다. 리프레시 토큰은 없다.
+
+```json
+{
+  "accessToken": "string",
+  "userId": 12,
+  "nickname": "string",
+  "onboardingCompleted": false
+}
+```
+
+> 가입 응답의 `nickname`은 임시 닉네임이고 `onboardingCompleted`는 항상 false다. 로그인에서는 `onboardingCompleted`가 false면 온보딩 화면, true면 대시보드로 보낸다.
