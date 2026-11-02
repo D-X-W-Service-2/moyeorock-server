@@ -7,6 +7,7 @@ import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
+import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
 import com.moyeorock.domain.team.dto.response.TeamStatusResponse;
@@ -183,6 +184,26 @@ public class TeamService {
         }
         return buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
                 .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+    }
+
+    /**
+     * 내가 속한 활동 중인 팀마다 팀 요약과 그 팀에서의 내 역할·악기(1팀 내 활동). 최근 합류 순이고 페이징은 없다.
+     * 팀원 행, 팀, 장르, 인원 수 쿼리 결과가 서로 맞아야 해서 readOnly 트랜잭션으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public List<TeamMembershipResponse> findMemberships(Long userId) {
+        List<TeamMember> memberships = teamMemberRepository.findActiveMembershipsOf(userId);
+        if (memberships.isEmpty()) {
+            return List.of();
+        }
+        List<Long> teamIds = memberships.stream().map(TeamMember::getTeamId).toList();
+        Map<Long, TeamSummaryResponse> summaries = buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
+                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+        // 해체된 팀은 요약에 없으므로 그 팀의 팀원 행도 함께 빠진다
+        return memberships.stream()
+                .filter(m -> summaries.containsKey(m.getTeamId()))
+                .map(m -> TeamMembershipResponse.of(summaries.get(m.getTeamId()), m))
+                .toList();
     }
 
     /**

@@ -163,6 +163,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
 | `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
 | `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
+| `findMemberships(Long userId)` → `List<TeamMembershipResponse>` | 1팀 user(내 활동) | 내가 속한 활동 중인 팀마다 `(TeamSummaryResponse team, TeamRole role, Instrument instrument)`. 팀·팀원 모두 `ACTIVE`만, 최근 합류 순, 페이징 없음. 역할·악기는 `team_members`에만 있어 1팀이 직접 읽을 수 없어서 만들었다 |
 
 **팀 조회·권한 확인용 `TeamMemberService`** (4팀 셋리스트가 부른다. 다른 Service를 부르지 않아서 `TeamService`와 서로 부르는 순환이 생기지 않는다)
 

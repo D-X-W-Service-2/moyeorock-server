@@ -18,6 +18,7 @@ import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
+import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
 import com.moyeorock.domain.team.dto.response.TeamStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
@@ -637,6 +638,54 @@ class TeamServiceTest {
 
         assertThat(teamService.findMyTeamIds(7L, MEMBER_ID)).containsExactly(5L, 6L);
         assertThat(teamService.findMyTeamIds(7L, 99L)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 속한 팀마다 팀 요약과 그 팀에서의 내 역할·악기를 합류 순으로 돌려준다")
+    void findMemberships_returnsSummaryWithMyRoleAndInstrument() {
+        Team second = Team.create("두번째 팀", null, Region.GYEONGGI);
+        ReflectionTestUtils.setField(second, "id", 6L);
+        TeamMember inSecond = TeamMember.create(6L, MEMBER_ID, TeamRole.LEADER, Instrument.DRUM);
+        TeamMember inFirst = TeamMember.create(TEAM_ID, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inSecond, inFirst));
+        given(teamRepository.findActiveByIdIn(List.of(6L, TEAM_ID))).willReturn(List.of(team(), second));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID, 6L))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(count(TEAM_ID, 4), count(6L, 1)));
+
+        List<TeamMembershipResponse> result = teamService.findMemberships(MEMBER_ID);
+
+        assertThat(result).extracting(r -> r.team().id()).containsExactly(6L, TEAM_ID);
+        assertThat(result.get(0).role()).isEqualTo(TeamRole.LEADER);
+        assertThat(result.get(0).instrument()).isEqualTo(Instrument.DRUM);
+        assertThat(result.get(1).role()).isEqualTo(TeamRole.MEMBER);
+        assertThat(result.get(1).team().memberCount()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("내 활동: 해체된 팀의 팀원 행은 결과에서 빠진다")
+    void findMemberships_excludesMembershipsOfDisbandedTeams() {
+        TeamMember inActive = TeamMember.create(TEAM_ID, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        TeamMember inDisbanded = TeamMember.create(6L, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inActive, inDisbanded));
+        // 해체된 팀(6L)은 활성 팀 조회에 나오지 않는다
+        given(teamRepository.findActiveByIdIn(List.of(TEAM_ID, 6L))).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 2)));
+
+        List<TeamMembershipResponse> result = teamService.findMemberships(MEMBER_ID);
+
+        assertThat(result).extracting(r -> r.team().id()).containsExactly(TEAM_ID);
+    }
+
+    @Test
+    @DisplayName("내 활동: 속한 팀이 없으면 빈 목록이고 팀·장르 조회도 하지 않는다")
+    void findMemberships_withoutMemberships_returnsEmpty() {
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of());
+
+        assertThat(teamService.findMemberships(MEMBER_ID)).isEmpty();
+        verify(teamRepository, never()).findActiveByIdIn(any());
+        verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
     }
 
     @Test

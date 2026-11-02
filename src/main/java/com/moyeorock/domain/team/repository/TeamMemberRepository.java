@@ -24,6 +24,16 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
      */
     Optional<TeamMember> findByTeamIdAndUserId(Long teamId, Long userId);
 
+    /**
+     * 내가 속한 팀 전부(내 활동용). 팀원 상태가 ACTIVE인 행만 최근 합류 순으로 돌려준다.
+     * 팀이 ACTIVE인지는 이 쿼리가 아니라 호출하는 쪽이 팀 조회로 거른다.
+     */
+    default List<TeamMember> findActiveMembershipsOf(Long userId) {
+        return findAllByUserIdAndStatusOrderByJoinedAtDescIdDesc(userId, MemberStatus.ACTIVE);
+    }
+
+    List<TeamMember> findAllByUserIdAndStatusOrderByJoinedAtDescIdDesc(Long userId, MemberStatus status);
+
     /** 팀 목록의 memberCount. 팀마다 count를 날리지 않고 GROUP BY 한 번으로 모은다. */
     default List<TeamMemberCount> countActiveByTeamIds(Collection<Long> teamIds) {
         return countByTeamIds(teamIds, MemberStatus.ACTIVE);
