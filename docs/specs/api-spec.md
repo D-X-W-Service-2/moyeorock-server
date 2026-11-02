@@ -80,7 +80,7 @@
 | PATCH | `/v1/recruit-post/{id}/status` | 공고&nbsp;마감·삭제 | `RecruitPostStatusUpdateRequest` | `RecruitPostStatusResponse` * |
 
 > ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `page` · `size` (전부 선택). `authorId`는 Notion `API 초안`에 없어 뺐다(2026-09-25 대조). 정렬 파라미터는 없고 최신순 고정이다.
-> Actor(Notion `API 초안`): 작성·수정·마감은 `모임장 / 팀장`, 목록·상세는 공통. 팀장·모임장 검증은 2팀 `TeamService`·4팀 `GroupService`가 머지된 뒤 붙이고, 그 전까지 구현은 "수정·마감은 작성자 본인만, 작성은 로그인만"이다.
+> Actor(Notion `API 초안`): 작성·수정·마감은 `모임장 / 팀장`, 목록·상세는 공통. **현재 구현(2026-11-03)**: 작성·수정·마감은 대상 **팀의 현재 팀장 / 모임의 현재 모임장**만 할 수 있다(작성자가 아니라 현재 권한자 기준 — 작성자가 팀장에서 빠지면 더는 고칠 수 없다). 작성할 때 대상 팀·모임 존재도 함께 확인한다: 없거나 해체된 대상 `404 TEAM_NOT_FOUND`·`GROUP_NOT_FOUND`, 권한 없음 `403 NOT_TEAM_LEADER`·`NOT_GROUP_OWNER`. 모임이 해체되면 그 모임의 모집 중 공고는 자동 마감된다. `canEdit`은 보는 사람이 현재 팀장/모임장인지다.
 > 마감(`CLOSED`)된 공고는 수정(`PUT`)할 수 없다 — 작성자라도 `409 INVALID_STATE`다(권한 검사가 먼저라 작성자가 아니면 `403 NOT_POST_AUTHOR`). 명세에는 없는 서버 정책으로, 마감 뒤 모집 세션·인원이 바뀌어 이미 들어온 신청과 어긋나는 것을 막는다 — Notion 반영 필요.
 > `wantedSlots`에 같은 `instrument`가 두 번 오면 `400 VALIDATION_FAILED`다(예: BASS 1명 + BASS 2명). 명세에는 없는 서버 검증으로, 세션별 집계·마감 기준이 모호해지는 것을 막는다 — Notion 반영 필요.
 > 경로가 단수형 `recruit-post`다 — 상단 "경로 표기" 참고.
