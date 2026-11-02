@@ -10,6 +10,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
+import com.moyeorock.domain.group.enums.GroupType;
+import com.moyeorock.domain.group.service.GroupService;
+import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
+import com.moyeorock.domain.user.entity.User;
+import com.moyeorock.domain.user.repository.UserRepository;
+import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
+import java.time.LocalDateTime;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import com.moyeorock.global.security.JwtProvider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,19 +50,58 @@ import org.springframework.transaction.annotation.Transactional;
 class RecruitPostApiTest {
 
     private static final String BASE = "/v1/recruit-post";
-    private static final long AUTHOR_ID = 7L;
-    private static final long OTHER_ID = 8L;
 
-    private static final String CREATE_BODY = """
-            {"targetType":"TEAM","targetId":5,"title":"베이스 1명 구합니다","body":"주 1회 홍대에서 합주합니다.",
-             "wantedSlots":[{"instrument":"BASS","count":1},{"instrument":"KEY","count":1}],"region":"SEOUL"}
-            """;
+    private long authorId;   // 팀의 팀장이자 모임의 모임장 (공고 작성 권한자)
+    private long otherId;    // 팀·모임과 무관한 사용자
+    private long teamId;
+    private long groupId;
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private JwtProvider jwtProvider;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private TeamService teamService;
+
+    @Autowired
+    private GroupService groupService;
+
+    @BeforeEach
+    void setUp() {
+        authorId = saveUser("리더").getId();
+        otherId = saveUser("남").getId();
+        teamId = teamService.create(authorId,
+                new TeamCreateRequest("무명밴드", null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
+        groupId = groupService.create(authorId,
+                new GroupCreateRequest("홍대동아리", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+    }
+
+    private User saveUser(String nickname) {
+        return userRepository.saveAndFlush(User.signupWithEmail(
+                nickname + "@example.com", "hash", nickname, LocalDateTime.now()));
+    }
+
+    private String teamBody() {
+        return """
+                {"targetType":"TEAM","targetId":%d,"title":"베이스 1명 구합니다","body":"주 1회 홍대에서 합주합니다.",
+                 "wantedSlots":[{"instrument":"BASS","count":1},{"instrument":"KEY","count":1}],"region":"SEOUL"}
+                """.formatted(teamId);
+    }
+
+    private String groupBody() {
+        return """
+                {"targetType":"GROUP","targetId":%d,"title":"모임 드러머","body":"b",
+                 "wantedSlots":[{"instrument":"DRUM","count":1}],"region":"BUSAN"}
+                """.formatted(groupId);
+    }
 
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
@@ -72,11 +127,16 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("공고를 작성하면 201과 상세 응답(canEdit=true, OPEN, updatedAt 포함)을 돌려준다")
     void create_returns201_withDetail() throws Exception {
-        createPost(AUTHOR_ID, CREATE_BODY)
+        createPost(authorId, teamBody())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.targetType").value("TEAM"))
-                .andExpect(jsonPath("$.data.target.id").value(5))
+                .andExpect(jsonPath("$.data.target.id").value(teamId))
+                .andExpect(jsonPath("$.data.target.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.target.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.target.genres[0]").value("ROCK"))
+                .andExpect(jsonPath("$.data.author.id").value(authorId))
+                .andExpect(jsonPath("$.data.author.nickname").value("리더"))
                 .andExpect(jsonPath("$.data.status").value("OPEN"))
                 .andExpect(jsonPath("$.data.canEdit").value(true))
                 .andExpect(jsonPath("$.data.wantedSlots[0].instrument").value("BASS"))
@@ -87,7 +147,7 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("계산할 수 없는 appliedCount는 0이 아니라 null로 내려간다")
     void create_returnsNullAppliedCount_whenUnknown() throws Exception {
-        createPost(AUTHOR_ID, CREATE_BODY)
+        createPost(authorId, teamBody())
                 .andExpect(jsonPath("$.data.wantedSlots[0]", hasKey("appliedCount")))
                 .andExpect(jsonPath("$.data.wantedSlots[0].appliedCount").value(nullValue()));
     }
@@ -95,9 +155,9 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("모집 슬롯이 비어 있으면 400 VALIDATION_FAILED다")
     void create_withEmptyWantedSlots_returns400() throws Exception {
-        createPost(AUTHOR_ID, """
-                {"targetType":"TEAM","targetId":5,"title":"t","body":"b","wantedSlots":[],"region":"SEOUL"}
-                """)
+        createPost(authorId, """
+                {"targetType":"TEAM","targetId":%d,"title":"t","body":"b","wantedSlots":[],"region":"SEOUL"}
+                """.formatted(teamId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
@@ -105,15 +165,15 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("작성·수정 모두 같은 직군이 두 번 오면 400 VALIDATION_FAILED다")
     void duplicateInstrumentInWantedSlots_returns400() throws Exception {
-        createPost(AUTHOR_ID, """
-                {"targetType":"TEAM","targetId":5,"title":"t","body":"b",
+        createPost(authorId, """
+                {"targetType":"TEAM","targetId":%d,"title":"t","body":"b",
                  "wantedSlots":[{"instrument":"BASS","count":1},{"instrument":"BASS","count":2}],"region":"SEOUL"}
-                """)
+                """.formatted(teamId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
-        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
+        long id = createPostAndGetId(authorId, teamBody());
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"t","body":"b","region":"SEOUL",
@@ -126,28 +186,28 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("존재하지 않는 악기 값(폐지된 ETC 포함)은 400이다")
     void create_withUnknownInstrument_returns400() throws Exception {
-        createPost(AUTHOR_ID, """
-                {"targetType":"TEAM","targetId":5,"title":"t","body":"b",
+        createPost(authorId, """
+                {"targetType":"TEAM","targetId":%d,"title":"t","body":"b",
                  "wantedSlots":[{"instrument":"ETC","count":1}],"region":"SEOUL"}
-                """)
+                """.formatted(teamId))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
-    @DisplayName("상세 조회: 작성자는 canEdit=true, 다른 사용자는 false다")
+    @DisplayName("상세 조회: 현재 팀장은 canEdit=true, 다른 사용자는 false다")
     void getDetail_canEditDependsOnViewer() throws Exception {
-        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+        long id = createPostAndGetId(authorId, teamBody());
 
-        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID)))
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(authorId)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.canEdit").value(true));
-        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(OTHER_ID)))
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(otherId)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.canEdit").value(false));
     }
 
     @Test
     @DisplayName("없는 공고 조회는 404 RECRUIT_POST_NOT_FOUND다")
     void getDetail_notFound_returns404() throws Exception {
-        mockMvc.perform(get(BASE + "/999999").header("Authorization", bearer(AUTHOR_ID)))
+        mockMvc.perform(get(BASE + "/999999").header("Authorization", bearer(authorId)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("RECRUIT_POST_NOT_FOUND"));
     }
@@ -155,13 +215,10 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("목록: 쿼리 파라미터(targetType·instrument·status)로 걸러지고 페이지 응답 모양을 따른다")
     void search_filtersByQueryParams() throws Exception {
-        createPostAndGetId(AUTHOR_ID, CREATE_BODY);
-        createPostAndGetId(AUTHOR_ID, """
-                {"targetType":"GROUP","targetId":9,"title":"모임 드러머","body":"b",
-                 "wantedSlots":[{"instrument":"DRUM","count":1}],"region":"BUSAN"}
-                """);
+        createPostAndGetId(authorId, teamBody());
+        createPostAndGetId(authorId, groupBody());
 
-        mockMvc.perform(get(BASE).header("Authorization", bearer(OTHER_ID))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(otherId))
                         .param("targetType", "GROUP").param("instrument", "DRUM").param("status", "OPEN"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(1))
@@ -174,48 +231,48 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("목록: 잘못된 enum 쿼리 파라미터는 500이 아니라 400이다")
     void search_withInvalidEnumParam_returns400() throws Exception {
-        mockMvc.perform(get(BASE).header("Authorization", bearer(OTHER_ID)).param("instrument", "NOPE"))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(otherId)).param("instrument", "NOPE"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("목록: 임의 sort 파라미터가 와도 500이 아니라 최신순으로 정상 응답한다")
     void search_withArbitrarySortParam_stillOk() throws Exception {
-        createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+        createPostAndGetId(authorId, teamBody());
 
-        mockMvc.perform(get(BASE).header("Authorization", bearer(OTHER_ID)).param("sort", "noSuchProperty,asc"))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(otherId)).param("sort", "noSuchProperty,asc"))
                 .andExpect(status().isOk());
     }
 
     @Test
-    @DisplayName("수정: 작성자는 200과 갱신된 상세를, 다른 사용자는 403 NOT_POST_AUTHOR를 받는다")
-    void update_authorOk_otherForbidden() throws Exception {
-        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+    @DisplayName("수정: 팀장은 200과 갱신된 상세를, 팀장이 아닌 사용자는 403 NOT_TEAM_LEADER를 받는다")
+    void update_leaderOk_otherForbidden() throws Exception {
+        long id = createPostAndGetId(authorId, teamBody());
         String updateBody = """
                 {"title":"수정된 제목","body":"수정된 본문","wantedSlots":[{"instrument":"DRUM","count":2}],"region":"BUSAN"}
                 """;
 
-        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.title").value("수정된 제목"))
                 .andExpect(jsonPath("$.data.region").value("BUSAN"))
-                .andExpect(jsonPath("$.data.target.id").value(5));
-        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(OTHER_ID))
+                .andExpect(jsonPath("$.data.target.id").value(teamId));
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(otherId))
                         .contentType(MediaType.APPLICATION_JSON).content(updateBody))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("NOT_POST_AUTHOR"));
+                .andExpect(jsonPath("$.code").value("NOT_TEAM_LEADER"));
     }
 
     @Test
     @DisplayName("수정: 마감된 공고는 작성자도 409 INVALID_STATE를 받고 내용은 그대로다")
     void update_closedPost_returns409() throws Exception {
-        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
-        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(AUTHOR_ID))
+        long id = createPostAndGetId(authorId, teamBody());
+        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"CLOSED\"}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID))
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"수정 시도","body":"b","wantedSlots":[{"instrument":"DRUM","count":1}],"region":"BUSAN"}
@@ -223,24 +280,91 @@ class RecruitPostApiTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
 
-        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(AUTHOR_ID)))
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(authorId)))
                 .andExpect(jsonPath("$.data.title").value(org.hamcrest.Matchers.not("수정 시도")));
     }
 
     @Test
-    @DisplayName("마감: 작성자가 CLOSED로 바꾸면 200, 같은 요청을 또 하면 409 INVALID_STATE다")
+    @DisplayName("마감: 팀장이 CLOSED로 바꾸면 200, 같은 요청을 또 하면 409 INVALID_STATE다")
     void close_thenCloseAgain_returns409() throws Exception {
-        long id = createPostAndGetId(AUTHOR_ID, CREATE_BODY);
+        long id = createPostAndGetId(authorId, teamBody());
         String closeBody = "{\"status\":\"CLOSED\"}";
 
-        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(AUTHOR_ID))
+        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON).content(closeBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(id))
                 .andExpect(jsonPath("$.data.status").value("CLOSED"));
-        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(AUTHOR_ID))
+        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(authorId))
                         .contentType(MediaType.APPLICATION_JSON).content(closeBody))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
+    @Test
+    @DisplayName("작성: 팀장이 아닌 사용자는 403 NOT_TEAM_LEADER, 없는 팀은 404 TEAM_NOT_FOUND이고 공고는 만들어지지 않는다")
+    void create_notLeaderOrMissingTeam() throws Exception {
+        createPost(otherId, teamBody()).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_TEAM_LEADER"));
+        createPost(authorId, teamBody().replace("\"targetId\":" + teamId, "\"targetId\":999999"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+
+        mockMvc.perform(get(BASE).header("Authorization", bearer(authorId)))
+                .andExpect(jsonPath("$.data.totalElements").value(0));
+    }
+
+    @Test
+    @DisplayName("모임 공고: 모임장은 작성·수정할 수 있고(target은 이름만, canEdit=true), 다른 사용자는 403 NOT_GROUP_OWNER다")
+    void groupPost_ownerOnly() throws Exception {
+        createPost(otherId, groupBody()).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+        long id = createPostAndGetId(authorId, groupBody());
+
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(authorId)))
+                .andExpect(jsonPath("$.data.targetType").value("GROUP"))
+                .andExpect(jsonPath("$.data.target.name").value("홍대동아리"))
+                .andExpect(jsonPath("$.data.canEdit").value(true));
+        mockMvc.perform(put(BASE + "/" + id).header("Authorization", bearer(otherId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"t\",\"body\":\"b\",\"wantedSlots\":[{\"instrument\":\"DRUM\",\"count\":1}],\"region\":\"BUSAN\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+    }
+
+    @Test
+    @DisplayName("목록: 항목마다 팀 요약(이름·지역·장르)이 채워진다")
+    void list_fillsTeamTarget() throws Exception {
+        createPostAndGetId(authorId, teamBody());
+
+        mockMvc.perform(get(BASE).header("Authorization", bearer(otherId)))
+                .andExpect(jsonPath("$.data.content[0].target.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.content[0].target.genres[0]").value("ROCK"));
+    }
+
+    @Test
+    @DisplayName("팀이 해체되면 공고는 남고 target은 id만, 수정·마감은 404 TEAM_NOT_FOUND다")
+    void disbandedTeam_keepsPostWithIdOnlyTarget() throws Exception {
+        long id = createPostAndGetId(authorId, teamBody());
+        teamService.disband(authorId, teamId, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(authorId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.target.id").value(teamId))
+                .andExpect(jsonPath("$.data.target.name").doesNotExist())
+                .andExpect(jsonPath("$.data.canEdit").value(false));
+        mockMvc.perform(patch(BASE + "/" + id + "/status").header("Authorization", bearer(authorId))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"CLOSED\"}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("탈퇴한 작성자는 author가 null이다")
+    void withdrawnAuthor_isNull() throws Exception {
+        long id = createPostAndGetId(authorId, teamBody());
+        userService.withdraw(authorId);
+
+        mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(otherId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("author")))
+                .andExpect(jsonPath("$.data.author").value(nullValue()));
     }
 }

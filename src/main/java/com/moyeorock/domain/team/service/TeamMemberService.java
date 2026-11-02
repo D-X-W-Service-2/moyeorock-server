@@ -40,6 +40,18 @@ public class TeamMemberService {
     }
 
     /**
+     * 요청자가 이 팀의 현재 팀장인지. 없는 팀·해체된 팀·팀원이 아닌 경우는 {@code false}다.
+     * 막지 않고 답만 한다 — 공고 상세의 {@code canEdit}처럼 화면 표시에 쓴다. 막아야 하면 {@link #ensureLeader}다.
+     */
+    public boolean isLeader(Long teamId, Long userId) {
+        return teamRepository.findById(teamId)
+                .filter(team -> team.getStatus() == TeamStatus.ACTIVE)
+                .flatMap(team -> teamMemberRepository.findByTeamIdAndUserId(teamId, userId))
+                .filter(m -> m.getStatus() == MemberStatus.ACTIVE && m.getRole() == TeamRole.LEADER)
+                .isPresent();
+    }
+
+    /**
      * 활동 중인 팀원인지 확인한다(역할은 묻지 않는다). 없는 팀이나 해체된 팀은 TEAM_NOT_FOUND,
      * 팀원이 아니거나 이미 나간 사람은 NO_PERMISSION이다(새 에러 코드는 만들지 않았다).
      */

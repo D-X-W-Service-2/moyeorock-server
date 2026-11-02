@@ -88,10 +88,6 @@ public class RecruitPost extends BaseEntity {
         return post;
     }
 
-    public boolean isAuthor(Long userId) {
-        return this.authorId.equals(userId);
-    }
-
     // API 계약(dto-naming.md §5)은 여전히 targetType+targetId 하나로 노출한다 — DB만
     // exclusive-arc로 나뉘었을 뿐 프론트가 보는 모양은 안 바뀐다. 두 컬럼 중 채워진 쪽에서
     // 역산한다.
