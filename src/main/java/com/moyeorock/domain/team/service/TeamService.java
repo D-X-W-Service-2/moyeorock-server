@@ -62,7 +62,7 @@ public class TeamService {
     /** 팀 정보 수정(전체 교체). 팀장만 가능하고, 해체된 팀은 고칠 수 없다. */
     @Transactional
     public void update(Long userId, Long teamId, TeamUpdateRequest request) {
-        Team team = getTeam(teamId);
+        Team team = getTeamForUpdate(teamId);
         requireLeader(teamId, userId);
         requireActiveTeam(team);
 
@@ -78,7 +78,7 @@ public class TeamService {
         if (request.status() != TeamStatus.DISBANDED) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
-        Team team = getTeam(teamId);
+        Team team = getTeamForUpdate(teamId);
         requireLeader(teamId, userId);
         requireActiveTeam(team);
 
@@ -90,7 +90,7 @@ public class TeamService {
     @Transactional
     public TeamMemberResponse changeMember(Long userId, Long teamId, Long targetUserId,
             TeamMemberUpdateRequest request) {
-        Team team = getTeam(teamId);
+        Team team = getTeamForUpdate(teamId);
         TeamMember requester = requireLeader(teamId, userId);
         requireActiveTeam(team);
         TeamMember target = getActiveMember(teamId, targetUserId);
@@ -117,7 +117,7 @@ public class TeamService {
         if (status != MemberStatus.LEFT && status != MemberStatus.REMOVED) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
-        Team team = getTeam(teamId);
+        Team team = getTeamForUpdate(teamId);
         if (status == MemberStatus.LEFT) {
             if (!userId.equals(targetUserId)) {
                 throw new BusinessException(ErrorCode.NO_PERMISSION);
@@ -188,10 +188,14 @@ public class TeamService {
     /**
      * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
      * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
+     *
+     * <p>이 메서드는 첫 조회로 팀 행을 잠그지만, 호출한 쪽의 트랜잭션에 참여하므로 호출한 쪽이 이 메서드를 부르기 전에
+     * 다른 조회를 이미 했다면 그 조회 시점의 낡은 화면으로 팀원 정보를 읽을 수 있다(MySQL 기본 격리 수준 때문).
+     * 동시 가입·탈퇴가 겹칠 수 있는 승인 흐름에서는 호출하는 쪽도 이 메서드를 가능한 한 트랜잭션 앞쪽에서 불러 달라.
      */
     @Transactional
     public void addMember(Long teamId, Long userId, Instrument instrument) {
-        requireActiveTeam(getTeam(teamId));
+        requireActiveTeam(getTeamForUpdate(teamId));
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId).ifPresentOrElse(
                 member -> {
                     if (member.getStatus() == MemberStatus.ACTIVE) {
@@ -227,7 +231,7 @@ public class TeamService {
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
     @Transactional
     public void disbandAllByPerformance(Long performanceId) {
-        teamRepository.findActiveByPerformanceId(performanceId).forEach(Team::disband);
+        teamRepository.findActiveByPerformanceIdForUpdate(performanceId).forEach(Team::disband);
     }
 
     // 요청 role이 현재와 같으면 아무 것도 안 한다. LEADER로 바꾸면 위임이라 기존 팀장은 MEMBER가 된다.
@@ -242,6 +246,14 @@ public class TeamService {
         }
         // 팀장을 MEMBER로 내리면 팀장이 없는 팀이 된다 — 위임으로만 바꿀 수 있다
         throw new BusinessException(ErrorCode.INVALID_STATE);
+    }
+
+    // 팀의 상태나 팀원 구성을 바꾸는 요청은 팀 행을 먼저 잠근다. 같은 팀에 대한 요청이 한 줄로 서므로
+    // 동시 위임으로 팀장이 둘이 되거나, 수정이 해체를 옛 값으로 덮어쓰는 일이 생기지 않는다.
+    // 반드시 메서드의 첫 조회로 불러야 한다(앞서 다른 조회가 있으면 그 시점의 낡은 화면을 볼 수 있다).
+    private Team getTeamForUpdate(Long teamId) {
+        return teamRepository.findByIdForUpdate(teamId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_NOT_FOUND));
     }
 
     private Team getTeam(Long teamId) {

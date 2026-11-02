@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -91,8 +92,16 @@ class TeamServiceTest {
         return member;
     }
 
+    // 쓰기 메서드는 팀 행을 잠그고(findByIdForUpdate), 조회 메서드는 일반 조회(findById)를 쓴다.
+    // 어느 쪽을 쓰는지는 각 테스트가 정할 일이 아니므로 둘 다 같은 팀을 돌려주게 해 둔다.
     private void givenTeam(Team team) {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.of(team));
+        lenient().when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team));
+        lenient().when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.of(team));
+    }
+
+    private void givenNoTeam() {
+        lenient().when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.empty());
+        lenient().when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.empty());
     }
 
     private void givenMember(Long userId, TeamMember member) {
@@ -183,7 +192,7 @@ class TeamServiceTest {
     @Test
     @DisplayName("팀 정보 수정: 없는 팀은 TEAM_NOT_FOUND")
     void update_unknownTeam_isNotFound() {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
 
         assertErrorCode(() -> teamService.update(LEADER_ID, TEAM_ID,
                 new TeamUpdateRequest("유명밴드", null, null, null)), ErrorCode.TEAM_NOT_FOUND);
@@ -537,7 +546,7 @@ class TeamServiceTest {
     @Test
     @DisplayName("팀 상세·팀원 목록: 없는 팀은 TEAM_NOT_FOUND")
     void reads_unknownTeam_isNotFound() {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
 
         assertErrorCode(() -> teamService.getDetail(LEADER_ID, TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
         assertErrorCode(() -> teamService.getMembers(TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
@@ -682,7 +691,7 @@ class TeamServiceTest {
         givenTeam(disbandedTeam());
         assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.INVALID_STATE);
 
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
         assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.TEAM_NOT_FOUND);
     }
 
@@ -716,8 +725,8 @@ class TeamServiceTest {
     void disbandAllByPerformance_disbandsAllActiveTeams() {
         Team first = team();
         Team second = team();
-        given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of(first, second));
-        given(teamRepository.findActiveByPerformanceId(8L)).willReturn(List.of());
+        given(teamRepository.findActiveByPerformanceIdForUpdate(7L)).willReturn(List.of(first, second));
+        given(teamRepository.findActiveByPerformanceIdForUpdate(8L)).willReturn(List.of());
 
         teamService.disbandAllByPerformance(7L);
         teamService.disbandAllByPerformance(8L);
