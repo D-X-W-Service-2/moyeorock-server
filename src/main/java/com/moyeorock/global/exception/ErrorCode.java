@@ -22,6 +22,13 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
 
+    // team
+    TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 팀입니다."),
+    NOT_TEAM_LEADER(HttpStatus.FORBIDDEN, "팀장만 가능합니다."),
+    LEADER_MUST_DELEGATE_FIRST(HttpStatus.CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
+    // 모임의 GROUP_MEMBER_NOT_FOUND(404)와 같은 상황이라 프론트가 둘을 같게 다룰 수 있도록 맞췄다(PR #86 리뷰)
+    TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
+
     // auth (노션 API 초안 로그인 4건, 2026-09-28 확정)
     EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
