@@ -12,7 +12,7 @@
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
 | `UserSummary` | `UserSummaryResponse` | user (1팀) | `(Long id, String nickname, String profileImage)` | **제안** — 재사용 1위라 최소로. 세션·지역이 필요한 곳(팀원·추천)은 감싸는 DTO가 이미 별도 필드로 가짐 |
-| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **제안** — 2팀 확인 필요 |
+| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. 해체된 팀은 요약 조회에서 빠지므로 지금은 항상 `ACTIVE`다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
 | `MemberItem` | `TeamMemberResponse` | team (2팀) | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` | 확정 (`dto-naming.md` §3) |
 | `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamsummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
+`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
 
 ---
 
@@ -183,6 +183,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 외부(독립) 팀은 `performance`가 null.
 
+> 구현은 `performance`·`setlist`를 응답에서 **뺐다**(2026-10-31). 둘 다 4팀 소유 DTO(`PerformanceSummaryResponse` `TeamSongResponse`)가 필요한데 아직 없다. 4팀 DTO가 생기면 필드를 추가한다. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀은 상세 대신 `404`다.
+
 ```json
 {
   "id": 5,
@@ -215,6 +217,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### TeamUpdateRequest
 
+전체 교체(PUT)이며 응답 바디는 없다(`data: null`).
+
 ```json
 {
   "name": "무명밴드",
@@ -246,10 +250,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "role": "LEADER", "instrument": "DRUM" }
 ```
 
-### TeamMemberRemoveResponse
+### TeamMemberStatusResponse
+
+구 `TeamMemberRemoveResponse`. 탈퇴는 `LEFT`, 강퇴는 `REMOVED`로 내려간다.
 
 ```json
 { "teamId": 5, "userId": 30, "status": "REMOVED" }
+```
+
+```json
+{ "teamId": 5, "userId": 31, "status": "LEFT" }
 ```
 
 ### TeamMemberRecommendationResponse

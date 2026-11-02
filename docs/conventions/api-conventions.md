@@ -66,6 +66,7 @@ public enum ErrorCode {
     // team
     TEAM_NOT_FOUND(NOT_FOUND, "존재하지 않는 팀입니다."),
     NOT_TEAM_LEADER(FORBIDDEN, "팀장만 가능합니다."),
+    TEAM_MEMBER_NOT_FOUND(NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
     LEADER_MUST_DELEGATE_FIRST(CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
 
     // join
