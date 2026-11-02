@@ -97,14 +97,13 @@ class BookmarkServiceTest {
     }
 
     @Test
-    @DisplayName("자기 자신도 저장할 수 있다 (명세에 금지가 없다)")
-    void create_selfIsAllowed() {
-        given(userService.getProfileSummaries(List.of(ME))).willReturn(Map.of(ME, profile(ME)));
-        given(bookmarkRepository.saveAndFlush(any())).willReturn(userBookmark(22L, ME));
+    @DisplayName("자기 자신은 저장할 수 없다 — VALIDATION_FAILED이고 아무것도 호출하지 않는다")
+    void create_selfIsRejected() {
+        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.USER, ME)))
+                .getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 
-        BookmarkResponse response = bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.USER, ME));
-
-        assertThat(response.targetId()).isEqualTo(ME);
+        verifyNoInteractions(userService);
+        verify(bookmarkRepository, never()).saveAndFlush(any());
     }
 
     @Test

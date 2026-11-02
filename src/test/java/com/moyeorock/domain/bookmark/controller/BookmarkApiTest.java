@@ -1,5 +1,7 @@
 package com.moyeorock.domain.bookmark.controller;
 
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,6 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
 class BookmarkApiTest {
 
     private static final String BASE = "/v1/bookmarks";
+    // 저장 대상으로 만드는 사용자의 자동 증가 id와 겹쳐 "자기 자신 저장"이 되지 않도록 큰 값을 쓴다
+    private static final long OWNER = 7_000_001L;
+    private static final long OTHER_OWNER = 8_000_001L;
 
     @Autowired
     private MockMvc mockMvc;
@@ -84,7 +89,7 @@ class BookmarkApiTest {
     void create_returns201WithTarget() throws Exception {
         User target = saveUser("민서");
 
-        create(7L, "USER", target.getId())
+        create(OWNER, "USER", target.getId())
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.id").exists())
                 .andExpect(jsonPath("$.data.targetType").value("USER"))
@@ -101,19 +106,20 @@ class BookmarkApiTest {
     @DisplayName("같은 대상을 다시 저장하면 409 BOOKMARK_DUPLICATED다")
     void create_duplicate_returns409() throws Exception {
         User target = saveUser("민서");
-        create(7L, "USER", target.getId()).andExpect(status().isCreated());
+        create(OWNER, "USER", target.getId()).andExpect(status().isCreated());
 
-        create(7L, "USER", target.getId())
+        create(OWNER, "USER", target.getId())
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("BOOKMARK_DUPLICATED"));
+                .andExpect(jsonPath("$.code").value("BOOKMARK_DUPLICATED"));
     }
 
     @Test
-    @DisplayName("자기 자신도 저장할 수 있다")
-    void create_self_isAllowed() throws Exception {
+    @DisplayName("자기 자신은 저장할 수 없다 — 400 VALIDATION_FAILED")
+    void create_self_returns400() throws Exception {
         User me = saveUser("나");
 
-        create(me.getId(), "USER", me.getId()).andExpect(status().isCreated());
+        create(me.getId(), "USER", me.getId()).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -122,20 +128,20 @@ class BookmarkApiTest {
         User withdrawn = saveUser("탈퇴예정");
         userService.withdraw(withdrawn.getId());
 
-        create(7L, "USER", 999_999L).andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
-        create(7L, "USER", withdrawn.getId()).andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+        create(OWNER, "USER", 999_999L).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        create(OWNER, "USER", withdrawn.getId()).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
     @Test
     @DisplayName("임시: TEAM·SONG 저장은 400이고, targetType·targetId 누락·잘못된 값도 400이다")
     void create_unsupportedOrInvalid_returns400() throws Exception {
-        create(7L, "TEAM", 5L).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
-        create(7L, "SONG", 5L).andExpect(status().isBadRequest());
-        create(7L, "GROUP", 5L).andExpect(status().isBadRequest());
-        mockMvc.perform(post(BASE).header("Authorization", bearer(7L))
+        create(OWNER, "TEAM", 5L).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        create(OWNER, "SONG", 5L).andExpect(status().isBadRequest());
+        create(OWNER, "GROUP", 5L).andExpect(status().isBadRequest());
+        mockMvc.perform(post(BASE).header("Authorization", bearer(OWNER))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"targetType\":\"USER\"}"))
                 .andExpect(status().isBadRequest());
     }
@@ -145,11 +151,11 @@ class BookmarkApiTest {
     void list_ownOnly_latestFirst() throws Exception {
         User a = saveUser("가나");
         User b = saveUser("다라");
-        createAndGetId(7L, a.getId());
-        createAndGetId(7L, b.getId());
-        createAndGetId(8L, a.getId());
+        createAndGetId(OWNER, a.getId());
+        createAndGetId(OWNER, b.getId());
+        createAndGetId(OTHER_OWNER, a.getId());
 
-        mockMvc.perform(get(BASE).header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(2))
                 .andExpect(jsonPath("$.data.content[0].target.name").value("다라"))
@@ -164,43 +170,44 @@ class BookmarkApiTest {
     @DisplayName("목록: targetType 필터가 적용되고, 잘못된 값은 400, 임의 sort는 500이 아니라 정상 응답이다")
     void list_filterAndParams() throws Exception {
         User a = saveUser("가나");
-        createAndGetId(7L, a.getId());
+        createAndGetId(OWNER, a.getId());
 
-        mockMvc.perform(get(BASE + "?targetType=USER").header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE + "?targetType=USER").header("Authorization", bearer(OWNER)))
                 .andExpect(jsonPath("$.data.totalElements").value(1));
-        mockMvc.perform(get(BASE + "?targetType=TEAM").header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE + "?targetType=TEAM").header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(0));
-        mockMvc.perform(get(BASE + "?targetType=GROUP").header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE + "?targetType=GROUP").header("Authorization", bearer(OWNER)))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(get(BASE + "?sort=bogus,asc").header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE + "?sort=bogus,asc").header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalElements").value(1));
     }
 
     @Test
-    @DisplayName("목록: 대상이 탈퇴하면 항목은 남고 target 키만 빠진다 (삭제된 항목으로 표시)")
-    void list_withdrawnTarget_omitsTargetKey() throws Exception {
+    @DisplayName("목록: 대상이 탈퇴하면 항목은 남고 target이 null이다 (삭제된 항목으로 표시)")
+    void list_withdrawnTarget_hasNullTarget() throws Exception {
         User target = saveUser("나갈사람");
-        createAndGetId(7L, target.getId());
+        createAndGetId(OWNER, target.getId());
         userService.withdraw(target.getId());
 
-        mockMvc.perform(get(BASE).header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].targetId").value(target.getId()))
-                .andExpect(jsonPath("$.data.content[0].target").doesNotExist());
+                .andExpect(jsonPath("$.data.content[0]", hasKey("target")))
+                .andExpect(jsonPath("$.data.content[0].target").value(nullValue()));
     }
 
     @Test
     @DisplayName("삭제: 본인 저장은 200과 {id, deleted:true}를 돌려주고 목록에서 사라진다")
     void delete_own() throws Exception {
         User target = saveUser("민서");
-        long id = createAndGetId(7L, target.getId());
+        long id = createAndGetId(OWNER, target.getId());
 
-        mockMvc.perform(delete(BASE + "/" + id).header("Authorization", bearer(7L)))
+        mockMvc.perform(delete(BASE + "/" + id).header("Authorization", bearer(OWNER)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(id))
                 .andExpect(jsonPath("$.data.deleted").value(true));
-        mockMvc.perform(get(BASE).header("Authorization", bearer(7L)))
+        mockMvc.perform(get(BASE).header("Authorization", bearer(OWNER)))
                 .andExpect(jsonPath("$.data.totalElements").value(0));
     }
 
@@ -208,13 +215,13 @@ class BookmarkApiTest {
     @DisplayName("삭제: 남의 저장·없는 저장은 똑같이 404 BOOKMARK_NOT_FOUND다")
     void delete_othersOrMissing_returns404() throws Exception {
         User target = saveUser("민서");
-        long id = createAndGetId(7L, target.getId());
+        long id = createAndGetId(OWNER, target.getId());
 
-        mockMvc.perform(delete(BASE + "/" + id).header("Authorization", bearer(8L)))
+        mockMvc.perform(delete(BASE + "/" + id).header("Authorization", bearer(OTHER_OWNER)))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("BOOKMARK_NOT_FOUND"));
-        mockMvc.perform(delete(BASE + "/999999").header("Authorization", bearer(7L)))
+                .andExpect(jsonPath("$.code").value("BOOKMARK_NOT_FOUND"));
+        mockMvc.perform(delete(BASE + "/999999").header("Authorization", bearer(OWNER)))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("BOOKMARK_NOT_FOUND"));
+                .andExpect(jsonPath("$.code").value("BOOKMARK_NOT_FOUND"));
     }
 }

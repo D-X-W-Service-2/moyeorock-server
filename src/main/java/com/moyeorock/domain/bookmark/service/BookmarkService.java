@@ -54,6 +54,10 @@ public class BookmarkService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
         Long targetUserId = request.targetId();
+        // 자기 자신은 저장할 수 없다 — 허용하면 "저장한 유저 N명" 같은 집계에 본인이 섞인다(PR #78 리뷰)
+        if (targetUserId.equals(userId)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
         UserProfileSummaryResponse target = userService.getProfileSummaries(List.of(targetUserId)).get(targetUserId);
         if (target == null) {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);

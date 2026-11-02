@@ -10,8 +10,8 @@ import java.util.List;
 
 /**
  * 저장 항목. {@code target}은 저장한 대상의 요약이고, 대상이 삭제·해체·탈퇴돼 조회되지 않으면 null이다
- * (목록에서 빼지 않는다 — 사용자가 직접 지울 수 있어야 한다). 프로젝트 전역 설정(non_null)상 null이면
- * JSON에서 {@code target} 키 자체가 빠진다.
+ * (목록에서 빼지 않는다 — 사용자가 직접 지울 수 있어야 한다). JSON에서는 {@code "target": null}로 내려가고,
+ * 프론트는 이를 "삭제된 항목"으로 표시한다.
  */
 public record BookmarkResponse(
         Long id,
