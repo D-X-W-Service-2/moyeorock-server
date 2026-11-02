@@ -108,6 +108,19 @@ class UserRepositoryTest {
     }
 
     @Test
+    @DisplayName("findByIdAndStatusNot은 탈퇴 사용자만 비어 있고 정지 사용자는 돌려준다")
+    void find_by_id_and_status_not_excludes_only_withdrawn() {
+        User active = saveUser("서준", null);
+        User suspended = saveUser("현빈", UserStatus.SUSPENDED);
+        User withdrawn = saveUser("준호", UserStatus.WITHDRAWN);
+
+        assertThat(userRepository.findByIdAndStatusNot(active.getId(), UserStatus.WITHDRAWN)).isPresent();
+        assertThat(userRepository.findByIdAndStatusNot(suspended.getId(), UserStatus.WITHDRAWN)).isPresent();
+        assertThat(userRepository.findByIdAndStatusNot(withdrawn.getId(), UserStatus.WITHDRAWN)).isEmpty();
+        assertThat(userRepository.findByIdAndStatusNot(999_999L, UserStatus.WITHDRAWN)).isEmpty();
+    }
+
+    @Test
     @DisplayName("existsByNickname은 탈퇴 사용자의 닉네임도 점유로 본다")
     void exists_by_nickname_includes_withdrawn() {
         saveUser("서준", UserStatus.WITHDRAWN);

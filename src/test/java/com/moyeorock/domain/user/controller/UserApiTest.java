@@ -1,6 +1,7 @@
 package com.moyeorock.domain.user.controller;
 
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -27,7 +28,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * user Phase 1 7개를 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
+ * user Phase 1 7개 + Phase 2 타인 프로필을 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
  * 사용자는 Repository로 바로 만들고 토큰은 {@code JwtProvider}로 발급한다(RecruitPostApiTest 선례).
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
@@ -77,6 +78,7 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/me")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/search").param("nickname", "서")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/nickname/check").param("nickname", "서준")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(BASE + "/1")).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -262,5 +264,87 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/nickname/check").header("Authorization", bearer(me)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회는 200이며 본인 전용 필드(email·isRecommendable)가 없고, 세션에 id가 없으며, activities는 2단계 전이라 null이다")
+    void getProfile_returnsPublicFieldsOnly() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long target = saveUser("minseo@example.com", "임시민서");
+        onboard(target, ONBOARDING_BODY).andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(target))
+                .andExpect(jsonPath("$.data.nickname").value("서준"))
+                .andExpect(jsonPath("$.data.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.genres[0]").value("ROCK"))
+                .andExpect(jsonPath("$.data.instruments", hasSize(2)))
+                .andExpect(jsonPath("$.data.instruments[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.instruments[0].level").value("NOVICE"))
+                .andExpect(jsonPath("$.data.instruments[0]", not(hasKey("id"))))
+                .andExpect(jsonPath("$.data.isActivityPublic").value(true))
+                .andExpect(jsonPath("$.data", hasKey("activities")))
+                .andExpect(jsonPath("$.data.activities").value(nullValue()))
+                .andExpect(jsonPath("$.data.createdAt").exists())
+                .andExpect(jsonPath("$.data", not(hasKey("email"))))
+                .andExpect(jsonPath("$.data", not(hasKey("isRecommendable"))))
+                .andExpect(jsonPath("$.data", not(hasKey("loginType"))))
+                .andExpect(jsonPath("$.data", not(hasKey("onboardingCompleted"))));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 활동 비공개로 바꾼 사용자는 isActivityPublic=false, activities=null로 내려간다")
+    void getProfile_privateActivity() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long target = saveUser("minseo@example.com", "민서");
+        putJson("/me", target, "{\"nickname\":\"민서\",\"isRecommendable\":true,\"isActivityPublic\":false}")
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isActivityPublic").value(false))
+                .andExpect(jsonPath("$.data.activities").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 본인 id로 불러도 특별 처리 없이 타인 프로필 형태(email 없음)로 200이다")
+    void getProfile_ownId_sameShape() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/" + me).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(me))
+                .andExpect(jsonPath("$.data.nickname").value("조회자"))
+                .andExpect(jsonPath("$.data", not(hasKey("email"))));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 탈퇴한 사용자와 없는 id는 404 USER_NOT_FOUND다")
+    void getProfile_withdrawnOrUnknown_returns404() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long withdrawn = saveUser("bye@example.com", "탈퇴예정");
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(withdrawn))).andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE + "/" + withdrawn).header("Authorization", bearer(me)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        mockMvc.perform(get(BASE + "/999999").header("Authorization", bearer(me)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: id가 숫자가 아니면 400이고, /me는 /{id}에 먹히지 않고 내 프로필로 간다")
+    void getProfile_nonNumericId_returns400_andMeStillRoutes() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/abc").header("Authorization", bearer(me)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get(BASE + "/me").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("me@example.com"));
     }
 }
