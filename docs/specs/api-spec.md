@@ -244,7 +244,7 @@
 | GET | `/v1/bookmarks?targetType=&page=&size=` | 저장&nbsp;목록 | | `PageResponse<BookmarkResponse>` |
 | DELETE | `/v1/bookmarks/{id}` | 저장&nbsp;삭제 | | `DeleteResponse` |
 
-> **임시 구현 범위 (2026-10-26)**: 저장 대상 `TEAM`·`SONG`은 2팀 `TeamService`·4팀 `SongService`가 머지되기 전이라 **`USER`만 저장할 수 있다.** `TEAM`·`SONG` 저장 요청은 `400 VALIDATION_FAILED`다. 두 서비스가 생기면 대상 확인과 요약 조회를 잇는다(후속 이슈).
+> **임시 구현 범위 (2026-11-03 갱신)**: 저장 대상 `USER`·`TEAM`을 저장할 수 있다. `SONG`은 4팀 `SongService`가 머지되기 전이라 **`400 VALIDATION_FAILED`**다. 서비스가 생기면 대상 확인과 요약 조회를 잇는다(후속 이슈). 팀은 없거나 해체된 팀이면 `404 TEAM_NOT_FOUND`이고, 자기 팀도 저장할 수 있다(사용자와 달리 집계에 본인이 섞이는 문제가 없다). 팀 `target`은 이름·지역·장르를 채우고 `imageUrl`은 `null`이다.
 > **중복 저장은 `409 BOOKMARK_DUPLICATED`다.** 더블 탭·재전송·다른 기기에서 먼저 저장한 경우처럼 정상 흐름에서도 생기므로 프론트는 409를 "이미 저장됨"(성공)으로 취급한다. 명세에는 없는 서버 정책이다.
 > 없는 사용자·탈퇴한 사용자를 저장하면 `404 USER_NOT_FOUND`다. **자기 자신은 저장할 수 없다** — `400 VALIDATION_FAILED`(명세에 없는 서버 정책. 허용하면 "저장한 유저 N명" 집계에 본인이 섞인다). 프론트는 본인 항목의 저장 버튼을 숨기길 권장한다.
 > 삭제는 실제로 행이 사라지는 hard delete이고, 남의 저장·없는 저장은 똑같이 `404 BOOKMARK_NOT_FOUND`다(존재 여부를 드러내지 않음).

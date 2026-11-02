@@ -9,10 +9,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
@@ -52,6 +57,14 @@ class BookmarkApiTest {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private TeamService teamService;
+
+    private long createTeam(long leaderId, String name) {
+        return teamService.create(leaderId,
+                new TeamCreateRequest(name, null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
+    }
 
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
@@ -135,11 +148,63 @@ class BookmarkApiTest {
     }
 
     @Test
-    @DisplayName("임시: TEAM·SONG 저장은 400이고, targetType·targetId 누락·잘못된 값도 400이다")
+    @DisplayName("저장 추가: TEAM 대상은 201과 팀 요약(이름·지역·장르)을 돌려주고 imageUrl은 null이다")
+    void create_teamTarget_returns201() throws Exception {
+        long teamId = createTeam(saveUser("팀장").getId(), "무명밴드");
+
+        create(OWNER, "TEAM", teamId)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.targetType").value("TEAM"))
+                .andExpect(jsonPath("$.data.targetId").value(teamId))
+                .andExpect(jsonPath("$.data.target.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.target.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.target.genres[0]").value("ROCK"))
+                .andExpect(jsonPath("$.data.target.imageUrl").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("TEAM 저장: 같은 팀을 다시 저장하면 409, 없는 팀·해체된 팀은 404 TEAM_NOT_FOUND다")
+    void create_teamTarget_duplicateAndMissing() throws Exception {
+        long leaderId = saveUser("팀장").getId();
+        long teamId = createTeam(leaderId, "무명밴드");
+        create(OWNER, "TEAM", teamId).andExpect(status().isCreated());
+        create(OWNER, "TEAM", teamId).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOOKMARK_DUPLICATED"));
+
+        create(OWNER, "TEAM", 999_999L).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+        long disbandedId = createTeam(leaderId, "해체밴드");
+        teamService.disband(leaderId, disbandedId, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+        create(OWNER, "TEAM", disbandedId).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("목록: 저장한 팀이 해체되면 항목은 남고 target이 null이며, targetType=TEAM 필터가 팀만 거른다")
+    void list_teamTarget_andDisbanded() throws Exception {
+        long leaderId = saveUser("팀장").getId();
+        long aliveId = createTeam(leaderId, "살아있는밴드");
+        long disbandedId = createTeam(leaderId, "해체될밴드");
+        create(OWNER, "TEAM", aliveId).andExpect(status().isCreated());
+        create(OWNER, "TEAM", disbandedId).andExpect(status().isCreated());
+        createAndGetId(OWNER, saveUser("민서").getId());
+        teamService.disband(leaderId, disbandedId, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        mockMvc.perform(get(BASE + "?targetType=TEAM").header("Authorization", bearer(OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content[0].targetId").value(disbandedId))
+                .andExpect(jsonPath("$.data.content[0].target").value(nullValue()))
+                .andExpect(jsonPath("$.data.content[1].target.name").value("살아있는밴드"));
+        mockMvc.perform(get(BASE).header("Authorization", bearer(OWNER)))
+                .andExpect(jsonPath("$.data.totalElements").value(3))
+                .andExpect(jsonPath("$.data.content[2].target.name").value("살아있는밴드"));
+    }
+
+    @Test
+    @DisplayName("임시: SONG 저장은 400이고, targetType·targetId 누락·잘못된 값도 400이다")
     void create_unsupportedOrInvalid_returns400() throws Exception {
-        create(OWNER, "TEAM", 5L).andExpect(status().isBadRequest())
+        create(OWNER, "SONG", 5L).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        create(OWNER, "SONG", 5L).andExpect(status().isBadRequest());
         create(OWNER, "GROUP", 5L).andExpect(status().isBadRequest());
         mockMvc.perform(post(BASE).header("Authorization", bearer(OWNER))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"targetType\":\"USER\"}"))
