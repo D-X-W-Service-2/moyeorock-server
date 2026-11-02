@@ -13,15 +13,10 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.repository.GroupMemberRepository;
-import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
-import com.moyeorock.global.common.enums.Genre;
-import com.moyeorock.global.common.enums.Instrument;
-import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 보안 필터 체인·요청 검증·JSON 직렬화·에러 응답까지 실제 HTTP 흐름으로 확인한다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다. 모임원 가입 API(3팀)가 아직 없어
- * 모임원은 Repository로 직접 넣는다. 공연 내 팀 생성 API가 생기기 전이라 팀은 {@code TeamService}로 만든다.
+ * 모임원은 Repository로 직접 넣는다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -52,6 +47,11 @@ class PerformanceApiTest {
              "performedAt":"2026-11-22T18:00:00","venue":"홍대 롤링홀","posterImage":"https://cdn/poster.jpg"}
             """;
 
+    private static final String TEAM_BODY = """
+            {"name":"무명밴드","description":"발라드 위주로 갑니다.","region":"SEOUL",
+             "genres":["BALLAD","ROCK"],"instrument":"BASS"}
+            """;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -63,9 +63,6 @@ class PerformanceApiTest {
 
     @Autowired
     private GroupMemberRepository groupMemberRepository;
-
-    @Autowired
-    private TeamService teamService;
 
     private long ownerId;
     private long memberId;
@@ -163,8 +160,7 @@ class PerformanceApiTest {
     @DisplayName("공연 상세는 참여 팀과 요청자가 속한 팀 id를 담는다 — 팀에 없는 모임장은 myTeamIds가 비어 있다")
     void getDetail_includesTeamsAndMyTeamIds() throws Exception {
         long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
-        long teamId = teamService.createForPerformance(memberId, performanceId, "무명밴드", null, Region.SEOUL,
-                List.of(Genre.ROCK), Instrument.BASS).id();
+        long teamId = createTeamAndGetId(memberId, performanceId);
 
         getDetail(memberId, performanceId)
                 .andExpect(status().isOk())
@@ -237,8 +233,7 @@ class PerformanceApiTest {
     @DisplayName("모임장이 공연을 종료하면 200과 바뀐 상태를 돌려주고, 소속 팀이 해체돼 상세의 teams가 빈다")
     void changeStatus_toDone_disbandsTeams() throws Exception {
         long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
-        teamService.createForPerformance(memberId, performanceId, "무명밴드", null, Region.SEOUL,
-                List.of(Genre.ROCK), Instrument.BASS);
+        createTeamAndGetId(memberId, performanceId);
 
         changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}")
                 .andExpect(status().isOk())
@@ -284,6 +279,61 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.code").value("INVALID_STATE"));
     }
 
+    @Test
+    @DisplayName("모임원이 공연 안에 팀을 만들면 201과 팀 상세(만든 사람이 팀장)를 돌려주고, 공연 상세의 myTeamIds에 들어간다")
+    void createTeam_byMember_returns201() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        String json = createTeam(memberId, performanceId, TEAM_BODY)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.genres[0]").value("BALLAD"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.leader.id").value(memberId))
+                .andExpect(jsonPath("$.data.memberCount").value(1))
+                .andExpect(jsonPath("$.data.members[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.myRole").value("LEADER"))
+                .andReturn().getResponse().getContentAsString();
+        long teamId = ((Number) JsonPath.read(json, "$.data.id")).longValue();
+
+        getDetail(memberId, performanceId).andExpect(jsonPath("$.data.myTeamIds[0]").value(teamId));
+    }
+
+    @Test
+    @DisplayName("팀 이름이나 세션이 빠지면 400 VALIDATION_FAILED다")
+    void createTeam_withMissingRequiredFields_returns400() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        createTeam(memberId, performanceId, "{\"instrument\":\"BASS\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        createTeam(memberId, performanceId, "{\"name\":\"무명밴드\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("모임원이 아니면 공연 안에 팀을 만들 수 없다 — 403 NOT_GROUP_MEMBER")
+    void createTeam_byNonMember_returns403() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        createTeam(NON_MEMBER_ID, performanceId, TEAM_BODY)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_MEMBER"));
+    }
+
+    @Test
+    @DisplayName("끝난 공연에는 팀을 만들 수 없다 — 409 INVALID_STATE")
+    void createTeam_inFinishedPerformance_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}").andExpect(status().isOk());
+
+        createTeam(memberId, performanceId, TEAM_BODY)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
     }
@@ -317,6 +367,18 @@ class PerformanceApiTest {
 
     private ResultActions getDetail(long userId, long performanceId) throws Exception {
         return mockMvc.perform(get("/v1/performances/" + performanceId).header("Authorization", bearer(userId)));
+    }
+
+    private ResultActions createTeam(long userId, long performanceId, String body) throws Exception {
+        return mockMvc.perform(post("/v1/performances/" + performanceId + "/teams")
+                .header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private long createTeamAndGetId(long userId, long performanceId) throws Exception {
+        String json = createTeam(userId, performanceId, TEAM_BODY).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(json, "$.data.id")).longValue();
     }
 
     private ResultActions changeStatus(long userId, long performanceId, String body) throws Exception {

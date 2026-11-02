@@ -3,12 +3,14 @@ package com.moyeorock.domain.performance.service;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceStatusUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.PerformanceTeamCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
@@ -23,7 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 공연 생성·목록·상세·수정·상태 변경. 모임 권한과 모임 정보는 {@code GroupService}가 아니라 {@code GroupMemberService}로만
+ * 공연 생성·목록·상세·수정·상태 변경과 공연 내 팀 생성. 모임 권한과 모임 정보는 {@code GroupService}가 아니라 {@code GroupMemberService}로만
  * 받는다 — 나중에 모임 홈의 다가오는 공연 때문에 {@code GroupService → PerformanceService}가 생겨도 순환하지 않게.
  *
  * <p>참여 팀({@code teams})과 내가 속한 팀({@code myTeamIds})은 2팀 {@code TeamService}로 받는다.
@@ -99,6 +101,22 @@ public class PerformanceService {
             teamService.disbandAllByPerformance(performanceId);
         }
         return PerformanceStatusResponse.from(performance);
+    }
+
+    /**
+     * 공연 내 팀 생성. 모임원이면 만들 수 있고 만든 사람이 팀장이 된다(7.1). 끝난 공연(종료·취소)에는 만들 수 없다.
+     * 공연 존재·권한·상태는 여기서 확인하고, 팀 저장은 2팀 TeamService가 한다.
+     */
+    @Transactional
+    public TeamDetailResponse createTeam(Long userId, Long performanceId, PerformanceTeamCreateRequest request) {
+        Performance performance = getPerformanceOrThrow(performanceId);
+        groupMemberService.ensureActiveMember(performance.getGroupId(), userId);
+        if (performance.isFinished()) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+
+        return teamService.createForPerformance(userId, performanceId, request.name(), request.description(),
+                request.region(), request.genres(), request.instrument());
     }
 
     // 생성·상세·수정이 같은 응답이라 참여 팀도 한 곳에서 채운다 — 막 만든 공연이면 둘 다 빈 목록이다.

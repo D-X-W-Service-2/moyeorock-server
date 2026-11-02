@@ -13,18 +13,22 @@ import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceStatusUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.PerformanceTeamCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
+import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
@@ -324,6 +328,59 @@ class PerformanceServiceTest {
         verifyNoInteractions(groupMemberService, teamService);
     }
 
+    @Test
+    @DisplayName("모임원이 공연 안에 팀을 만들면 요청 값을 그대로 TeamService에 넘기고 팀 상세를 돌려준다")
+    void createTeam_byMember_createsTeamViaTeamService() {
+        givenPerformance();
+        TeamDetailResponse team = new TeamDetailResponse(5L, "무명밴드", "발라드 위주로 갑니다.", Region.SEOUL,
+                List.of(Genre.BALLAD, Genre.ROCK), TeamStatus.ACTIVE, null, 1, List.of(), TeamRole.LEADER, null);
+        when(teamService.createForPerformance(MEMBER_ID, PERFORMANCE_ID, "무명밴드", "발라드 위주로 갑니다.",
+                Region.SEOUL, List.of(Genre.BALLAD, Genre.ROCK), Instrument.BASS)).thenReturn(team);
+
+        TeamDetailResponse response = performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest());
+
+        verify(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+        assertThat(response).isSameAs(team);
+    }
+
+    @Test
+    @DisplayName("모임원이 아니면 공연 안에 팀을 만들 수 없다")
+    void createTeam_throws_whenNotMember() {
+        givenPerformance();
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_MEMBER))
+                .when(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("끝난 공연(취소)에는 팀을 만들 수 없다(INVALID_STATE)")
+    void createTeam_throws_whenFinished() {
+        givenPerformance().changeStatus(PerformanceStatus.CANCELED);
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("없는 공연에 팀을 만들려 하면 PERFORMANCE_NOT_FOUND다")
+    void createTeam_throws_whenPerformanceMissing() {
+        when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PERFORMANCE_NOT_FOUND);
+        verifyNoInteractions(groupMemberService, teamService);
+    }
+
     private PerformanceCreateRequest createRequest() {
         return new PerformanceCreateRequest("2026 정기공연", "1년에 한 번 하는 정기공연입니다.", PERFORMED_AT,
                 "홍대 롤링홀", "poster.jpg");
@@ -331,6 +388,11 @@ class PerformanceServiceTest {
 
     private PerformanceUpdateRequest updateRequest() {
         return new PerformanceUpdateRequest("2026 정기공연 (연기)", null, PERFORMED_AT.plusWeeks(1), "신촌 클럽", null);
+    }
+
+    private PerformanceTeamCreateRequest teamCreateRequest() {
+        return new PerformanceTeamCreateRequest("무명밴드", "발라드 위주로 갑니다.", Region.SEOUL,
+                List.of(Genre.BALLAD, Genre.ROCK), Instrument.BASS);
     }
 
     private PerformanceStatusUpdateRequest statusRequest(PerformanceStatus status) {
