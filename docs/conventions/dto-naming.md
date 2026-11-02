@@ -342,7 +342,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
 | 공연 생성 | POST | `/v1/groups/{groupId}/performances` | `PerformanceCreateRequest` | `PerformanceDetailResponse` |
-| 모임 공연 목록 | GET | `/v1/groups/{groupId}/performances` | — | `PageResponse<PerformanceSummaryResponse>` |
+| 모임 공연 목록 | GET | `/v1/groups/{groupId}/performances?period=` | — | `PageResponse<PerformanceSummaryResponse>` |
 | 공연 상세 | GET | `/v1/performances/{id}` | — | `PerformanceDetailResponse` |
 | 공연 정보 수정 | PUT | `/v1/performances/{id}` | `PerformanceUpdateRequest` | `PerformanceDetailResponse` |
 | 공연 상태 변경 | PATCH | `/v1/performances/{id}/status` | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` |

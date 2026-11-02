@@ -1,5 +1,6 @@
 package com.moyeorock.domain.group.service;
 
+import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.dto.response.GroupMemberResponse;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
@@ -23,7 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>모임 자체(생성·상세·수정)는 {@link GroupService}가 담당한다. 이 클래스가
  * {@code NoticeService}를 모르게 두는 것이 중요하다 — {@code GroupService → NoticeService →
- * GroupMemberService} 방향을 지켜 순환 참조를 만들지 않는다.
+ * GroupMemberService} 방향을 지켜 순환 참조를 만들지 않는다. 같은 이유로 다른 도메인이 쓰는 모임 조회
+ * (존재 확인·표시용 정보)도 {@code GroupService}가 아니라 여기에 둔다.
  */
 @Service
 @RequiredArgsConstructor
@@ -121,11 +123,31 @@ public class GroupMemberService {
         }
     }
 
+    /**
+     * 요청자가 이 모임의 현재 모임장인지. 모임원이 아니거나 해체된 모임이면 {@code false}다.
+     * 막지 않고 답만 한다 — 공연 상세의 {@code canEdit}처럼 화면 표시에 쓴다. 막아야 하면 {@link #ensureOwner}다.
+     */
+    public boolean isOwner(Long groupId, Long userId) {
+        return groupMemberRepository.findActiveMember(groupId, userId)
+                .filter(GroupMember::isOwner)
+                .isPresent();
+    }
+
     /** 모임원이 아니면(해체된 모임 포함) {@code NOT_GROUP_MEMBER}. 모임 상세의 {@code myRole}에 쓴다. */
     public GroupRole getActiveRole(Long groupId, Long userId) {
         return groupMemberRepository.findActiveMember(groupId, userId)
                 .map(GroupMember::getRole)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_GROUP_MEMBER));
+    }
+
+    /**
+     * 모임 이름·커버 같은 표시용 정보. 해체됐거나 없는 모임이면 {@code GROUP_NOT_FOUND}.
+     * 모임원 여부는 보지 않는다 — 권한은 부르는 쪽이 ensureOwner·ensureActiveMember·getActiveRole로 따로 확인한다.
+     */
+    public GroupBriefResponse getGroupBrief(Long groupId) {
+        return groupRepository.findByIdAndStatus(groupId, GroupStatus.ACTIVE)
+                .map(GroupBriefResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
     }
 
     /** 해체된 모임이면 0이다. */

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
@@ -298,6 +299,54 @@ class GroupMemberServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
         verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("모임 표시 정보에는 이름·커버가 담기고 모임원 여부는 확인하지 않는다")
+    void getGroupBrief_returnsNameAndCover_withoutCheckingMembership() {
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE))
+                .thenReturn(Optional.of(Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, "cover.jpg")));
+
+        GroupBriefResponse brief = groupMemberService.getGroupBrief(GROUP_ID);
+
+        assertThat(brief.name()).isEqualTo("홍대 밴드부");
+        assertThat(brief.coverImage()).isEqualTo("cover.jpg");
+        verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("해체됐거나 없는 모임의 표시 정보를 물으면 GROUP_NOT_FOUND를 던진다")
+    void getGroupBrief_throws_whenGroupDisbanded() {
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.getGroupBrief(GROUP_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("현재 모임장이면 isOwner는 true다")
+    void isOwner_returnsTrue_forOwner() {
+        givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, OWNER_ID)).isTrue();
+    }
+
+    @Test
+    @DisplayName("모임장이 아닌 모임원은 isOwner가 false다")
+    void isOwner_returnsFalse_forMember() {
+        givenActiveMember(MEMBER_ID, member(MEMBER_ID, GroupRole.MEMBER));
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).isFalse();
+    }
+
+    @Test
+    @DisplayName("모임원이 아니거나 해체된 모임이면 isOwner는 예외 없이 false다")
+    void isOwner_returnsFalse_whenNotActiveMember() {
+        when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID)).thenReturn(Optional.empty());
+
+        assertThat(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).isFalse();
     }
 
     private void givenGroupExists() {
