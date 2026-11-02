@@ -8,6 +8,7 @@ import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,7 @@ public class BookmarkController {
 
     private final BookmarkService bookmarkService;
 
+    @Operation(summary = "저장 추가")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BookmarkResponse> create(@AuthUser Long userId,
@@ -37,6 +39,7 @@ public class BookmarkController {
         return ApiResponse.success(bookmarkService.create(userId, request));
     }
 
+    @Operation(summary = "저장 목록")
     @GetMapping
     public ApiResponse<PageResponse<BookmarkResponse>> getBookmarks(@AuthUser Long userId,
             @RequestParam(required = false) BookmarkTargetType targetType,
@@ -44,6 +47,7 @@ public class BookmarkController {
         return ApiResponse.success(bookmarkService.getBookmarks(userId, targetType, pageable));
     }
 
+    @Operation(summary = "저장 삭제")
     @DeleteMapping("/{bookmarkId}")
     public ApiResponse<DeleteResponse> delete(@AuthUser Long userId, @PathVariable Long bookmarkId) {
         return ApiResponse.success(bookmarkService.delete(userId, bookmarkId));
