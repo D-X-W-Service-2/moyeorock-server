@@ -86,8 +86,12 @@ public class PerformanceService {
     }
 
     // 만든 사람이 탈퇴했으면 null이다 — getSummaries가 탈퇴 회원을 결과에서 뺀다.
+    // created_by는 NULL 허용 컬럼이라 비어 있으면 조회 없이 null이다(List.of는 null 원소에서 NPE를 던진다).
     private UserSummaryResponse getCreator(Performance performance) {
         Long creatorId = performance.getCreatedBy();
+        if (creatorId == null) {
+            return null;
+        }
         return userService.getSummaries(List.of(creatorId)).get(creatorId);
     }
 

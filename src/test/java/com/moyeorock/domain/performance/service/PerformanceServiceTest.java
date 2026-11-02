@@ -176,6 +176,19 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("공연의 created_by가 비어 있으면 createdBy는 null이고 사용자 조회를 하지 않는다")
+    void getDetail_returnsNullCreatedBy_whenCreatedByMissing() {
+        Performance performance = Performance.create(GROUP_ID, null, "2026 정기공연", "설명", PERFORMED_AT,
+                "홍대 롤링홀", "poster.jpg");
+        when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        when(groupMemberService.getGroupBrief(GROUP_ID)).thenReturn(GROUP);
+
+        assertThat(performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID).createdBy()).isNull();
+        verifyNoInteractions(userService);
+    }
+
+    @Test
     @DisplayName("모임장이 공연을 고치면 값이 바뀌고 canEdit=true인 상세 응답을 돌려준다")
     void update_changesFields_whenOwner() {
         Performance performance = givenPerformance();
