@@ -161,6 +161,8 @@ public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 
 ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 하지 않는다.
 
+서버 기본 타임존은 Asia/Seoul로 고정한다(`global/config/TimezoneConfig`).
+
 ## 9. Swagger
 
 `@Operation(summary = ...)` 정도만 붙인다. 요청·응답 스키마는 DTO에서 자동 생성되므로 `@ApiResponses`를 장황하게 달지 않는다.
