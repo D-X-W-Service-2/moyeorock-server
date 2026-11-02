@@ -6,6 +6,7 @@ import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -25,12 +26,14 @@ public class GroupMemberController {
     private final GroupMemberService groupMemberService;
 
     // 명세의 keyword(닉네임 검색)는 user 도메인 연동 때 붙인다 — 지금 받으면 무시만 하게 된다
+    @Operation(summary = "모임원 목록")
     @GetMapping
     public ApiResponse<PageResponse<GroupMemberResponse>> getMembers(@AuthUser Long userId,
             @PathVariable Long groupId, @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(groupMemberService.getMembers(userId, groupId, pageable));
     }
 
+    @Operation(summary = "모임원 역할 변경 (모임장 위임)")
     @PatchMapping("/{targetUserId}")
     public ApiResponse<GroupMemberResponse> changeRole(@AuthUser Long userId, @PathVariable Long groupId,
             @PathVariable Long targetUserId, @Valid @RequestBody GroupMemberUpdateRequest request) {
@@ -38,6 +41,7 @@ public class GroupMemberController {
     }
 
     /** 내보내기·탈퇴. 요청 바디가 없고 서버가 상태를 정한다(본인 → LEFT, 모임장이 타인 → BANNED). */
+    @Operation(summary = "모임원 내보내기·탈퇴")
     @PatchMapping("/{targetUserId}/status")
     public ApiResponse<Void> changeStatus(@AuthUser Long userId, @PathVariable Long groupId,
             @PathVariable Long targetUserId) {

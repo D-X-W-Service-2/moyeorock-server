@@ -24,9 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class GroupService {
 
-    // 내 모임 목록의 페이지 크기는 기본·최대 20이다(Notion API 초안 "내 모임 목록 (검색)").
-    private static final int MY_GROUPS_MAX_PAGE_SIZE = 20;
-
     private final GroupRepository groupRepository;
     private final GroupMemberService groupMemberService;
     private final NoticeService noticeService;
@@ -45,13 +42,11 @@ public class GroupService {
      * 내 모임 목록. 전체 모임 목록·검색은 두지 않는다 — 검색({@code keyword}, 모임 이름 부분 일치)도
      * 내 모임 안에서만 한다. 해체된 모임과 내가 탈퇴·강퇴된 모임은 빠진다.
      * 정렬은 가입 최신순 고정이라 클라이언트 sort는 버린다(엔티티에 없는 속성이 들어오면 500이 난다).
-     * 페이지 크기는 {@value #MY_GROUPS_MAX_PAGE_SIZE}를 넘지 않게 자른다.
      * 모임과 내 역할을 한 쿼리로 받으므로 count·content 불일치만 남아 트랜잭션으로 묶지 않는다.
      */
     public PageResponse<GroupSummaryResponse> getMyGroups(Long userId, String keyword, Pageable pageable) {
-        Pageable page = PageRequest.of(
-                pageable.getPageNumber(), Math.min(pageable.getPageSize(), MY_GROUPS_MAX_PAGE_SIZE));
-        return PageResponse.from(groupRepository.findMyGroups(userId, normalizeKeyword(keyword), page)
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return PageResponse.from(groupRepository.findMyGroups(userId, normalizeKeyword(keyword), unsorted)
                 .map(row -> GroupSummaryResponse.of((Group) row[0], (GroupRole) row[1])));
     }
 
