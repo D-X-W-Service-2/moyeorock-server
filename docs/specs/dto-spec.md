@@ -163,6 +163,10 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- `instruments[]`는 `{instrument, level}`뿐이다. `UserInstrumentResponse`의 `id`는 타인에게 노출하지 않는다(이슈 #90 P-4).
+- `isActivityPublic`은 유지한다. 비공개면 `activities`가 `null`이라, 프론트가 "비공개"와 "활동 없음"(빈 목록 3개)을 구분하려면 이 값이 필요하다(P-3, 2026-11-02 1팀 결정). `email`·`isRecommendable`은 담지 않는다.
+- `activities`는 내 활동 조립(2단계)이 붙기 전까지는 공개 여부와 무관하게 `null`이다.
+
 ## §2. 팀 (team)
 
 ### TeamCreateRequest
