@@ -29,6 +29,7 @@ import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -176,7 +177,7 @@ public class TeamService {
      * 호출하는 쪽이 없는 id를 "삭제된 항목"으로 처리한다.
      */
     @Transactional(readOnly = true)
-    public Map<Long, TeamSummaryResponse> getSummaries(List<Long> teamIds) {
+    public Map<Long, TeamSummaryResponse> getSummaries(Collection<Long> teamIds) {
         if (teamIds == null || teamIds.isEmpty()) {
             return Map.of();
         }

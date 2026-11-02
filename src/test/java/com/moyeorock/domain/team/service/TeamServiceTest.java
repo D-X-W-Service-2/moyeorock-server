@@ -578,6 +578,18 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("요약 일괄 조회: List뿐 아니라 Set으로도 부를 수 있다")
+    void getSummaries_acceptsAnyCollection() {
+        given(teamRepository.findActiveByIdIn(java.util.Set.of(TEAM_ID))).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of());
+
+        Map<Long, TeamSummaryResponse> result = teamService.getSummaries(java.util.Set.of(TEAM_ID));
+
+        assertThat(result).containsOnlyKeys(TEAM_ID);
+    }
+
+    @Test
     @DisplayName("요약 일괄 조회: id가 없거나 비었으면 조회하지 않고 빈 Map이다")
     void getSummaries_withoutIds_returnsEmpty() {
         assertThat(teamService.getSummaries(null)).isEmpty();
