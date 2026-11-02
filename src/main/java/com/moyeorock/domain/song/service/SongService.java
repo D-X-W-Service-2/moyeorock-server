@@ -1,9 +1,14 @@
 package com.moyeorock.domain.song.service;
 
 import com.moyeorock.domain.song.dto.response.SongResponse;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
+import java.util.Collection;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +32,16 @@ public class SongService {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return PageResponse.from(songRepository.search(normalizeKeyword(keyword), genre, unsorted)
                 .map(SongResponse::from));
+    }
+
+    /** 곡 축약형 일괄 조회(선택곡·셋리스트 응답용). 없는 id는 결과에서 빠진다 — 존재 확인에도 쓴다. */
+    public Map<Long, SongSummaryResponse> getSummaries(Collection<Long> songIds) {
+        if (songIds == null || songIds.isEmpty()) {
+            return Map.of();
+        }
+        return songRepository.findAllById(songIds).stream()
+                .map(SongSummaryResponse::from)
+                .collect(Collectors.toMap(SongSummaryResponse::id, Function.identity()));
     }
 
     private String normalizeKeyword(String keyword) {

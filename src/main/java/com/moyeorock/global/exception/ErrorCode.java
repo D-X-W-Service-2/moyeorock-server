@@ -63,6 +63,9 @@ public enum ErrorCode {
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장입니다."),
     BOOKMARK_DUPLICATED(HttpStatus.CONFLICT, "이미 저장한 대상입니다."),
 
+    // 노래 (song) — 코드 이름은 노션에 없어 4팀이 정했다(이슈 #103)
+    SONG_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 곡입니다."),
+
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다.");
 

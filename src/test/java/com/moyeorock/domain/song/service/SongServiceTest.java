@@ -3,10 +3,12 @@ package com.moyeorock.domain.song.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -26,6 +28,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class SongServiceTest {
@@ -73,5 +76,23 @@ class SongServiceTest {
                 new SongDifficultyResponse(Instrument.VOCAL, Level.ADVANCED),
                 new SongDifficultyResponse(Instrument.DRUM, Level.INTERMEDIATE));
         assertThat(page.content().get(1).difficulty()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("곡 축약형 일괄 조회는 있는 곡만 id → 요약으로 돌려준다")
+    void getSummaries_returnsExistingSongsOnly() {
+        Song song = Song.create("Creep", "Radiohead", Genre.ROCK, null, null, null, null);
+        ReflectionTestUtils.setField(song, "id", 104L);
+        when(songRepository.findAllById(List.of(104L, 999L))).thenReturn(List.of(song));
+
+        assertThat(songService.getSummaries(List.of(104L, 999L)))
+                .containsExactly(Map.entry(104L, new SongSummaryResponse(104L, "Creep", "Radiohead")));
+    }
+
+    @Test
+    @DisplayName("곡 id가 없으면 조회하지 않고 빈 Map을 돌려준다")
+    void getSummaries_returnsEmpty_whenNoIds() {
+        assertThat(songService.getSummaries(List.of())).isEmpty();
+        verifyNoInteractions(songRepository);
     }
 }
