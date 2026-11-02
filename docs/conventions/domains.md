@@ -95,7 +95,7 @@
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가(`TeamService.addMember`). 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다(`TeamService.createForPerformance`) |
-| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트는 남긴다 |
+| 공연 종료·취소 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`·`CANCELED`면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트는 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀이 넘긴 셋리스트(`setlists` 행)를 지워 같은 공연의 다른 팀이 그 곡을 넘길 수 있게 한다. 선택곡(`team_songs`)은 남긴다. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |

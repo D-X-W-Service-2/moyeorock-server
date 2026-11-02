@@ -160,7 +160,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `getSummaries(List<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
 | `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE` |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
-| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료·취소(`DONE`·`CANCELED`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 셋리스트(`setlists`)는 지우지 않는다 |
 | `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
 | `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
 
@@ -361,7 +361,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 
-공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`으로 바뀌면 소속 팀이 자동 해체된다. 응답에 영향받은 팀 수를 넣을지는 결정 필요.
+공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`·`CANCELED`로 바뀌면 소속 팀이 자동 해체된다. 응답은 명세대로 `(id, status)`만 담고 영향받은 팀 수는 넣지 않았다(2026-11-01, 이슈 #88).
 
 ---
 

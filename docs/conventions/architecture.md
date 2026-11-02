@@ -63,7 +63,7 @@ Controller → Service → Repository → DB
 | `dashboard` | 다른 도메인의 **Service만** 호출. Repository 직접 접근 금지 |
 | `notification` | 어떤 도메인도 직접 참조하지 않는다. 이벤트로만 받는다 |
 | `join` ↔ `team` `group` | 승인 시 멤버 추가는 `TeamService`·`GroupService` 호출 |
-| `performance` → `team` | 공연 종료 시 팀 해체는 `TeamService` 호출 |
+| `performance` → `team` | 공연 종료·취소 시 팀 해체, 공연 내 팀 생성, 공연 상세의 참여 팀은 `TeamService` 호출. 반대 방향(`TeamService` → `PerformanceService`)은 순환이라 금지 |
 
 ### 순환 참조가 생기면
 
@@ -100,12 +100,14 @@ Service끼리 서로 부르게 되는 상황이면 설계가 잘못된 것이다
 
 **soft delete가 기본이다.** `status` 컬럼을 바꾸고, 연쇄되는 값은 가능한 한 조회 시점에 파생시킨다.
 
-예 — 공연 종료:
+예 — 공연 종료·취소:
 
 ```
-performances.status = DONE
+performances.status = DONE 또는 CANCELED
   └─ teams.status = DISBANDED   ← 여기까지만 실제 UPDATE
 ```
+
+끝난 공연(`DONE`·`CANCELED`)은 다른 상태로 되돌릴 수 없다(`409 INVALID_STATE`). 팀이 이미 해체돼서 되돌려도 팀이 돌아오지 않기 때문이다(2026-11-01, 이슈 #88).
 
 `team_members` `rehearsals` `join_requests`는 **바꾸지 않는다.** 팀이 `DISBANDED`면 조회에서 걸러지기 때문이다.
 
@@ -113,11 +115,13 @@ performances.status = DONE
 
 Hard delete는 5곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`). 뒤의 둘은 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다.
 
-**예외 — 팀 개별 해체 시 셋리스트 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`의 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없기 때문이다. 공연 종료(`DONE`)로 인한 일괄 해체에서는 지우지 않는다 — 끝난 공연의 셋리스트를 남긴다. `team_songs`는 어느 경우든 그대로 둔다(팀 상태로 걸러진다).
+**예외 — 팀 개별 해체 시 셋리스트 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`의 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없기 때문이다. 공연 종료·취소(`DONE`·`CANCELED`)로 인한 일괄 해체에서는 지우지 않는다 — 끝난 공연의 셋리스트를 남긴다. `team_songs`는 어느 경우든 그대로 둔다(팀 상태로 걸러진다).
 
 ## 7. 알려진 한계 (v0)
 
 의도적으로 두는 것이다. 발견했다고 임의로 고치지 말 것.
+
+**공연 종료와 공연 내 팀 생성이 정확히 겹치면 끝난 공연에 팀이 생길 수 있다.** 팀 생성은 공연이 끝났는지 사전 검증만 하고 공연 행을 잠그지 않는다. 버튼을 누르는 순간이 정확히 겹쳐야 생기는 일이라 v0에서는 두고, 생긴 팀은 팀장이 직접 해체할 수 있다.
 
 **신청·초대 중복은 사전 검증으로만 막는다.** 동시 요청이 정확히 겹치면 `PENDING` 신청이 두 건 생길 수 있다. DB 유니크 제약으로 막으려면 "`PENDING`일 때만 유일" 조건이 필요한데(신청→거절→재신청이 막히면 안 되므로) 생성 컬럼 트릭이 든다. 실사용에서는 프론트의 버튼 비활성화로 대부분 막히므로 v0에서는 넣지 않는다.
 
