@@ -3,7 +3,7 @@
 - **원본**: Notion `API 명세서 수정안` 페이지의 `API 초안` 데이터베이스 (2026-09-11 대조 완료)
 - **버전**: 전 도메인 `/v1/`. **예외 없다.** 합주(rehearsal, §3)만 초안 정리 전까지 `/v0/`를 유지했는데, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 반영했다.
 - **절 번호**: 이 파일과 `docs/specs/dto-spec.md`에서만 쓰는 좌표다
-- **인증**: 모든 API는 유저 인증 필요. 예외(auth 3개)는 §11에 별도 표기
+- **인증**: 모든 API는 유저 인증 필요. 예외(auth 4개)는 §11에 별도 표기
 - **DTO 필드 정의**: `docs/specs/dto-spec.md` 참조. `API 초안`에는 DTO 정보가 없어 DTO 이름은 기존 `docs/conventions/dto-naming.md` 정의를 그대로 따른다. `*` 표시 Response는 원본 표에 비어 있으나 DTO 페이지의 이름·태그로 매칭한 것이다
 - **경로 표기**: 초안은 가입 신청·공고를 단수형(`join-request` · `recruit-post`)으로 적었다. `docs/conventions/api-conventions.md` §5 "리소스는 복수형" 규칙과 어긋나지만, 초안 값을 그대로 신뢰해 반영하기로 했다(2026-09-11 팀 확인). 다른 리소스(`teams` `groups` `invitations` `bookmarks` 등)는 여전히 복수형이다 — `join-request` · `recruit-post` 2개만 예외다
 
@@ -34,20 +34,24 @@
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/teams` | 팀&nbsp;생성 | `TeamCreateRequest` | |
-| GET | `/v1/teams` ¶ | 팀&nbsp;목록 | | `PageResponse<TeamsummaryResponse>` |
+| POST | `/v1/teams` | 팀&nbsp;생성 | `TeamCreateRequest` | `TeamDetailResponse` |
+| GET | `/v1/teams` ¶ | 팀&nbsp;목록 | | `PageResponse<TeamSummaryResponse>` |
 | GET | `/v1/teams/{id}` | 팀&nbsp;상세 | | `TeamDetailResponse` |
 | PUT | `/v1/teams/{id}` | 팀&nbsp;정보&nbsp;수정 | `TeamUpdateRequest` | |
 | PATCH | `/v1/teams/{id}/status` | 팀&nbsp;해체 | `TeamStatusUpdateRequest` | `TeamStatusResponse` * |
 | GET | `/v1/teams/{id}/members` | 팀원&nbsp;목록 | | `TeamMembersResponse` |
-| PATCH | `/v1/teams/{teamId}/members/{userId}` | 팀원&nbsp;역할&nbsp;변경 | `TeamMemberUpdateRequest` | |
+| PATCH | `/v1/teams/{teamId}/members/{userId}` | 팀원&nbsp;역할&nbsp;변경 | `TeamMemberUpdateRequest` | `TeamMemberResponse` * |
 | PATCH | `/v1/teams/{teamId}/members/{userId}/status` | 팀원&nbsp;내보내기·탈퇴 | `TeamMemberStatusUpdateRequest` | `TeamMemberStatusResponse` * |
 | GET | `/v1/teams/{id}/members/recommendations?instrument=` | 팀원&nbsp;추천&nbsp;(AI) | | `TeamMemberRecommendationResponse` |
+| GET | `/v1/users/me/teams` ‡ | 내&nbsp;팀&nbsp;목록 | | `PageResponse<TeamSummaryResponse>` |
 
-> ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` · `status` (전부 선택).
-> 팀원 내보내기·탈퇴는 `API 초안`에서도 `/status` 접미사가 붙은 완성형으로 확인됐다(2026-09-11) — 과거 DELETE→PATCH 전환 미완 문제는 해소됐다.
-> `TeamsummaryResponse`는 원본 표기 그대로다. 컨벤션대로면 `TeamSummaryResponse` — 구현 시 교정하고 원본에 알릴 것.
-
+> ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` (선택). `status`는 받지 않는다 — 해체된 팀은 항상 목록에서 제외한다(2026-10-31 결정, 노션 팀 목록 페이지에도 "현재 사용하지 않음"으로 반영). 정렬은 최신순 고정(클라이언트 `sort` 무시), 페이지 크기는 기본 20·상한 20.
+> ‡ 내 팀 목록은 노션 `API 초안`에 `[추가 필요]`로 올라온 신규 엔드포인트이며, 2팀 소유로 확정했다(2026-10-31). 경로는 `/users/me` 아래지만 소유는 team이다. 내가 ACTIVE 팀원이고 팀도 ACTIVE인 팀만 최근 합류 순으로 돌려준다.
+> 팀 정보 수정은 응답 바디가 없다(`data: null`, 노션 기준).
+> 팀을 개별로 해체(`PATCH /v1/teams/{id}/status`)하면 그 팀이 고른 곡(선택곡)도 함께 삭제한다. 해체된 팀이 곡을 쥐고 있으면 다른 팀이 그 곡을 고를 수 없기 때문이다(4팀 결정, 2026-10-31). 공연 종료로 인한 일괄 해체에서는 삭제하지 않는다. 삭제는 4팀 `SetlistService.deleteByTeam`을 부르는 방식이며, 이 메서드가 생긴 뒤 연결한다.
+> 해체된 팀의 상세·팀원 목록은 `404 TEAM_NOT_FOUND`다(2026-10-31 결정). 해체된 팀은 요약 조회(`getSummaries`)에서도 빠진다.
+> 팀원 역할 변경과 내보내기·탈퇴에서 경로의 `{userId}`가 그 팀의 활동 중인 팀원이 아니면(속한 적이 없거나 이미 탈퇴·강퇴된 경우) `404 TEAM_MEMBER_NOT_FOUND`다. 모임의 `GROUP_MEMBER_NOT_FOUND`와 같은 상황이라 맞췄다(PR #86 리뷰).
+> 팀원 내보내기·탈퇴는 `API 초안`에서도 `/status` 접미사가 붙은 완성형으로 확인됐다(2026-09-11) — 과거 DELETE→PATCH 전환 미완 문제는 해소됐다. 상태값은 `LEFT`(본인 탈퇴)·`REMOVED`(강퇴)이며, 노션 행 제목의 `KICKED`는 표기 오류다.
 ---
 
 ## §3. 합주 (rehearsal) — 2팀
@@ -169,7 +173,7 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | POST | `/v1/groups/{groupId}/performances` | 공연&nbsp;생성 | `PerformanceCreateRequest` | `PerformanceDetailResponse` ※ | 모임장 |
-| GET | `/v1/groups/{groupId}/performances?page=&size=` ※ | 모임&nbsp;공연&nbsp;목록 | | `PageResponse<PerformanceSummaryResponse>` | 모임원 |
+| GET | `/v1/groups/{groupId}/performances?period=&page=&size=` ※ | 모임&nbsp;공연&nbsp;목록 | | `PageResponse<PerformanceSummaryResponse>` | 모임원 |
 | GET | `/v1/performances/{performanceId}` | 공연&nbsp;상세 | | `PerformanceDetailResponse` | 모임원 |
 | PUT | `/v1/performances/{performanceId}` | 공연&nbsp;정보&nbsp;수정 | `PerformanceUpdateRequest` | `PerformanceDetailResponse` | 모임장 · 7.4 공지 + 공연 포스터 |
 | PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
@@ -185,9 +189,10 @@
 > ※ **2026-10-30 대조(이슈 #83)** — `API 초안`(2026-10-08 수정)과 대조해 경로 변수를 `{performanceId}`로, 비고에 노션 Actor를 맞췄다. 어긋나는 곳은 이렇게 정했다.
 > - **생성 응답은 `PerformanceDetailResponse`** — 노션 생성 응답(`id`·`title`·`description`·`performedAt`·`venue`·`posterImage`·`createdAt`)을 모두 포함하는 상세 응답을 쓴다(`docs/conventions/dto-naming.md` 규칙 3 "생성 응답은 상세 재사용")
 > - **`venue`는 필수** — 노션 생성·수정 요청의 Required가 O다. `erd.md`의 "7.1.1 필수 X" 설명을 정정했다(컬럼은 NULL 허용 그대로)
-> - **모임 공연 목록** — 노션 쿼리의 `status`(`UPCOMING`·`PAST` 등)는 `performances.status` 값(`PLANNED|RECRUITING|DONE|CANCELED`)에 없어 반영하지 않았다(공백 #12). 쿼리 파라미터는 `page`·`size`(기본·최대 20)뿐이고, 정렬은 공연일 늦은 순(`performedAt` 내림차순) 고정이라 `sort`는 받지 않는다
+> - **모임 공연 목록** — 다가올·지난 구분은 쿼리 `period`로 받는다(2026-11-02, PR #84 리뷰, 공백 #13). 기준은 공연일이 아니라 **공연 상태**다 — `performances.status`는 그대로 두고 목록에서만 `PLANNED`·`RECRUITING` → `UPCOMING`, `DONE`·`CANCELED` → `PAST`로 묶는다. `period`는 선택이고 없으면 전체, 없는 값은 `400 VALIDATION_FAILED`. 응답 항목의 `status`는 실제 공연 상태(`PLANNED` 등)다. 정렬은 고정이라 `sort`는 받지 않는다 — `UPCOMING`은 공연일 가까운 순, `PAST`와 전체는 공연일 최근 순, 공연일이 같으면 id 순(같은 방향). `page`·`size`는 기본·최대 20
+>   - 모임장이 `DONE`으로 바꾸기 전에는 날짜가 지난 공연도 `UPCOMING`에 남는다. 화면 안내로 푼다
 > - **이슈 #83 구현 범위** — 생성·목록·상세·수정 4개. 상세의 `teams`·`myTeamIds`·`setlist`는 명세에 있지만 아직 응답에 없다 — `teams`·`myTeamIds`는 상태 변경·공연 내 팀 생성과 함께 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다
-> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #13)
+> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #14)
 
 ---
 
@@ -222,18 +227,29 @@
 
 발생은 2·3·4팀 도메인에서 **이벤트로만** 전달받는다 (`NotificationService` 직접 호출 금지).
 
+> **발행하는 쪽**: `global/event/NotificationEvent`(`userId`·`type`·`message`·`targetType`·`targetId`)를 `ApplicationEventPublisher`로 발행한다. `message`는 사용자에게 그대로 보이는 문장이라 발행하는 쪽이 만든다(255자 초과는 잘린다).
+> **트랜잭션 안에서 발행해야 한다.** 수신부는 발행한 쪽이 커밋된 뒤에만 별도 트랜잭션으로 저장하므로, 롤백된 작업의 알림은 남지 않고 알림 저장이 실패해도 핵심 작업은 실패하지 않는다. 대신 알림이 유실될 수 있고(서버 로그에만 남음), 트랜잭션 밖에서 발행하면 이벤트가 버려진다.
+> 읽음 처리의 `ids`는 null·빈 배열이면 전체 읽음이고, 최대 100개다(명세에 없는 서버 정책 — 초과하면 `400 VALIDATION_FAILED`). 남의 알림 id는 오류 없이 무시된다.
+
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| GET | `/v1/notifications?unreadOnly=` | 알림&nbsp;목록 | | `NotificationsResponse` |
+| GET | `/v1/notifications?page=&size=` | 알림&nbsp;목록 | | `NotificationsResponse` |
 | PATCH | `/v1/notifications/read` | 알림&nbsp;읽음 | `NotificationReadRequest` | `NotificationReadResponse` * |
 
 ### bookmark
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
-| POST | `/v1/bookmarks` | 저장&nbsp;추가 | `BookmarkCreateRequest` | |
-| GET | `/v1/bookmarks?targetType=` | 저장&nbsp;목록 | | `PageResponse<BookmarkResponse>` |
-| DELETE | `/v1/bookmarks/{id}` | 저장&nbsp;삭제 | | |
+| POST | `/v1/bookmarks` | 저장&nbsp;추가 | `BookmarkCreateRequest` | `BookmarkResponse` (201) |
+| GET | `/v1/bookmarks?targetType=&page=&size=` | 저장&nbsp;목록 | | `PageResponse<BookmarkResponse>` |
+| DELETE | `/v1/bookmarks/{id}` | 저장&nbsp;삭제 | | `DeleteResponse` |
+
+> **임시 구현 범위 (2026-10-26)**: 저장 대상 `TEAM`·`SONG`은 2팀 `TeamService`·4팀 `SongService`가 머지되기 전이라 **`USER`만 저장할 수 있다.** `TEAM`·`SONG` 저장 요청은 `400 VALIDATION_FAILED`다. 두 서비스가 생기면 대상 확인과 요약 조회를 잇는다(후속 이슈).
+> **중복 저장은 `409 BOOKMARK_DUPLICATED`다.** 더블 탭·재전송·다른 기기에서 먼저 저장한 경우처럼 정상 흐름에서도 생기므로 프론트는 409를 "이미 저장됨"(성공)으로 취급한다. 명세에는 없는 서버 정책이다.
+> 없는 사용자·탈퇴한 사용자를 저장하면 `404 USER_NOT_FOUND`다. **자기 자신은 저장할 수 없다** — `400 VALIDATION_FAILED`(명세에 없는 서버 정책. 허용하면 "저장한 유저 N명" 집계에 본인이 섞인다). 프론트는 본인 항목의 저장 버튼을 숨기길 권장한다.
+> 삭제는 실제로 행이 사라지는 hard delete이고, 남의 저장·없는 저장은 똑같이 `404 BOOKMARK_NOT_FOUND`다(존재 여부를 드러내지 않음).
+> **대상이 삭제·탈퇴·해체돼 조회되지 않으면 목록에서 빼지 않고 `target`만 없다.** JSON에서는 `"target": null`로 내려간다 — 프론트는 `target`이 null이면 "삭제된 항목"으로 표시한다. 목록 정렬은 명세에 없어 최신순 고정이다.
+> Notion `API 초안`의 `[추가 필요] 저장 해제 (대상 기준)`(`DELETE /v1/bookmarks?targetType=&targetId=`)는 요청·응답이 비어 있어 구현하지 않았다.
 
 ### file (`global/file` — 도메인 아님)
 
@@ -279,15 +295,29 @@
 
 ## §11. 로그인 (auth) — 1팀
 
-인증이 필요 없는 유일한 그룹. 응답 코드는 원본 기재 그대로.
+인증이 필요 없는 유일한 그룹. 2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
 
 | 메서드 | 경로 | 기능 | Request | Response | 응답 코드 | 비고 |
 |---|---|---|---|---|---|---|
-| POST | `/v1/auth/kakao` | 카카오&nbsp;회원가입/로그인 | `UserOAuth2CodeRequest` | `AuthTokenResponse` † | 200, 400 | 이메일 회원과 중복 X |
-| POST | `/v1/auth/signup` | 이메일&nbsp;회원가입 | `UserSignupRequest` | `AuthTokenResponse` † | 201, 400, 409 | 카카오 회원과 중복 X |
-| POST | `/v1/auth/login` | 이메일&nbsp;로그인 | `UserLoginRequest` | `AuthTokenResponse` † | 200, 400, 401 | |
+| POST | `/v1/auth/kakao?code=` | 카카오&nbsp;인증 (로그인&nbsp;/&nbsp;신규&nbsp;판별) | `UserOAuth2CodeRequest` (Query) | `KakaoAuthResponse` | 200, 400 | 계정을 만들지 않는다. 기존 회원이면 로그인 토큰, 신규면 `signupToken` |
+| POST | `/v1/auth/kakao/signup` | 카카오&nbsp;가입&nbsp;완료 (약관&nbsp;동의) | `KakaoSignupRequest` | `AuthTokenResponse` | 201, 400, 401, 409 | 이 요청에서 계정이 생성된다 |
+| POST | `/v1/auth/signup` | 이메일&nbsp;회원가입 | `UserSignupRequest` | `AuthTokenResponse` | 201, 400, 409 | 카카오 회원과 중복 X (카카오 계정은 `email`이 null) |
+| POST | `/v1/auth/login` | 이메일&nbsp;로그인 | `UserLoginRequest` | `AuthTokenResponse` | 200, 400, 401 | |
 
-> † 원본 표에는 Response가 없다. `docs/conventions/dto-naming.md` §1 정의 — `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 3곳 공유, 리프레시 토큰 없음.
+> `AuthTokenResponse(accessToken, userId, nickname, onboardingCompleted)`를 카카오 가입 완료·이메일 가입·이메일 로그인 3곳이 공유하고, 카카오 인증은 `KakaoAuthResponse.auth`에 같은 객체를 담는다. 리프레시 토큰 없음 (`docs/conventions/dto-naming.md` §1).
+
+> **2026-09-28 결정: 카카오 가입 2단계 분리 (3건 → 4건).** 가입 전에 개인정보 처리방침 동의를 받아야 하는데 카카오 인가 코드는 1회용이라, 동의 후 같은 코드로 다시 호출할 수 없다. 그래서 카카오 인증은 계정을 만들지 않고 신규 회원에게 서버가 서명한 `signupToken`(10분 만료)을 내려주며, 프론트가 약관 동의 후 `POST /v1/auth/kakao/signup`으로 가입을 완료한다.
+
+**에러 코드**
+
+| 코드 | 상태 | 발생 |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | 4건 공통. `code` 누락·공백, 이메일 형식 오류, 비밀번호 규칙 위반(가입만), 빈 이름, `privacyAgreed`가 true가 아님, `signupToken` 누락 |
+| `OAUTH_FAILED` | 400 | 카카오 인증. 인가 코드 만료·오류로 토큰 교환이나 사용자 조회에 실패 |
+| `LOGIN_FAILED` | 401 | 이메일 로그인. 이메일 없음·비밀번호 불일치·카카오 전용 계정·탈퇴/정지 계정을 전부 같은 코드로 응답 (계정 존재 여부 비노출) |
+| `INVALID_SIGNUP_TOKEN` | 401 | 카카오 가입 완료. 가입용 토큰 만료·위조 |
+| `EMAIL_DUPLICATED` | 409 | 이메일 회원가입. 이미 가입된 이메일 |
+| `ALREADY_REGISTERED` | 409 | 카카오 가입 완료. 토큰 안의 `kakao_id`로 이미 가입됨 (같은 토큰 재사용 등) |
 
 ---
 
@@ -306,5 +336,6 @@
 | 9 | 경로 단수형 예외 | `join-request` · `recruit-post` 2개는 `API 초안`을 신뢰해 단수형 그대로 반영(2026-09-11 팀 확인). `api-conventions.md`의 "리소스는 복수형" 규칙의 명시적 예외로 기록 |
 | 10 | 파일 삭제 신규 | `DELETE /v1/files/{fileId}`가 `API 초안`에서 새로 확인됨(§10). DTO·구현 담당 확인 필요 |
 | 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
-| 12 | 공연 목록 `status` 필터 | `API 초안` 모임 공연 목록의 쿼리 `status`와 응답 `status` 예시가 `UPCOMING`·`PAST`인데 `performances.status`(`PLANNED|RECRUITING|DONE|CANCELED`)에 없는 값이다. 다가올·지난 공연을 나누는 기준(공연일 vs 상태)부터 정해야 해서 필터는 반영하지 않았다(§8 ※). 노션 정정 필요 |
-| 13 | 공연 상태 값 | `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이다. 상태 변경 구현 때 결정 |
+| 12 | 내 팀 목록 신규 | ✅ 확정(2026-10-31) — 노션 `API 초안`에 `[추가 필요]`로 올라온 `GET /v1/users/me/teams`(§2 ‡)를 2팀 소유로 확정하고 `docs/conventions/domains.md`·`docs/conventions/dto-naming.md` 총계(73 → 74)에 반영했다. 노션 쪽은 제목의 `[추가 필요]`와 담당자·진행 상태 정리가 남아 있다 |
+| 13 | 공연 목록 `status` 필터 | ✅ 결정(2026-11-02, PR #84 리뷰) — 쿼리 이름을 `period`로 바꾸고 공연 상태로 묶는다(`UPCOMING`=`PLANNED`·`RECRUITING`, `PAST`=`DONE`·`CANCELED`, §8 ※). 응답 `status`는 실제 상태. 노션 정정 완료(2026-11-02). 원래 내용: `API 초안` 모임 공연 목록의 쿼리 `status`와 응답 `status` 예시가 `UPCOMING`·`PAST`인데 `performances.status`(`PLANNED|RECRUITING|DONE|CANCELED`)에 없는 값이다. 다가올·지난 공연을 나누는 기준(공연일 vs 상태)부터 정해야 해서 필터는 반영하지 않았었다 |
+| 14 | 공연 상태 값 | `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이다. 상태 변경 구현 때 결정 |

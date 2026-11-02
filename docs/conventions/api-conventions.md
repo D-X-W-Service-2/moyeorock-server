@@ -66,6 +66,7 @@ public enum ErrorCode {
     // team
     TEAM_NOT_FOUND(NOT_FOUND, "존재하지 않는 팀입니다."),
     NOT_TEAM_LEADER(FORBIDDEN, "팀장만 가능합니다."),
+    TEAM_MEMBER_NOT_FOUND(NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
     LEADER_MUST_DELEGATE_FIRST(CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
 
     // join
@@ -160,6 +161,8 @@ public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 ## 8. 날짜
 
 ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 하지 않는다.
+
+서버 기본 타임존은 Asia/Seoul로 고정한다(`global/config/TimezoneConfig`).
 
 ## 9. Swagger
 

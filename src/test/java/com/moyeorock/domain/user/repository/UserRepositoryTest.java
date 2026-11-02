@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.entity.UserInstrument;
+import com.moyeorock.domain.user.enums.LoginType;
 import com.moyeorock.domain.user.enums.UserStatus;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
@@ -214,5 +215,89 @@ class UserRepositoryTest {
                 List.of(active.getId(), suspended.getId(), withdrawn.getId(), 999_999L), UserStatus.WITHDRAWN);
 
         assertThat(found).extracting(User::getId).containsExactlyInAnyOrder(active.getId(), suspended.getId());
+    }
+
+    @Test
+    @DisplayName("signupWithEmail·signupWithKakao로 만든 사용자는 ACTIVE·공개 기본값으로 저장되고 email/kakaoId로 조회된다")
+    void signup_factories_and_lookup_by_email_or_kakao_id() {
+        LocalDateTime agreedAt = LocalDateTime.of(2026, 9, 29, 10, 0);
+        User byEmail = entityManager.persistAndFlush(User.signupWithEmail("seojun@example.com", "hash", "서준", agreedAt));
+        User byKakao = entityManager.persistAndFlush(User.signupWithKakao("kakao-123", "민서", agreedAt));
+        entityManager.clear();
+
+        User foundEmail = userRepository.findByEmail("seojun@example.com").orElseThrow();
+        assertThat(foundEmail.getId()).isEqualTo(byEmail.getId());
+        assertThat(foundEmail.getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(foundEmail.getPrivacyAgreedAt()).isEqualTo(agreedAt);
+        assertThat(foundEmail.isRecommendable()).isTrue();
+        assertThat(foundEmail.isOnboardingCompleted()).isFalse();
+        assertThat(foundEmail.loginType()).isEqualTo(LoginType.EMAIL);
+
+        User foundKakao = userRepository.findByKakaoId("kakao-123").orElseThrow();
+        assertThat(foundKakao.getId()).isEqualTo(byKakao.getId());
+        assertThat(foundKakao.getEmail()).isNull();
+        assertThat(foundKakao.getPasswordHash()).isNull();
+        assertThat(foundKakao.loginType()).isEqualTo(LoginType.KAKAO);
+
+        assertThat(userRepository.existsByEmail("seojun@example.com")).isTrue();
+        assertThat(userRepository.existsByEmail("none@example.com")).isFalse();
+        assertThat(userRepository.findByKakaoId("none")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("findAllByUserIdInAndUserStatusNot...은 넘긴 사용자 중 탈퇴하지 않은 사용자의 세션만 userId → id 순으로 돌려준다")
+    void find_instruments_by_user_id_in_excluding_withdrawn_ordered() {
+        User a = saveUser("a", null);
+        User b = saveUser("b", UserStatus.SUSPENDED);
+        User c = saveUser("c", null);
+        User outsider = saveUser("d", null);
+        User withdrawn = saveUser("e", null);
+        UserInstrument aBass = userInstrumentRepository.save(UserInstrument.create(a.getId(), Instrument.BASS, Level.NOVICE));
+        UserInstrument bDrum = userInstrumentRepository.save(UserInstrument.create(b.getId(), Instrument.DRUM, Level.ADVANCED));
+        UserInstrument aKey = userInstrumentRepository.save(UserInstrument.create(a.getId(), Instrument.KEY, Level.BEGINNER));
+        userInstrumentRepository.save(UserInstrument.create(outsider.getId(), Instrument.VOCAL, Level.NOVICE));
+        userInstrumentRepository.save(UserInstrument.create(withdrawn.getId(), Instrument.EL_GT, Level.NOVICE));
+        withdrawn.withdraw();
+        entityManager.flush();
+        entityManager.clear();
+
+        List<UserInstrument> found = userInstrumentRepository.findAllByUserIdInAndUserStatusNotOrderByUserIdAscIdAsc(
+                List.of(a.getId(), b.getId(), c.getId(), withdrawn.getId()), UserStatus.WITHDRAWN);
+
+        // a(id 작은 순: BASS → KEY) 다음 정지 회원 b. 세션 없는 c, 범위 밖 d, 탈퇴한 e(세션 행은 남아 있다)는 없다
+        assertThat(found).extracting(UserInstrument::getId)
+                .containsExactly(aBass.getId(), aKey.getId(), bDrum.getId());
+    }
+
+    @Test
+    @DisplayName("findAllByIdInAndStatusNotAndNicknameContaining은 넘긴 id 중 탈퇴 제외·부분 일치만 돌려준다 (정지 회원 포함)")
+    void filter_by_nickname_within_ids_excluding_withdrawn() {
+        User matched = saveUser("서준밴드", UserStatus.ACTIVE);
+        User suspended = saveUser("서준", UserStatus.SUSPENDED);
+        User withdrawn = saveUser("서준탈퇴", UserStatus.WITHDRAWN);
+        User noMatch = saveUser("민서", UserStatus.ACTIVE);
+        User outsider = saveUser("서준아웃", UserStatus.ACTIVE);
+        entityManager.clear();
+
+        List<User> found = userRepository.findAllByIdInAndStatusNotAndNicknameContaining(
+                List.of(matched.getId(), suspended.getId(), withdrawn.getId(), noMatch.getId(), 999_999L),
+                UserStatus.WITHDRAWN, "서준");
+
+        assertThat(found).extracting(User::getId).containsExactlyInAnyOrder(matched.getId(), suspended.getId());
+        assertThat(found).extracting(User::getId).doesNotContain(outsider.getId());
+    }
+
+    @Test
+    @DisplayName("닉네임 부분 일치의 %·_는 와일드카드가 아니라 글자 그대로 비교된다")
+    void nickname_containing_escapes_like_wildcards() {
+        User underscore = saveUser("a_b", UserStatus.ACTIVE);
+        User plain = saveUser("acb", UserStatus.ACTIVE);
+        entityManager.clear();
+        List<Long> ids = List.of(underscore.getId(), plain.getId());
+
+        assertThat(userRepository.findAllByIdInAndStatusNotAndNicknameContaining(ids, UserStatus.WITHDRAWN, "_"))
+                .extracting(User::getId).containsExactly(underscore.getId());
+        assertThat(userRepository.findAllByIdInAndStatusNotAndNicknameContaining(ids, UserStatus.WITHDRAWN, "%"))
+                .isEmpty();
     }
 }

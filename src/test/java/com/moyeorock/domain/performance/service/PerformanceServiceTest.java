@@ -15,12 +15,14 @@ import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.entity.Performance;
+import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +45,9 @@ class PerformanceServiceTest {
     private static final Long OWNER_ID = 10L;
     private static final Long MEMBER_ID = 20L;
     private static final Long PERFORMANCE_ID = 100L;
-    private static final LocalDateTime PERFORMED_AT = LocalDateTime.of(2026, 11, 22, 18, 0);
+    // 생성·수정이 지난 일시를 막아서 테스트 일시는 실행 날짜 기준으로 잡는다 — 고정 날짜는 그날이 지나면 테스트가 깨진다.
+    private static final LocalDateTime PERFORMED_AT = LocalDate.now().plusMonths(1).atTime(18, 0);
+    private static final LocalDateTime PAST = LocalDate.now().minusMonths(1).atTime(18, 0);
     private static final GroupBriefResponse GROUP = new GroupBriefResponse(GROUP_ID, "홍대 밴드부", "cover.jpg");
     private static final UserSummaryResponse CREATOR = new UserSummaryResponse(OWNER_ID, "모임장", null);
 
@@ -98,7 +102,7 @@ class PerformanceServiceTest {
         doThrow(new BusinessException(ErrorCode.NOT_GROUP_MEMBER))
                 .when(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
 
-        assertThatThrownBy(() -> performanceService.getList(MEMBER_ID, GROUP_ID, PageRequest.of(0, 20)))
+        assertThatThrownBy(() -> performanceService.getList(MEMBER_ID, GROUP_ID, null, PageRequest.of(0, 20)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
@@ -110,9 +114,33 @@ class PerformanceServiceTest {
     void getList_dropsClientSort() {
         when(performanceRepository.findByGroupIdOrderByPerformedAtDescIdDesc(any(), any())).thenReturn(Page.empty());
 
-        performanceService.getList(MEMBER_ID, GROUP_ID, PageRequest.of(1, 10, Sort.by("title")));
+        performanceService.getList(MEMBER_ID, GROUP_ID, null, PageRequest.of(1, 10, Sort.by("title")));
 
         verify(performanceRepository).findByGroupIdOrderByPerformedAtDescIdDesc(GROUP_ID, PageRequest.of(1, 10));
+    }
+
+    @Test
+    @DisplayName("period=UPCOMING이면 PLANNED·RECRUITING만 공연일 가까운 순으로 조회한다")
+    void getList_withUpcoming_queriesPlannedAndRecruitingAscending() {
+        when(performanceRepository.findByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(any(), any(), any()))
+                .thenReturn(Page.empty());
+
+        performanceService.getList(MEMBER_ID, GROUP_ID, PerformancePeriod.UPCOMING, PageRequest.of(0, 20));
+
+        verify(performanceRepository).findByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(GROUP_ID,
+                List.of(PerformanceStatus.PLANNED, PerformanceStatus.RECRUITING), PageRequest.of(0, 20));
+    }
+
+    @Test
+    @DisplayName("period=PAST면 DONE·CANCELED만 공연일 최근 순으로 조회한다")
+    void getList_withPast_queriesDoneAndCanceledDescending() {
+        when(performanceRepository.findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(any(), any(), any()))
+                .thenReturn(Page.empty());
+
+        performanceService.getList(MEMBER_ID, GROUP_ID, PerformancePeriod.PAST, PageRequest.of(0, 20));
+
+        verify(performanceRepository).findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(GROUP_ID,
+                List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED), PageRequest.of(0, 20));
     }
 
     @Test
@@ -176,6 +204,19 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("공연의 created_by가 비어 있으면 createdBy는 null이고 사용자 조회를 하지 않는다")
+    void getDetail_returnsNullCreatedBy_whenCreatedByMissing() {
+        Performance performance = Performance.create(GROUP_ID, null, "2026 정기공연", "설명", PERFORMED_AT,
+                "홍대 롤링홀", "poster.jpg");
+        when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        when(groupMemberService.getGroupBrief(GROUP_ID)).thenReturn(GROUP);
+
+        assertThat(performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID).createdBy()).isNull();
+        verifyNoInteractions(userService);
+    }
+
+    @Test
     @DisplayName("모임장이 공연을 고치면 값이 바뀌고 canEdit=true인 상세 응답을 돌려준다")
     void update_changesFields_whenOwner() {
         Performance performance = givenPerformance();
@@ -205,6 +246,35 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("공연 일시를 지난 시각으로 바꾸면 VALIDATION_FAILED이고 값은 그대로다")
+    void update_throws_whenRescheduledToPast() {
+        Performance performance = givenPerformance();
+        PerformanceUpdateRequest request = new PerformanceUpdateRequest("2026 정기공연 (연기)", null, PAST, "신촌 클럽",
+                null);
+
+        assertThatThrownBy(() -> performanceService.update(OWNER_ID, PERFORMANCE_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(performance.getTitle()).isEqualTo("2026 정기공연");
+        assertThat(performance.getPerformedAt()).isEqualTo(PERFORMED_AT);
+    }
+
+    @Test
+    @DisplayName("일시를 그대로 두면 이미 지난 공연도 고칠 수 있다")
+    void update_allowsPastPerformance_whenPerformedAtUnchanged() {
+        Performance performance = givenPerformance(PAST);
+        givenDetailParts();
+        PerformanceUpdateRequest request = new PerformanceUpdateRequest("2020 정기공연 후기", "다녀왔습니다.", PAST,
+                "홍대 롤링홀", null);
+
+        performanceService.update(OWNER_ID, PERFORMANCE_ID, request);
+
+        assertThat(performance.getTitle()).isEqualTo("2020 정기공연 후기");
+        assertThat(performance.getDescription()).isEqualTo("다녀왔습니다.");
+    }
+
+    @Test
     @DisplayName("없는 공연을 고치려 하면 PERFORMANCE_NOT_FOUND다")
     void update_throws_whenPerformanceMissing() {
         when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.empty());
@@ -226,7 +296,11 @@ class PerformanceServiceTest {
     }
 
     private Performance givenPerformance() {
-        Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", PERFORMED_AT,
+        return givenPerformance(PERFORMED_AT);
+    }
+
+    private Performance givenPerformance(LocalDateTime performedAt) {
+        Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", performedAt,
                 "홍대 롤링홀", "poster.jpg");
         when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
         return performance;
