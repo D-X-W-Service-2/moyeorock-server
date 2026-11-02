@@ -224,6 +224,10 @@ class UserApiTest {
                 .andExpect(jsonPath("$.data.content[0].nickname").value("서준이"))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.last").value(true));
+        // 탈퇴하면 닉네임이 "탈퇴회원_{id}"로 바뀌므로, 그 접두사로 검색해도 0건이어야 ACTIVE 필터가 실제로 걸린 것이다
+        mockMvc.perform(get(BASE + "/search").header("Authorization", bearer(me)).param("nickname", "탈퇴회원"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(0));
         mockMvc.perform(get(BASE + "/search").header("Authorization", bearer(me)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
