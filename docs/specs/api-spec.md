@@ -56,7 +56,7 @@
 
 ## §3. 합주 (rehearsal) — 2팀
 
-2026-09-11 대조 때는 `API 초안`의 합주 행이 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로였고 일부는 비어 있어 이 절만 `/v0/`를 유지했다. **2026-10-05 재대조에서 6개 전부 `/v1/`로 정리된 것을 확인해 반영했다** — 경로만 바뀌었고 기능·DTO는 그대로다. 합주 구현체는 아직 없어 코드 영향은 없다.
+2026-09-11 대조 때는 `API 초안`의 합주 행이 `v1/fee/...` · `{studentFeeId}` 등 무관한 경로였고 일부는 비어 있어 이 절만 `/v0/`를 유지했다. **2026-10-05 재대조에서 6개 전부 `/v1/`로 정리된 것을 확인해 반영했다** — 경로만 바뀌었고 기능·DTO는 그대로다. **2026-11-02 구현을 마쳤다**(이슈 #94). 구현에서 정한 규칙은 표 아래 메모에 적었다.
 
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
@@ -66,6 +66,12 @@
 | PUT | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;수정 | `RehearsalUpdateRequest` | |
 | DELETE | `/v1/rehearsals/{id}` | 합주&nbsp;일정&nbsp;삭제 | | |
 | GET | `/v1/users/me/rehearsals?from=&to=` | 내&nbsp;합주&nbsp;일정 | | `RehearsalsResponse` |
+
+> 생성·수정 응답은 `RehearsalDetailResponse`(생성은 201), 삭제 응답은 204가 아니라 `200` + `DeleteResponse`다.
+> 권한: 생성·목록·상세는 그 팀의 활동 중 팀원(아니면 `403 NO_PERMISSION`, 없는·해체된 팀은 `404 TEAM_NOT_FOUND`). **수정·삭제는 작성자나 팀장**이다 — 노션에 규칙이 없어 2026-11-02에 정했다. 없는 합주는 `404 REHEARSAL_NOT_FOUND`.
+> `from`·`to`는 `2026-09-01` 형식의 날짜이고 둘 다 포함한다. 둘 다 생략하면 이번 달 한 달치, 하나만 보내거나 `to`가 `from`보다 앞서거나 `from`의 석 달 뒤 날짜를 넘으면 `400 VALIDATION_FAILED`다 — 노션에는 필수 여부·생략 시 동작이 비어 있어 정했다.
+> 종료 시각이 시작 시각보다 늦지 않으면 `400 VALIDATION_FAILED`다(생성·수정). 내 합주 일정은 활동 중인 팀의 합주만 모으고 해체된 팀은 빠진다.
+> Notion 반영 필요: 위 권한·기간 규칙, 상세·수정 응답의 `team` 객체와 `canEdit`(노션 "합주 일정 수정" 응답 예시는 `teamId`·`teamName`이 평평하고 `canEdit`이 없다), `RehearsalUpdateRequest` DTO 페이지(본문이 비어 있음), `REHEARSAL_NOT_FOUND`.
 
 ---
 

@@ -200,6 +200,8 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `RehearsalsResponse` | `(List<RehearsalSummaryResponse> rehearsals)` |
 | `RehearsalDetailResponse` | `memo` · `createdBy` · `canEdit` 추가 |
 
+구현 완료(2026-11-02, 이슈 #94). `RehearsalDetailResponse`는 `team: {id, name}`·`createdBy`·`canEdit`을 담고, `canEdit`은 작성자나 팀장일 때 true다. 목록의 `from`·`to`는 날짜이며 생략하면 이번 달, 최대 3달이다(`docs/specs/api-spec.md` §3).
+
 `RehearsalCreateRequest`와 `RehearsalUpdateRequest`는 지금 필드가 완전히 같지만 규칙 2에 따라 분리한다. 참가 여부 응답 같은 필드가 붙으면 곧 갈라진다.
 
 목록 응답을 `PageResponse`로 감싸지 않은 이유는 `from`·`to`로 이미 기간이 제한되기 때문이다.
