@@ -147,9 +147,9 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|... |
+|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|GROUP_INVITE\|JOIN_REQUEST_APPROVED\|JOIN_REQUEST_REJECTED\|INVITATION_ACCEPTED\|INVITATION_DECLINED\|TEAM_MEMBER_REMOVED\|GROUP_MEMBER_REMOVED\|NOTICE_CREATED\|PERFORMANCE_CREATED\|RECRUIT_POST_APPLIED (`NotificationType`) |
 |  | `message` | `VARCHAR(255)` |  |
-| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 |
+| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 — TEAM\|GROUP\|PERFORMANCE\|NOTICE\|JOIN_REQUEST\|INVITATION (`NotificationTargetType`) |
 | ＋ | `target_id` | `BIGINT` |  |
 |  | `is_read` | `TINYINT(1) DEFAULT 0` |  |
 |  | `created_at` | `DATETIME(6)` |  |
