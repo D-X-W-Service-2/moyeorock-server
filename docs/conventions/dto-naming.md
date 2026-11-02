@@ -310,7 +310,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 9. performance (6 + 셋리스트 3)
+## 9. performance (6 + 셋리스트 4)
 
 패키지 `domain/performance`
 
@@ -325,8 +325,9 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 공연 셋리스트 조회 | GET | `/v1/performances/{performanceId}/setlist` | — | `SetlistResponse` |
 | 셋리스트로 넘기기 | PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | `SetlistSubmitRequest` | `SetlistResponse` |
 | 공연 셋리스트 확정 | PUT | `/v1/performances/{performanceId}/setlist` | `SetlistConfirmRequest` | `SetlistResponse` |
+| 공연 셋리스트 확정 해제 | PATCH | `/v1/performances/{performanceId}/setlist/unconfirm` | — | `SetlistResponse` |
 
-마지막 3행(공연 셋리스트)은 **2026-10-30부터 performance가 받는다**(이슈 #85, `domains.md` "헷갈리는 경계"). 확정 시각이 `performances` 컬럼이라 `PerformanceService`가 공연 존재·확정 여부·모임장을 확인하고, `team_songs`·`setlists` 행 처리는 `SetlistService`에 맡긴다. 요청 DTO는 엔드포인트 쪽인 `domain/performance`에, 셋리스트 항목(`SetlistItemResponse`)은 행을 만드는 `domain/setlist`에 둔다 — `SetlistService`는 요청 DTO 대신 값(`List<Long> songIds` 등)을 받는다(요청 DTO 도메인 간 재사용 금지).
+마지막 4행(공연 셋리스트)은 **2026-10-30부터 performance가 받는다**(이슈 #85, `domains.md` "헷갈리는 경계"). 확정 시각이 `performances` 컬럼이라 `PerformanceService`가 공연 존재·확정 여부·모임장을 확인하고, `team_songs`·`setlists` 행 처리는 `SetlistService`에 맡긴다. 요청 DTO는 엔드포인트 쪽인 `domain/performance`에, 셋리스트 항목(`SetlistItemResponse`)은 행을 만드는 `domain/setlist`에 둔다 — `SetlistService`는 요청 DTO 대신 값(`List<Long> songIds` 등)을 받는다(요청 DTO 도메인 간 재사용 금지).
 
 **보조 DTO**
 
@@ -416,14 +417,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 77 |
+| 엔드포인트 | 78 |
 | Request DTO | 35 |
 | Response DTO | 58 |
 | 전역 공통 | 5 |
 
-요청 DTO가 35개뿐인 이유는 77개 중 **45개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 35개뿐인 이유는 78개 중 **46개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10)
 
 ### 재사용 상위 5개
 

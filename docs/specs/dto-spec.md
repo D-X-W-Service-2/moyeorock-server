@@ -697,7 +697,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### SetlistResponse
 
-공연 셋리스트 조회·넘기기·확정 공통 응답(2026-10-30, 이슈 #85). 이전 이름 `PerformanceSetlistResponse`.
+공연 셋리스트 조회·넘기기·확정·확정 해제 공통 응답(2026-10-30, 이슈 #85). 이전 이름 `PerformanceSetlistResponse`.
 
 ```json
 {
@@ -715,7 +715,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `confirmed`는 `performances.setlist_confirmed_at`이 있는지다
-- 확정 전에는 팀들이 넘긴 곡 전체(팀별·넘긴 순, `sortOrder`는 `null`), 확정 후에는 확정곡만(`sortOrder` 순)
+- 확정 전(또는 확정 해제 뒤)에는 팀들이 넘긴 곡 전체(팀별·넘긴 순, `sortOrder`는 `null`), 확정 후에는 확정곡만(`sortOrder` 순)
 - `setlist[]` 항목은 `SetlistItemResponse`(setlist 도메인)다. 팀이 해체돼도 `teamName`은 나온다 — 끝난 공연의 셋리스트를 남기기 때문이다
 
 ### SetlistSubmitRequest
@@ -731,7 +731,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### SetlistConfirmRequest
 
-공연 셋리스트 확정(`PUT /v1/performances/{performanceId}/setlist`). 이전 이름 `PerformanceSetlistUpdateRequest`, 노션 페이지 이름은 `SetlistUpdateRequest` — 이름은 `dto-naming.md` §9를 따른다.
+공연 셋리스트 확정(`PUT /v1/performances/{performanceId}/setlist`). 이전 이름 `PerformanceSetlistUpdateRequest`. 노션도 2026-11-02에 `SetlistUpdateRequest`에서 이 이름으로 맞췄다(`dto-naming.md` §9).
 
 ```json
 {
@@ -744,7 +744,14 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 팀들이 넘긴 곡만 넣을 수 있다(아니면 409 `SONG_NOT_TEAM_CANDIDATE`). 요청에 없는 곡은 셋리스트에서 빠진다
-- 확정된 뒤에도 다시 수정·확정할 수 있다
+- 확정된 뒤에도 다시 수정·확정할 수 있다. 팀이 다시 넘기게 하려면 확정을 해제한다(아래)
+
+### 공연 셋리스트 확정 해제
+
+`PATCH /v1/performances/{performanceId}/setlist/unconfirm` — **요청 바디가 없다.** 응답은 `SetlistResponse`(`confirmed`는 `false`). 2026-11-02 추가(PR #87 리뷰).
+
+- 모임장만 한다. `performances.setlist_confirmed_at`을 NULL로, 셋리스트 행의 `sort_order`를 NULL로 되돌린다. 셋리스트에 남아 있던 곡은 그대로 두고, 팀은 다시 넘길 수 있다
+- 확정되지 않은 셋리스트, 끝났거나 취소된 공연(`DONE`·`CANCELED`)은 409 `INVALID_STATE` — 끝난 공연의 셋리스트는 기록이다
 
 ## §9. 노래 (song) · 셋리스트 (setlist)
 

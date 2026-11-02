@@ -175,10 +175,11 @@
 | PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
 | POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 모임원 · 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
 | GET | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;조회 ◆ | | `SetlistResponse` | 모임원 · 확정 전엔 넘겨진 곡 전체, 확정 후엔 확정곡만 |
-| PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | 셋리스트로&nbsp;넘기기 ◆ | `SetlistSubmitRequest` | `SetlistResponse` | 공연 팀 팀장 · 확정 후 409 |
+| PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | 셋리스트로&nbsp;넘기기 ◆ | `SetlistSubmitRequest` | `SetlistResponse` | 공연 팀 팀장 · 확정 후 409(해제하면 다시 가능) |
 | PUT | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;확정 ◆ | `SetlistConfirmRequest` | `SetlistResponse` | 모임장 · 넘겨진 곡만, 요청에 없는 곡은 빠짐 |
+| PATCH | `/v1/performances/{performanceId}/setlist/unconfirm` | 공연&nbsp;셋리스트&nbsp;확정&nbsp;해제 ◆ | — | `SetlistResponse` | 모임장 · 미확정·끝난·취소된 공연이면 409 |
 
-> ◆ **2026-10-30 셋리스트 흐름 변경(이슈 #85)** — 팀 선택곡(`team_songs`)과 공연 셋리스트(`setlists`)를 테이블로 나누고(`erd.md` §15·§18), 공연 단위 셋리스트 3개를 **performance가 받는다**(`docs/conventions/domains.md` "헷갈리는 경계"). 확정 시각이 `performances.setlist_confirmed_at`이라 `PerformanceService`가 공연·확정 여부·모임장을 확인하고 행 처리는 `SetlistService`에 맡긴다. 조회·넘기기는 신규, 확정은 기존 행(`API 초안` 2026-10-30 수정 반영). 노션의 확정 요청 DTO 이름은 `SetlistUpdateRequest`인데 `dto-naming.md` §9의 `SetlistConfirmRequest`를 따른다.
+> ◆ **2026-10-30 셋리스트 흐름 변경(이슈 #85)** — 팀 선택곡(`team_songs`)과 공연 셋리스트(`setlists`)를 테이블로 나누고(`erd.md` §15·§18), 공연 단위 셋리스트 4개(확정 해제 포함)를 **performance가 받는다**(`docs/conventions/domains.md` "헷갈리는 경계"). 확정 시각이 `performances.setlist_confirmed_at`이라 `PerformanceService`가 공연·확정 여부·모임장을 확인하고 행 처리는 `SetlistService`에 맡긴다. 조회·넘기기는 신규, 확정은 기존 행(`API 초안` 2026-10-30 수정 반영). 확정 요청 DTO 이름은 `dto-naming.md` §9의 `SetlistConfirmRequest`다(노션도 2026-11-02에 `SetlistUpdateRequest`에서 맞췄다). **확정 해제는 2026-11-02에 추가했다**(PR #87 리뷰) — 확정 뒤에는 팀이 곡을 넘길 수 없고 모임장은 넘겨진 곡 안에서만 고를 수 있어, 해제가 없으면 확정 때 뺀 곡을 다시 넣을 길이 없었다. 해제하면 확정 시각과 `sort_order`를 비우고 팀이 다시 넘길 수 있다. 노션에 페이지를 새로 만들었고, 구현은 셋리스트 API 때 한다.
 > 이전 기록(2026-09-11): `API 초안`이 셋리스트 확정을 공연 도메인 행으로 적었지만 당시 소유는 setlist였다 — `team_songs` 하나에 팀 선택과 확정이 섞여 있어 한 서비스가 `UNIQUE`를 검증해야 했기 때문이다. 테이블을 나누면서 그 이유가 사라졌다.
 > `API 초안`의 이 7개 행은 반영 당시(2026-09-10 이전) `인증 여부`·`진행 상태`가 비어 있었다. 모든 API는 인증이 필요하다는 원칙(상단 참고)에 따라 2026-09-11에 전부 "인증 필요"로 채우고 노션도 함께 수정했다.
 > ※ **2026-10-30 대조(이슈 #83)** — `API 초안`(2026-10-08 수정)과 대조해 경로 변수를 `{performanceId}`로, 비고에 노션 Actor를 맞췄다. 어긋나는 곳은 이렇게 정했다.
@@ -205,7 +206,7 @@
 
 ### setlist
 
-`team_songs`(팀 선택곡)·`setlists`(공연 셋리스트) 두 테이블을 소유한다(2026-10-30, 이슈 #85). 엔드포인트는 팀 선택곡 저장 하나이고, 공연 셋리스트 조회·넘기기·확정은 §8에서 performance가 받는다. performance·team은 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다.
+`team_songs`(팀 선택곡)·`setlists`(공연 셋리스트) 두 테이블을 소유한다(2026-10-30, 이슈 #85). 엔드포인트는 팀 선택곡 저장 하나이고, 공연 셋리스트 조회·넘기기·확정·확정 해제는 §8에서 performance가 받는다. performance·team은 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다.
 
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
@@ -297,7 +298,7 @@
 | 1 | DTO 필드 정의 | `docs/specs/dto-spec.md`에 정리 완료. `API 초안`에는 DTO 정보가 없어 기존 정의를 그대로 유지했다. 일부 DTO 페이지는 미작성 |
 | 2 | 합주(rehearsal) 제외 | `API 초안`의 합주 행이 `v1/fee/...`(`studentFeeId`) 등 무관한 경로에 엔드포인트 누락까지 있어 이번 반영에서 제외했다(§3). 팀 정리 후 별도 반영 필요 |
 | 3 | 총 개수 | 파일 도메인에 `DELETE /v1/files/{fileId}`가 추가되며 전체 개수가 바뀌었다. `docs/conventions/domains.md`·`docs/conventions/dto-naming.md`의 총계 갱신 필요 |
-| 4 | performance 6 vs 7 | ✅ 해소(§8) — 원본 행 수는 7(셋리스트 확정 포함), `performance` 도메인 소유 개수는 6. **2026-10-30 갱신(이슈 #85)**: 공연 셋리스트 조회·넘기기가 생기고 셋리스트 3개를 performance가 받게 돼 `performance` 소유는 9 |
+| 4 | performance 6 vs 7 | ✅ 해소(§8) — 원본 행 수는 7(셋리스트 확정 포함), `performance` 도메인 소유 개수는 6. **2026-10-30 갱신(이슈 #85)**: 공연 셋리스트 조회·넘기기가 생기고 셋리스트 3개를 performance가 받게 돼 `performance` 소유는 9. **2026-11-02**: 셋리스트 확정 해제가 더해져 10 |
 | 5 | song 3 vs 2 | 여전히 미해소(§9) — `API 초안`도 song·setlist 소유를 구분하지 않는다 |
 | 6 | 위치 불명 메모 | 원본의 "모임장" 단독 메모 2건은 인접 행(공연 생성·곡 검색)에 붙어 있었으나 대상 불확실 |
 | 7 | 내보내기 PATCH | ✅ 해소 — 팀·모임 모두 `/status` 접미사로 확정, 노션도 2026-09-11 수정 반영(§2, §7) |
