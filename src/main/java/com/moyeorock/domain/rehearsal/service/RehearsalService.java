@@ -1,5 +1,7 @@
 package com.moyeorock.domain.rehearsal.service;
 
+import com.moyeorock.domain.rehearsal.dto.request.RehearsalCreateRequest;
+import com.moyeorock.domain.rehearsal.dto.request.RehearsalUpdateRequest;
 import com.moyeorock.domain.rehearsal.dto.response.RehearsalDetailResponse;
 import com.moyeorock.domain.rehearsal.dto.response.RehearsalSummaryResponse;
 import com.moyeorock.domain.rehearsal.dto.response.RehearsalsResponse;
@@ -10,6 +12,7 @@ import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDate;
@@ -20,10 +23,12 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 다른 도메인 Service(팀·사용자)를 부르는 조회가 많아서 트랜잭션을 붙이지 않는다(conventions.md §3).
+ * 다른 도메인 Service(팀·사용자)를 부르는 조회는 트랜잭션을 붙이지 않는다(conventions.md §3).
  * 호출된 Service가 각자 트랜잭션을 열어 바깥에서 감싸도 같은 시점이 보장되지 않기 때문이다.
+ * 쓰기 메서드(생성·수정·삭제)만 @Transactional이다.
  */
 @Service
 @RequiredArgsConstructor
@@ -60,8 +65,7 @@ public class RehearsalService {
             return new RehearsalsResponse(List.of());
         }
 
-        List<Rehearsal> rehearsals = rehearsalRepository
-                .findInPeriodByTeamIds(teamNames.keySet(), period.start(), period.end());
+        List<Rehearsal> rehearsals = rehearsalRepository.findInPeriodByTeamIds(teamNames.keySet(), period.start(), period.end());
         return new RehearsalsResponse(rehearsals.stream()
                 .map(rehearsal -> RehearsalSummaryResponse.of(rehearsal, teamNames.get(rehearsal.getTeamId())))
                 .toList());
@@ -74,9 +78,55 @@ public class RehearsalService {
         return toDetail(rehearsal, userId);
     }
 
+    /** 합주 생성. 그 팀의 활동 중 팀원이면 누구나 만들 수 있고, 만든 사람이 작성자가 된다. */
+    @Transactional
+    public RehearsalDetailResponse create(Long userId, Long teamId, RehearsalCreateRequest request) {
+        validateTimes(request.startsAt(), request.endsAt());
+        teamMemberService.ensureActiveMember(teamId, userId);
+
+        Rehearsal rehearsal = rehearsalRepository.save(Rehearsal.create(teamId, userId, request.title(),
+                request.startsAt(), request.endsAt(), request.place(), request.memo()));
+        return toDetail(rehearsal, userId);
+    }
+
+    /** 합주 수정(전체 교체). 작성자나 팀장만 할 수 있고, 보내지 않은 장소·메모는 비워진다. */
+    @Transactional
+    public RehearsalDetailResponse update(Long userId, Long rehearsalId, RehearsalUpdateRequest request) {
+        validateTimes(request.startsAt(), request.endsAt());
+        Rehearsal rehearsal = getEditableRehearsal(userId, rehearsalId);
+
+        rehearsal.update(request.title(), request.startsAt(), request.endsAt(), request.place(), request.memo());
+        return toDetail(rehearsal, userId);
+    }
+
+    /** 합주 삭제. 행을 실제로 지운다(hard delete, architecture.md §6). 작성자나 팀장만 할 수 있다. */
+    @Transactional
+    public DeleteResponse delete(Long userId, Long rehearsalId) {
+        Rehearsal rehearsal = getEditableRehearsal(userId, rehearsalId);
+
+        rehearsalRepository.delete(rehearsal);
+        return DeleteResponse.of(rehearsalId);
+    }
+
     private Rehearsal getRehearsal(Long rehearsalId) {
-        return rehearsalRepository.findById(rehearsalId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.REHEARSAL_NOT_FOUND));
+        return rehearsalRepository.findById(rehearsalId).orElseThrow(() -> new BusinessException(ErrorCode.REHEARSAL_NOT_FOUND));
+    }
+
+    // 팀 확인(404·403)이 작성자·팀장 확인보다 먼저다. 팀원이 아닌 사람에게 작성자가 누구인지 알려주지 않기 위해서다.
+    private Rehearsal getEditableRehearsal(Long userId, Long rehearsalId) {
+        Rehearsal rehearsal = getRehearsal(rehearsalId);
+        teamMemberService.ensureActiveMember(rehearsal.getTeamId(), userId);
+        if (!canEdit(rehearsal, userId)) {
+            throw new BusinessException(ErrorCode.NO_PERMISSION);
+        }
+        return rehearsal;
+    }
+
+    // 종료는 시작보다 늦어야 한다. 필드 하나로는 판단할 수 없어 DTO 어노테이션이 아니라 여기서 검사한다.
+    private void validateTimes(LocalDateTime startsAt, LocalDateTime endsAt) {
+        if (!endsAt.isAfter(startsAt)) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
     }
 
     // 수정·삭제할 수 있는 사람은 작성자나 팀장이다. 팀원인지는 이 메서드를 부르기 전에 확인한다.

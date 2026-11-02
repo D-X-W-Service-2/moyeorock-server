@@ -6,10 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.moyeorock.domain.rehearsal.dto.request.RehearsalCreateRequest;
+import com.moyeorock.domain.rehearsal.dto.request.RehearsalUpdateRequest;
 import com.moyeorock.domain.rehearsal.dto.response.RehearsalDetailResponse;
 import com.moyeorock.domain.rehearsal.dto.response.RehearsalsResponse;
 import com.moyeorock.domain.rehearsal.entity.Rehearsal;
@@ -22,6 +26,7 @@ import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
@@ -36,6 +41,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -254,5 +260,164 @@ class RehearsalServiceTest {
 
         assertThat(response.canEdit()).isFalse();
         assertThat(response.createdBy()).isNull();
+    }
+
+    // ---------- 합주 생성 ----------
+
+    private static final LocalDateTime STARTS_AT = LocalDateTime.of(2026, 9, 14, 19, 0);
+    private static final LocalDateTime ENDS_AT = LocalDateTime.of(2026, 9, 14, 21, 0);
+
+    @Test
+    @DisplayName("합주 생성: 팀원이면 요청자를 작성자로 저장하고 상세를 돌려준다")
+    void create_savesWithRequesterAsCreator() {
+        willAnswer(invocation -> {
+            Rehearsal saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", REHEARSAL_ID);
+            return saved;
+        }).given(rehearsalRepository).save(any(Rehearsal.class));
+        given(teamMemberService.getNames(List.of(TEAM_ID))).willReturn(Map.of(TEAM_ID, "무명밴드"));
+        given(userService.getSummaries(List.of(MEMBER_ID)))
+                .willReturn(Map.of(MEMBER_ID, new UserSummaryResponse(MEMBER_ID, "팀원", null)));
+        var request = new RehearsalCreateRequest("1차 합주", STARTS_AT, ENDS_AT, "홍대", "메모");
+
+        RehearsalDetailResponse response = rehearsalService.create(MEMBER_ID, TEAM_ID, request);
+
+        ArgumentCaptor<Rehearsal> captor = ArgumentCaptor.forClass(Rehearsal.class);
+        verify(rehearsalRepository).save(captor.capture());
+        assertThat(captor.getValue().getTeamId()).isEqualTo(TEAM_ID);
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo(MEMBER_ID);
+        assertThat(captor.getValue().getTitle()).isEqualTo("1차 합주");
+        assertThat(response.id()).isEqualTo(REHEARSAL_ID);
+        assertThat(response.canEdit()).isTrue();
+    }
+
+    @Test
+    @DisplayName("합주 생성: 팀원이 아니면 NO_PERMISSION이고 저장하지 않는다")
+    void create_rejects_nonMember() {
+        givenNotMember(TEAM_ID, MEMBER_ID);
+        var request = new RehearsalCreateRequest("합주", STARTS_AT, ENDS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, request), ErrorCode.NO_PERMISSION);
+        verify(rehearsalRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("합주 생성: 종료가 시작과 같거나 앞서면 VALIDATION_FAILED이고 팀 확인도 하지 않는다")
+    void create_rejects_endNotAfterStart() {
+        var same = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT, null, null);
+        var before = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT.minusMinutes(1), null, null);
+
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, same), ErrorCode.VALIDATION_FAILED);
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, before), ErrorCode.VALIDATION_FAILED);
+        verify(teamMemberService, never()).ensureActiveMember(any(), any());
+    }
+
+    // ---------- 합주 수정 ----------
+
+    @Test
+    @DisplayName("합주 수정: 작성자는 보낸 값으로 전체를 바꾼다(비운 장소·메모는 null이 된다)")
+    void update_replacesAllFields_forCreator() {
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        given(teamMemberService.getNames(List.of(TEAM_ID))).willReturn(Map.of(TEAM_ID, "무명밴드"));
+        given(userService.getSummaries(List.of(CREATOR_ID))).willReturn(Map.of());
+        var request = new RehearsalUpdateRequest("새 제목", STARTS_AT.plusDays(1), ENDS_AT.plusDays(1), null, null);
+
+        RehearsalDetailResponse response = rehearsalService.update(CREATOR_ID, REHEARSAL_ID, request);
+
+        assertThat(existing.getTitle()).isEqualTo("새 제목");
+        assertThat(existing.getStartsAt()).isEqualTo(STARTS_AT.plusDays(1));
+        assertThat(existing.getPlace()).isNull();
+        assertThat(existing.getMemo()).isNull();
+        assertThat(response.title()).isEqualTo("새 제목");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 작성자가 아니어도 팀장이면 고칠 수 있다")
+    void update_allows_leader() {
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        given(teamMemberService.isLeader(TEAM_ID, LEADER_ID)).willReturn(true);
+        given(teamMemberService.getNames(List.of(TEAM_ID))).willReturn(Map.of(TEAM_ID, "무명밴드"));
+        given(userService.getSummaries(List.of(CREATOR_ID))).willReturn(Map.of());
+        var request = new RehearsalUpdateRequest("팀장이 수정", STARTS_AT, ENDS_AT, "홍대", null);
+
+        rehearsalService.update(LEADER_ID, REHEARSAL_ID, request);
+
+        assertThat(existing.getTitle()).isEqualTo("팀장이 수정");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 작성자도 팀장도 아닌 팀원은 NO_PERMISSION이고 값이 바뀌지 않는다")
+    void update_rejects_otherMember() {
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        given(teamMemberService.isLeader(TEAM_ID, MEMBER_ID)).willReturn(false);
+        var request = new RehearsalUpdateRequest("새 제목", STARTS_AT, ENDS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.update(MEMBER_ID, REHEARSAL_ID, request), ErrorCode.NO_PERMISSION);
+        assertThat(existing.getTitle()).isEqualTo("옛 제목");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 없는 합주는 REHEARSAL_NOT_FOUND, 팀원이 아니면 작성자 확인 전에 NO_PERMISSION이다")
+    void update_rejects_unknownRehearsal_andNonMember() {
+        var request = new RehearsalUpdateRequest("새 제목", STARTS_AT, ENDS_AT, null, null);
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.empty());
+        assertErrorCode(() -> rehearsalService.update(MEMBER_ID, REHEARSAL_ID, request), ErrorCode.REHEARSAL_NOT_FOUND);
+
+        Rehearsal existing = rehearsal(42L, TEAM_ID, "합주");
+        given(rehearsalRepository.findById(42L)).willReturn(Optional.of(existing));
+        givenNotMember(TEAM_ID, CREATOR_ID);
+        assertErrorCode(() -> rehearsalService.update(CREATOR_ID, 42L, request), ErrorCode.NO_PERMISSION);
+        assertThat(existing.getTitle()).isEqualTo("합주");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 종료가 시작보다 늦지 않으면 VALIDATION_FAILED이고 합주를 조회하지 않는다")
+    void update_rejects_endNotAfterStart() {
+        var request = new RehearsalUpdateRequest("합주", STARTS_AT, STARTS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.update(CREATOR_ID, REHEARSAL_ID, request), ErrorCode.VALIDATION_FAILED);
+        verify(rehearsalRepository, never()).findById(any());
+    }
+
+    // ---------- 합주 삭제 ----------
+
+    @Test
+    @DisplayName("합주 삭제: 작성자나 팀장은 지울 수 있고 삭제한 id를 돌려준다")
+    void delete_allows_creatorAndLeader() {
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "합주");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        given(teamMemberService.isLeader(TEAM_ID, LEADER_ID)).willReturn(true);
+
+        DeleteResponse byCreator = rehearsalService.delete(CREATOR_ID, REHEARSAL_ID);
+        DeleteResponse byLeader = rehearsalService.delete(LEADER_ID, REHEARSAL_ID);
+
+        assertThat(byCreator).isEqualTo(DeleteResponse.of(REHEARSAL_ID));
+        assertThat(byLeader).isEqualTo(DeleteResponse.of(REHEARSAL_ID));
+        verify(rehearsalRepository, times(2)).delete(existing);
+    }
+
+    @Test
+    @DisplayName("합주 삭제: 작성자도 팀장도 아닌 팀원은 NO_PERMISSION이고 지우지 않는다")
+    void delete_rejects_otherMember() {
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(rehearsal(REHEARSAL_ID, TEAM_ID, "합주")));
+        given(teamMemberService.isLeader(TEAM_ID, MEMBER_ID)).willReturn(false);
+
+        assertErrorCode(() -> rehearsalService.delete(MEMBER_ID, REHEARSAL_ID), ErrorCode.NO_PERMISSION);
+        verify(rehearsalRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("합주 삭제: 없는 합주는 REHEARSAL_NOT_FOUND, 팀원이 아니면 NO_PERMISSION이다")
+    void delete_rejects_unknownRehearsal_andNonMember() {
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.empty());
+        assertErrorCode(() -> rehearsalService.delete(MEMBER_ID, REHEARSAL_ID), ErrorCode.REHEARSAL_NOT_FOUND);
+
+        given(rehearsalRepository.findById(42L)).willReturn(Optional.of(rehearsal(42L, TEAM_ID, "합주")));
+        givenNotMember(TEAM_ID, CREATOR_ID);
+        assertErrorCode(() -> rehearsalService.delete(CREATOR_ID, 42L), ErrorCode.NO_PERMISSION);
+        verify(rehearsalRepository, never()).delete(any());
     }
 }
