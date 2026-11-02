@@ -78,12 +78,16 @@ public class PerformanceService {
 
     /**
      * 모임장만 고친다. ensureOwner를 통과했으니 요청자가 곧 모임장이다 — 역할을 다시 묻지 않는다.
-     * 공연 일시를 지난 시각으로 바꾸는 것은 막지만, 일시를 그대로 두면 이미 지난 공연도 고칠 수 있다.
+     * 끝난 공연(종료·취소)은 고칠 수 없다(INVALID_STATE) — 끝난 공연은 기록이라 상태·팀·셋리스트와 같이 막는다.
+     * 공연 일시를 지난 시각으로 바꾸는 것은 막지만, 일시를 그대로 두면 일시가 지났어도 아직 끝나지 않은 공연은 고칠 수 있다.
      */
     @Transactional
     public PerformanceDetailResponse update(Long userId, Long performanceId, PerformanceUpdateRequest request) {
         Performance performance = getPerformanceOrThrow(performanceId);
         groupMemberService.ensureOwner(performance.getGroupId(), userId);
+        if (performance.isFinished()) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
         ensureFutureWhenRescheduled(performance, request.performedAt());
         performance.update(request.title(), request.description(), request.performedAt(), request.venue(),
                 request.posterImage());

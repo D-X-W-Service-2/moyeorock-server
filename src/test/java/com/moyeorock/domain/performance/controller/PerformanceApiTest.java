@@ -296,6 +296,19 @@ class PerformanceApiTest {
     }
 
     @Test
+    @DisplayName("종료한 공연은 정보를 고칠 수 없다 — 409 INVALID_STATE")
+    void update_afterDone_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}").andExpect(status().isOk());
+
+        updatePerformance(ownerId, performanceId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        getDetail(memberId, performanceId)
+                .andExpect(jsonPath("$.data.title").value("2026 정기공연"));
+    }
+
+    @Test
     @DisplayName("상태 값이 없거나 ERD에 없는 값(노션의 ENDED 등)이면 400 VALIDATION_FAILED다")
     void changeStatus_withInvalidStatus_returns400() throws Exception {
         long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);

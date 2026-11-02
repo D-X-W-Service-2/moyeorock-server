@@ -107,7 +107,7 @@ performances.status = DONE 또는 CANCELED
   └─ teams.status = DISBANDED   ← 여기까지만 실제 UPDATE
 ```
 
-끝난 공연(`DONE`·`CANCELED`)은 다른 상태로 되돌릴 수 없다(`409 INVALID_STATE`). 팀이 이미 해체돼서 되돌려도 팀이 돌아오지 않기 때문이다(2026-11-01, 이슈 #88).
+끝난 공연(`DONE`·`CANCELED`)은 다른 상태로 되돌릴 수 없다(`409 INVALID_STATE`). 팀이 이미 해체돼서 되돌려도 팀이 돌아오지 않기 때문이다(2026-11-01, 이슈 #88). 공연 정보 수정·공연 내 팀 생성도 같은 409로 막는다 — 끝난 공연은 기록이다(수정은 2026-11-03, PR #104 리뷰). 행을 잠그지 않고 쓰기 메서드마다 `Performance.isFinished()`를 검증한다.
 
 `team_members` `rehearsals` `join_requests`는 **바꾸지 않는다.** 팀이 `DISBANDED`면 조회에서 걸러지기 때문이다.
 

@@ -279,6 +279,21 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("끝난 공연(DONE·CANCELED)은 고칠 수 없다(INVALID_STATE) — 값은 그대로다")
+    void update_throws_whenFinished() {
+        Performance performance = givenPerformance();
+
+        for (PerformanceStatus finished : List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED)) {
+            performance.changeStatus(finished);
+            assertThatThrownBy(() -> performanceService.update(OWNER_ID, PERFORMANCE_ID, updateRequest()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_STATE);
+        }
+        assertThat(performance.getTitle()).isEqualTo("2026 정기공연");
+    }
+
+    @Test
     @DisplayName("공연 일시를 지난 시각으로 바꾸면 VALIDATION_FAILED이고 값은 그대로다")
     void update_throws_whenRescheduledToPast() {
         Performance performance = givenPerformance();
@@ -294,7 +309,7 @@ class PerformanceServiceTest {
     }
 
     @Test
-    @DisplayName("일시를 그대로 두면 이미 지난 공연도 고칠 수 있다")
+    @DisplayName("일시를 그대로 두면 일시가 지났어도 끝나지 않은 공연은 고칠 수 있다")
     void update_allowsPastPerformance_whenPerformedAtUnchanged() {
         Performance performance = givenPerformance(PAST);
         givenDetailParts();
