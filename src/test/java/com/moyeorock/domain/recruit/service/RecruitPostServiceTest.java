@@ -265,11 +265,22 @@ class RecruitPostServiceTest {
     @DisplayName("현재 팀장이 조회하면 canEdit=true, 아니면 false다 (작성자라도 팀장이 아니면 false)")
     void getDetail_canEdit_dependsOnCurrentLeader() {
         stubFind(existingPost(RecruitStatus.OPEN));
+        when(teamService.getSummaries(List.of(5L))).thenReturn(Map.of(5L, teamSummary(5L)));
         when(teamMemberService.isLeader(5L, OTHER_USER_ID)).thenReturn(true);
         when(teamMemberService.isLeader(5L, AUTHOR_ID)).thenReturn(false);
 
         assertThat(recruitPostService.getDetail(OTHER_USER_ID, 10L).canEdit()).isTrue();
         assertThat(recruitPostService.getDetail(AUTHOR_ID, 10L).canEdit()).isFalse();
+    }
+
+    @Test
+    @DisplayName("해체돼 요약에서 빠진 팀은 팀장 행이 남아 있어도 canEdit=false다 — isLeader는 해체 여부를 보지 않는다")
+    void getDetail_canEdit_falseWhenTeamDisbanded() {
+        stubFind(existingPost(RecruitStatus.OPEN));
+        when(teamService.getSummaries(List.of(5L))).thenReturn(Map.of());
+
+        assertThat(recruitPostService.getDetail(AUTHOR_ID, 10L).canEdit()).isFalse();
+        verify(teamMemberService, never()).isLeader(any(), any());
     }
 
     @Test

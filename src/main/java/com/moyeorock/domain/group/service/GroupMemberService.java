@@ -120,14 +120,6 @@ public class GroupMemberService {
                 () -> groupMemberRepository.save(GroupMember.create(groupId, userId, GroupRole.MEMBER)));
     }
 
-    /**
-     * 요청자가 이 모임의 활동 중인 모임원인지. 없거나 해체된 모임이면 {@code false}다.
-     * 막지 않고 답만 한다 — 가입 신청·초대의 "이미 소속" 판단에 쓴다. 막아야 하면 {@link #ensureActiveMember}다.
-     */
-    public boolean isActiveMember(Long groupId, Long userId) {
-        return groupMemberRepository.findActiveMember(groupId, userId).isPresent();
-    }
-
     public void ensureOwner(Long groupId, Long userId) {
         ensureGroupExists(groupId);
         getOwnerOrThrow(groupId, userId);
@@ -159,6 +151,14 @@ public class GroupMemberService {
         return groupMemberRepository.findActiveMember(groupId, userId)
                 .filter(GroupMember::isOwner)
                 .isPresent();
+    }
+
+    /**
+     * 활동 모임원인지. 모임원이 아니거나 해체된 모임이면 {@code false}다. 막지 않고 답만 한다 —
+     * 다른 도메인이 자기 에러로 막을 때 쓴다(공연 팀원 확인, #96). 모임 쪽 에러로 막아야 하면 {@link #ensureActiveMember}다.
+     */
+    public boolean isActiveMember(Long groupId, Long userId) {
+        return groupMemberRepository.findActiveMember(groupId, userId).isPresent();
     }
 
     /** 모임원이 아니면(해체된 모임 포함) {@code NOT_GROUP_MEMBER}. 모임 상세의 {@code myRole}에 쓴다. */

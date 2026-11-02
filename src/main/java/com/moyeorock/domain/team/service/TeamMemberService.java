@@ -40,18 +40,6 @@ public class TeamMemberService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_TEAM_LEADER));
     }
 
-    /**
-     * 요청자가 이 팀의 현재 팀장인지. 없는 팀·해체된 팀·팀원이 아닌 경우는 {@code false}다.
-     * 막지 않고 답만 한다 — 공고 상세의 {@code canEdit}처럼 화면 표시에 쓴다. 막아야 하면 {@link #ensureLeader}다.
-     */
-    public boolean isLeader(Long teamId, Long userId) {
-        return teamRepository.findById(teamId)
-                .filter(team -> team.getStatus() == TeamStatus.ACTIVE)
-                .flatMap(team -> teamMemberRepository.findByTeamIdAndUserId(teamId, userId))
-                .filter(m -> m.getStatus() == MemberStatus.ACTIVE && m.getRole() == TeamRole.LEADER)
-                .isPresent();
-    }
-
     /** 팀장의 user id. 없는 팀이나 해체된 팀은 TEAM_NOT_FOUND다. 알림 수신자를 정할 때 쓴다(3팀). */
     public Long getLeaderId(Long teamId) {
         getActiveTeam(teamId);
@@ -83,6 +71,16 @@ public class TeamMemberService {
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId)
                 .filter(m -> m.getStatus() == MemberStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NO_PERMISSION));
+    }
+
+    /**
+     * 활동 중인 팀장인지 여부만 돌려준다. ensureLeader와 달리 예외를 던지지 않아서, 화면에 보여줄 권한 표시
+     * (예: 합주 상세의 canEdit)를 계산할 때 쓴다. 팀의 존재·해체 여부는 보지 않으니 필요하면 ensure 메서드를 먼저 부른다.
+     */
+    public boolean isLeader(Long teamId, Long userId) {
+        return teamMemberRepository.findByTeamIdAndUserId(teamId, userId)
+                .filter(m -> m.getStatus() == MemberStatus.ACTIVE && m.getRole() == TeamRole.LEADER)
+                .isPresent();
     }
 
     /**
