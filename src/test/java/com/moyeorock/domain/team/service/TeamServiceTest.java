@@ -290,14 +290,17 @@ class TeamServiceTest {
     }
 
     @Test
-    @DisplayName("팀원 변경: 대상이 팀원이 아니거나 이미 나간 사람이면 INVALID_STATE")
-    void changeMember_targetNotActive_isInvalidState() {
+    @DisplayName("팀원 변경: 대상이 팀원이 아니거나 이미 나간 사람이면 TEAM_MEMBER_NOT_FOUND")
+    void changeMember_targetNotActive_isMemberNotFound() {
         givenTeam(team());
         givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
         givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+        givenMember(99L, null);
 
         assertErrorCode(() -> teamService.changeMember(LEADER_ID, TEAM_ID, MEMBER_ID,
-                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.INVALID_STATE);
+                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+        assertErrorCode(() -> teamService.changeMember(LEADER_ID, TEAM_ID, 99L,
+                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
     }
 
     @Test
@@ -375,14 +378,27 @@ class TeamServiceTest {
     }
 
     @Test
-    @DisplayName("강퇴: 대상이 이미 나간 사람이면 INVALID_STATE")
-    void remove_targetNotActive_isInvalidState() {
+    @DisplayName("강퇴: 대상이 이미 나간 사람이거나 팀원이 아니면 TEAM_MEMBER_NOT_FOUND")
+    void remove_targetNotActive_isMemberNotFound() {
         givenTeam(team());
         givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
         givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+        givenMember(99L, null);
 
         assertErrorCode(() -> teamService.changeMemberStatus(LEADER_ID, TEAM_ID, MEMBER_ID,
-                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.INVALID_STATE);
+                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+        assertErrorCode(() -> teamService.changeMemberStatus(LEADER_ID, TEAM_ID, 99L,
+                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("탈퇴: 이미 나간 사람이 다시 탈퇴를 요청하면 TEAM_MEMBER_NOT_FOUND")
+    void leave_whenAlreadyLeft_isMemberNotFound() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+
+        assertErrorCode(() -> teamService.changeMemberStatus(MEMBER_ID, TEAM_ID, MEMBER_ID,
+                new TeamMemberStatusUpdateRequest(MemberStatus.LEFT)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
     }
 
     @Test

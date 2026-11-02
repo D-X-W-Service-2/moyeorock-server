@@ -26,6 +26,8 @@ public enum ErrorCode {
     TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 팀입니다."),
     NOT_TEAM_LEADER(HttpStatus.FORBIDDEN, "팀장만 가능합니다."),
     LEADER_MUST_DELEGATE_FIRST(HttpStatus.CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
+    // 모임의 GROUP_MEMBER_NOT_FOUND(404)와 같은 상황이라 프론트가 둘을 같게 다룰 수 있도록 맞췄다(PR #86 리뷰)
+    TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),

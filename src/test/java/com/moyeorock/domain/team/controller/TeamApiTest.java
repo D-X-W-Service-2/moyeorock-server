@@ -187,6 +187,19 @@ class TeamApiTest {
     }
 
     @Test
+    @DisplayName("팀원이 아닌 사람을 강퇴하거나 역할을 바꾸려 하면 404 TEAM_MEMBER_NOT_FOUND다")
+    void targetNotInTeam_returns404() throws Exception {
+        long teamId = createTeam(LEADER_ID);
+
+        send(patch("/v1/teams/" + teamId + "/members/99/status"), LEADER_ID, "{\"status\":\"REMOVED\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TEAM_MEMBER_NOT_FOUND"));
+        send(patch("/v1/teams/" + teamId + "/members/99"), LEADER_ID, "{\"role\":\"LEADER\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TEAM_MEMBER_NOT_FOUND"));
+    }
+
+    @Test
     @DisplayName("팀장이 팀원을 강퇴하면 REMOVED이고, 팀원이 강퇴를 시도하면 403이다")
     void remove_byLeaderOk_byMemberForbidden() throws Exception {
         long teamId = createTeam(LEADER_ID);

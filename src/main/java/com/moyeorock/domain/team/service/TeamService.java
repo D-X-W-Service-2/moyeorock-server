@@ -269,11 +269,11 @@ public class TeamService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_TEAM_LEADER));
     }
 
-    // 팀원이 아니거나 이미 탈퇴·강퇴된 대상은 INVALID_STATE로 처리한다.
+    // 팀원이 아니거나 이미 탈퇴·강퇴된 대상은 TEAM_MEMBER_NOT_FOUND(404)로 처리한다.
     private TeamMember getActiveMember(Long teamId, Long userId) {
         return teamMemberRepository.findByTeamIdAndUserId(teamId, userId)
                 .filter(m -> m.getStatus() == MemberStatus.ACTIVE)
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_STATE));
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_MEMBER_NOT_FOUND));
     }
 
     // 새 팀과 장르, 팀장 팀원을 저장하고 상세를 만든다. create와 createForPerformance가 함께 쓴다.
