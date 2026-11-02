@@ -148,11 +148,16 @@ public class RecruitPostService {
         }
     }
 
-    /** 막지 않고 답만 할 때(canEdit 표시용). 해체된 대상이나 권한이 없으면 false다. */
-    private boolean canManage(RecruitPost post, Long userId) {
-        return post.getTargetType() == TargetType.TEAM
-                ? teamMemberService.isLeader(post.getTargetId(), userId)
-                : groupMemberService.isOwner(post.getTargetId(), userId);
+    /**
+     * 막지 않고 답만 할 때(canEdit 표시용). 해체된 대상이나 권한이 없으면 false다.
+     * {@code TeamMemberService.isLeader}는 팀이 해체됐는지 보지 않으므로(해체해도 팀장 행은 ACTIVE로 남는다),
+     * 팀 요약 조회({@code teams})에 팀이 있는지로 활동 중인 팀인지 먼저 거른다.
+     */
+    private boolean canManage(RecruitPost post, Long userId, Map<Long, TeamSummaryResponse> teams) {
+        if (post.getTargetType() == TargetType.TEAM) {
+            return teams.containsKey(post.getTargetId()) && teamMemberService.isLeader(post.getTargetId(), userId);
+        }
+        return groupMemberService.isOwner(post.getTargetId(), userId);
     }
 
     private RecruitPostDetailResponse toDetail(RecruitPost post, Long viewerId) {
@@ -165,7 +170,7 @@ public class RecruitPostService {
         if (post.getTargetGroupId() != null) {
             findGroupBrief(post.getTargetGroupId()).ifPresent(brief -> groups.put(post.getTargetGroupId(), brief));
         }
-        return RecruitPostDetailResponse.of(post, targetOf(post, teams, groups), author, canManage(post, viewerId));
+        return RecruitPostDetailResponse.of(post, targetOf(post, teams, groups), author, canManage(post, viewerId, teams));
     }
 
     private RecruitPostTargetResponse targetOf(RecruitPost post, Map<Long, TeamSummaryResponse> teams,
