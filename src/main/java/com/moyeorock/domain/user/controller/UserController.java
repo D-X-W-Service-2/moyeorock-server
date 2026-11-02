@@ -4,6 +4,7 @@ import com.moyeorock.domain.user.dto.request.OnboardingCreateRequest;
 import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
 import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.UserActivityResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserProfileResponse;
@@ -30,8 +31,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * user Phase 1 7개 + Phase 2 타인 프로필(api-spec.md §1). 전부 로그인 필수. 토큰 없으면 필터에서 401.
- * Service 호출과 {@code ApiResponse} 감싸기만 한다. 내 활동(/me/activities)은 이슈 #90 2단계.
+ * user 9개(api-spec.md §1, Phase 1 7개 + Phase 2 내 활동·타인 프로필). 전부 로그인 필수. 토큰 없으면 필터에서 401.
+ * Service 호출과 {@code ApiResponse} 감싸기만 한다. Phase 2 두 개는 {@code UserActivityService}(이슈 #90).
  * 온보딩 등록은 재호출이 멱등이라(값만 갱신) 201이 아니라 200이다.
  */
 @RestController
@@ -80,6 +81,13 @@ public class UserController {
     public ApiResponse<PageResponse<UserSummaryResponse>> search(@RequestParam(required = false) String nickname,
             @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(userService.search(nickname, pageable));
+    }
+
+    /** 세 목록(teams·groups·performances)을 한 번에 돌려준다. groups·performances는 4팀 메서드(이슈 #95)가 붙기 전까지 빈 목록이다. */
+    @Operation(summary = "내 활동")
+    @GetMapping("/me/activities")
+    public ApiResponse<UserActivityResponse> getActivities(@AuthUser Long userId) {
+        return ApiResponse.success(userActivityService.getActivities(userId));
     }
 
     /**

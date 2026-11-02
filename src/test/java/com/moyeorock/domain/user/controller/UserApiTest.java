@@ -12,10 +12,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,8 +34,9 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * user Phase 1 7개 + Phase 2 타인 프로필을 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
+ * user Phase 1 7개 + Phase 2 내 활동·타인 프로필을 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
  * 사용자는 Repository로 바로 만들고 토큰은 {@code JwtProvider}로 발급한다(RecruitPostApiTest 선례).
+ * 팀 활동 재료는 2팀 {@code TeamService.create}로 만든다. 남의 Repository·Entity는 테스트에서도 만지지 않는다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
 @SpringBootTest
@@ -53,9 +60,18 @@ class UserApiTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TeamService teamService;
+
     private long saveUser(String email, String nickname) {
         return userRepository.saveAndFlush(
                 User.signupWithEmail(email, "hash", nickname, LocalDateTime.of(2026, 9, 29, 10, 0))).getId();
+    }
+
+    /** userId가 팀장(LEADER)·BASS로 들어간 팀 하나를 만들고 팀 id를 돌려준다. */
+    private long createTeam(long userId, String name) {
+        return teamService.create(userId,
+                new TeamCreateRequest(name, null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
     }
 
     private String bearer(long userId) {
@@ -79,6 +95,47 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/search").param("nickname", "서")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/nickname/check").param("nickname", "서준")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(BASE + "/me/activities")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("내 활동은 200이며 속한 팀이 없으면 세 목록 모두 빈 배열이다(null 아님)")
+    void getActivities_noTeams_returnsEmptyLists() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.teams", hasSize(0)))
+                .andExpect(jsonPath("$.data.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.performances", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 만든 팀이 팀 요약 + 내 역할(LEADER)·악기로 담긴다. groups·performances는 4팀 메서드 전이라 빈 배열이다")
+    void getActivities_withTeam_returnsMembership() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long teamId = createTeam(me, "무명밴드");
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams", hasSize(1)))
+                .andExpect(jsonPath("$.data.teams[0].team.id").value(teamId))
+                .andExpect(jsonPath("$.data.teams[0].team.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.teams[0].team.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.teams[0].team.memberCount").value(1))
+                .andExpect(jsonPath("$.data.teams[0].role").value("LEADER"))
+                .andExpect(jsonPath("$.data.teams[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.performances", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("내 활동: 토큰의 사용자가 없으면(탈퇴 등) 다른 /me와 같이 404 USER_NOT_FOUND다")
+    void getActivities_unknownUser_returns404() throws Exception {
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(999_999L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
     @Test
@@ -267,11 +324,12 @@ class UserApiTest {
     }
 
     @Test
-    @DisplayName("타인 프로필 조회는 200이며 본인 전용 필드(email·isRecommendable)가 없고, 세션에 id가 없으며, activities는 2단계 전이라 null이다")
+    @DisplayName("타인 프로필 조회는 200이며 본인 전용 필드(email·isRecommendable)가 없고, 세션에 id가 없으며, 공개 사용자는 activities에 팀 활동이 담긴다")
     void getProfile_returnsPublicFieldsOnly() throws Exception {
         long me = saveUser("me@example.com", "조회자");
         long target = saveUser("minseo@example.com", "임시민서");
         onboard(target, ONBOARDING_BODY).andExpect(status().isOk());
+        long teamId = createTeam(target, "무명밴드");
 
         mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
                 .andExpect(status().isOk())
@@ -285,8 +343,11 @@ class UserApiTest {
                 .andExpect(jsonPath("$.data.instruments[0].level").value("NOVICE"))
                 .andExpect(jsonPath("$.data.instruments[0]", not(hasKey("id"))))
                 .andExpect(jsonPath("$.data.isActivityPublic").value(true))
-                .andExpect(jsonPath("$.data", hasKey("activities")))
-                .andExpect(jsonPath("$.data.activities").value(nullValue()))
+                .andExpect(jsonPath("$.data.activities.teams", hasSize(1)))
+                .andExpect(jsonPath("$.data.activities.teams[0].team.id").value(teamId))
+                .andExpect(jsonPath("$.data.activities.teams[0].role").value("LEADER"))
+                .andExpect(jsonPath("$.data.activities.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.activities.performances", hasSize(0)))
                 .andExpect(jsonPath("$.data.createdAt").exists())
                 .andExpect(jsonPath("$.data", not(hasKey("email"))))
                 .andExpect(jsonPath("$.data", not(hasKey("isRecommendable"))))
@@ -295,16 +356,18 @@ class UserApiTest {
     }
 
     @Test
-    @DisplayName("타인 프로필: 활동 비공개로 바꾼 사용자는 isActivityPublic=false, activities=null로 내려간다")
+    @DisplayName("타인 프로필: 활동 비공개로 바꾼 사용자는 팀이 있어도 isActivityPublic=false, activities=null로 내려간다(빈 목록 아님)")
     void getProfile_privateActivity() throws Exception {
         long me = saveUser("me@example.com", "조회자");
         long target = saveUser("minseo@example.com", "민서");
+        createTeam(target, "비공개밴드");
         putJson("/me", target, "{\"nickname\":\"민서\",\"isRecommendable\":true,\"isActivityPublic\":false}")
                 .andExpect(status().isOk());
 
         mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.isActivityPublic").value(false))
+                .andExpect(jsonPath("$.data", hasKey("activities")))
                 .andExpect(jsonPath("$.data.activities").value(nullValue()));
     }
 
