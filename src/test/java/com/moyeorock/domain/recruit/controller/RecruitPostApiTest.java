@@ -145,11 +145,13 @@ class RecruitPostApiTest {
     }
 
     @Test
-    @DisplayName("계산할 수 없는 appliedCount는 0이 아니라 null로 내려간다")
-    void create_returnsNullAppliedCount_whenUnknown() throws Exception {
+    @DisplayName("신청이 없는 새 공고는 세션별 appliedCount가 0이고 myJoinRequest는 null이다")
+    void create_returnsZeroAppliedCount_andNullMyJoinRequest() throws Exception {
         createPost(authorId, teamBody())
-                .andExpect(jsonPath("$.data.wantedSlots[0]", hasKey("appliedCount")))
-                .andExpect(jsonPath("$.data.wantedSlots[0].appliedCount").value(nullValue()));
+                .andExpect(jsonPath("$.data.wantedSlots[0].appliedCount").value(0))
+                .andExpect(jsonPath("$.data.wantedSlots[1].appliedCount").value(0))
+                .andExpect(jsonPath("$.data", hasKey("myJoinRequest")))
+                .andExpect(jsonPath("$.data.myJoinRequest").value(nullValue()));
     }
 
     @Test
