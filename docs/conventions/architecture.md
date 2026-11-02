@@ -111,11 +111,9 @@ performances.status = DONE
 
 대신 **팀을 참조하는 조회에는 `teams.status = 'ACTIVE'` 조건이 반드시 들어가야 한다.** 이 조건이 빠지면 해체된 팀이 목록·활동·대시보드에 남는다. 팀 조회는 `TeamRepository`의 정해진 메서드를 통해서만 한다.
 
-Hard delete는 기본적으로 3곳이다 — 합주, 공지, 북마크.
+Hard delete는 5곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`). 뒤의 둘은 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다.
 
-**예외 하나: 팀을 개별로 해체할 때는 그 팀이 고른 곡(`team_songs` 행)도 함께 지운다**(`SetlistService.deleteByTeam`, 4팀 결정 2026-10-31). 행을 남기면 해체된 팀이 곡을 계속 쥐고 있어서 다른 팀이 그 곡을 고를 수 없기 때문이다. 팀 해체와 같은 트랜잭션 안에서 지운다.
-
-공연 종료(`DONE`)로 팀이 한꺼번에 해체될 때는 **지우지 않는다.** 끝난 공연의 셋리스트 기록을 남겨야 하기 때문이다. 위 공연 종료 예시가 `teams.status`까지만 바꾸는 이유도 이것이다.
+**예외 — 팀 개별 해체 시 그 팀의 셋리스트·선택곡 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행과 그 팀의 `team_songs` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`는 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없다. `team_songs`는 남아 있으면 다른 팀에게 "다른 팀이 이미 골랐어요"가 계속 뜨는데, setlist 도메인은 팀 상태를 직접 볼 수 없어(CLAUDE.md 절대 규칙 2) 해체 팀을 걸러 내기 어렵다. 공연 종료(`DONE`)로 인한 일괄 해체에서는 둘 다 지우지 않는다 — 끝난 공연의 기록을 남긴다(2026-11-02 결정, PR #87 리뷰).
 
 ## 7. 알려진 한계 (v0)
 
@@ -123,4 +121,4 @@ Hard delete는 기본적으로 3곳이다 — 합주, 공지, 북마크.
 
 **신청·초대 중복은 사전 검증으로만 막는다.** 동시 요청이 정확히 겹치면 `PENDING` 신청이 두 건 생길 수 있다. DB 유니크 제약으로 막으려면 "`PENDING`일 때만 유일" 조건이 필요한데(신청→거절→재신청이 막히면 안 되므로) 생성 컬럼 트릭이 든다. 실사용에서는 프론트의 버튼 비활성화로 대부분 막히므로 v0에서는 넣지 않는다.
 
-**확정된 셋리스트 곡의 상태는 팀이 바꿀 수 없다.** `team_songs.selected_song_id`는 `progress = SELECTED`일 때만 값을 갖는 생성 컬럼이라, 팀이 `SELECTED` → `PRACTICING`으로 바꾸면 공연 내 곡 중복 방지가 풀린다. 따라서 `PUT /v1/teams/{id}/setlist`는 **`SELECTED` 곡의 제거와 상태 변경을 모두 거부한다**(`409 SETLIST_LOCKED`). 해제는 모임장이 `PUT /v1/performances/{id}/setlist`로만 한다.
+**셋리스트가 확정되면 팀은 곡을 더 넘길 수 없다.** 확정 여부는 `performances.setlist_confirmed_at`이고, 확정 뒤 셋리스트로 넘기기(`PUT /v1/performances/{id}/setlist/teams/{teamId}`)는 `409 INVALID_STATE`다. 팀 선택곡(`PUT /v1/teams/{teamId}/songs`)은 서버가 막지 않는다 — 셋리스트는 넘길 때 복사한 행이라 선택곡을 고쳐도 확정 셋리스트가 바뀌지 않기 때문이다. 확정 뒤 곡 추가는 UI에서 막는다. 모임장은 확정 뒤에도 다시 수정·확정할 수 있고, 팀이 다시 넘기게 하려면 확정을 해제한다(`PATCH /v1/performances/{id}/setlist/unconfirm` — 확정 시각과 `sort_order`를 비운다. 끝났거나 취소된 공연은 해제할 수 없다, 2026-11-02 추가). (2026-10-30 이슈 #85로 바뀌었다 — 이전에는 `team_songs.progress = SELECTED`가 확정을 뜻해서 팀이 그 곡을 고치지 못하게 `409 SETLIST_LOCKED`로 막았다.)

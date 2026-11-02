@@ -1,6 +1,6 @@
 # 도메인 지도
 
-14개 도메인 · 17개 테이블(`files` 포함, `global/file`은 도메인 아님). 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
+14개 도메인 · 18개 테이블(`files` 포함, `global/file`은 도메인 아님. `setlists`는 2026-10-30 추가, 이슈 #85). 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
 
 > **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
 
@@ -18,9 +18,9 @@
 | `bookmark` | 3팀 | `bookmarks` | 3 |
 | `group` | 4팀 | `groups_` `group_members` | 8 |
 | `notice` | 4팀 | `group_notices` | 5 |
-| `performance` | 4팀 | `performances` | 7 |
+| `performance` | 4팀 | `performances` | 10 |
 | `song` | 4팀 | `songs` | 2 |
-| `setlist` | 4팀 | `team_songs` | 2 |
+| `setlist` | 4팀 | `team_songs` `setlists` | 1 |
 | `dashboard` | 3팀 | (없음) | 1 |
 
 > **엔드포인트 상세 명세(요청·응답 구조)는 `docs/specs/`에 있다** (`api-spec.md` · `dto-spec.md`). 정본은 노션 `API 명세서 v0`, `docs/specs/`는 대조 날짜가 명시된 스냅샷이다.
@@ -41,9 +41,12 @@
 
 **공지 목록과 상세는 별도 엔드포인트다.** 원래 명세는 목록 조회 하나로 묶여 있었지만(목록 응답에 `body`까지 포함), 팀 결정으로 `GET /v1/notices/{id}` 상세 조회를 분리 추가했다(`docs/specs/api-spec.md` §7, `docs/conventions/dto-naming.md` §8 참고). `API 초안`에도 이 엔드포인트는 없지만 팀 결정을 그대로 유지한다. 목록은 `NoticeSummaryResponse`(`body` 제외), 상세는 `NoticeDetailResponse`(`body` 포함)를 쓴다.
 
-**`setlist`가 `team_songs`를 소유한다.** `song`은 곡 마스터(`songs`)만 갖는다. `team_songs`를 쓰는 엔드포인트는 `PUT /v1/teams/{id}/setlist`와 `PUT /v1/performances/{id}/setlist` 두 개인데, **둘 다 `setlist` 도메인 소유**다. `performance`도 `team`도 `team_songs`를 직접 건드리지 않는다. `API 초안`은 후자를 공연(performance) 도메인 행으로 적었지만 소유는 바뀌지 않는다(`docs/specs/api-spec.md` §8 참고).
+**팀 선택곡과 공연 셋리스트는 다른 테이블이다(2026-10-30, 이슈 #85).** `team_songs`는 팀(독립 팀 포함)이 고른 곡, `setlists`는 공연 팀이 그중에서 넘겨 모임장이 확정하는 곡이다. **팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다** — 팀은 "선택곡", 모임·공연은 "셋리스트"다. 흐름: 팀 선택곡 저장(팀장) → 셋리스트로 넘기기(공연 팀 팀장) → 모임장이 수정 후 확정 → 팀 페이지는 확정곡을 셋리스트에서 조회.
 
-한 곳이 소유해야 하는 이유는 `UNIQUE (performance_id, selected_song_id)` 제약 때문이다. 두 서비스가 같은 테이블에 쓰면 제약 위반을 어디서 검증할지 갈린다. DTO 이름도 `SetlistConfirmRequest` · `SetlistResponse`로 통일한다(`Performance...` 접두사를 쓰지 않는다).
+- **테이블은 둘 다 `setlist` 도메인 소유**다. `song`은 곡 마스터(`songs`)만 갖는다. `performance`도 `team`도 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다
+- **엔드포인트는 나눠 갖는다.** 팀 선택곡 저장(`PUT /v1/teams/{teamId}/songs`)은 `setlist`, 공연 단위 셋리스트 4개(조회 `GET`·넘기기 `PUT .../setlist/teams/{teamId}`·확정 `PUT /v1/performances/{performanceId}/setlist`·확정 해제 `PATCH .../setlist/unconfirm`)는 `performance`가 받는다. 확정 시각(`performances.setlist_confirmed_at`)이 공연 컬럼이라 공연 존재·확정 여부·모임장을 `PerformanceService`가 확인하고, 행 처리는 `SetlistService`에 맡긴다. 반대로 하면 `PerformanceService`(상세의 셋리스트) ↔ `SetlistService`(확정 시각)가 서로 불러 순환한다(`architecture.md` §3)
+- **공연 내 같은 곡 중복은 `setlists`의 `UNIQUE(performance_id, song_id)`가 막는다.** 팀 선택곡 단계에서는 막지 않고 "다른 팀이 이미 골랐어요" 표시만 한다
+- DTO 이름은 `SetlistResponse`·`SetlistSubmitRequest`·`SetlistConfirmRequest`(공연 쪽), `TeamSongsSaveRequest`·`TeamSongsResponse`(팀 쪽)다(`dto-naming.md` §10)
 
 **`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team` 소유다.
 
@@ -78,7 +81,7 @@
 | **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 24 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 26 |
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
@@ -93,11 +96,11 @@
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가(`TeamService.addMember`). 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다(`TeamService.createForPerformance`) |
-| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandAllByPerformance`) |
+| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 내 활동의 팀 | 1팀 activity → 2팀 `TeamService` | `TeamService.findMemberships` — 내가 속한 활동 중인 팀의 요약과 내 역할·악기 |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) |
-| 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 선택곡(`team_songs` 행)을 지워 다른 팀이 고를 수 있게 한다. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
+| 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.getTeamSongs` · 공연 조회 `getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
@@ -105,9 +108,9 @@
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.
 
-**`PUT /v1/teams/{id}/setlist`는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
+**`PUT /v1/teams/{teamId}/songs`(팀 선택곡 저장)는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
 
-**AI 추천 3개는 2팀·4팀에 나뉘어 있다** — 팀원 추천(2팀), 개인 추천곡·팀 셋리스트 추천(4팀). 룰 기반이냐 외부 모델이냐를 **두 팀이 함께 결정해야 한다.** 한쪽만 폴링 방식이 되면 프론트가 두 패턴을 구현하게 된다.
+**AI 추천 3개는 2팀·4팀에 나뉘어 있다** — 팀원 추천(2팀), 개인 추천곡·팀 곡 추천(4팀). 룰 기반이냐 외부 모델이냐를 **두 팀이 함께 결정해야 한다.** 한쪽만 폴링 방식이 되면 프론트가 두 패턴을 구현하게 된다.
 
 ## 착수 순서
 

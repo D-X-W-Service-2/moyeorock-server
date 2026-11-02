@@ -202,18 +202,18 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "leader": "UserSummary",
   "memberCount": 4,
   "members": ["MemberItem"],
-  "setlist": [
+  "songs": [
     {
       "id": 21,
-      "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" },
-      "sortOrder": 1,
-      "progress": "SELECTED"
+      "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" }
     }
   ],
   "myRole": "LEADER",
   "createdAt": "2026-08-01T10:00:00"
 }
 ```
+
+- `songs`는 **팀 선택곡**이다(`TeamSongResponse`). 2026-10-30에 `setlist`(`sortOrder`·`progress` 포함)에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85, 노션도 수정). 공연 셋리스트로 넘긴 곡·확정곡은 공연 셋리스트 조회(§8)로 본다
 
 ### TeamUpdateRequest
 
@@ -705,7 +705,43 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-### PerformanceSetlistUpdateRequest
+### SetlistResponse
+
+공연 셋리스트 조회·넘기기·확정·확정 해제 공통 응답(2026-10-30, 이슈 #85). 이전 이름 `PerformanceSetlistResponse`.
+
+```json
+{
+  "performanceId": 7,
+  "confirmed": true,
+  "setlist": [
+    {
+      "teamId": 5,
+      "teamName": "무명밴드",
+      "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" },
+      "sortOrder": 1
+    }
+  ]
+}
+```
+
+- `confirmed`는 `performances.setlist_confirmed_at`이 있는지다
+- 확정 전(또는 확정 해제 뒤)에는 팀들이 넘긴 곡 전체(팀별·넘긴 순, `sortOrder`는 `null`), 확정 후에는 확정곡만(`sortOrder` 순)
+- `setlist[]` 항목은 `SetlistItemResponse`(setlist 도메인)다. 팀이 해체돼도 `teamName`은 나온다 — 끝난 공연의 셋리스트를 남기기 때문이다
+
+### SetlistSubmitRequest
+
+셋리스트로 넘기기(`PUT /v1/performances/{performanceId}/setlist/teams/{teamId}`). 신규.
+
+```json
+{ "songIds": [88, 91] }
+```
+
+- 그 팀의 선택곡 안에서 고른다(전체도 가능). 그 팀이 이전에 넘긴 곡 전체를 바꾸고, 빈 목록이면 넘긴 곡을 모두 뺀다
+- 선택곡에 없는 곡, 같은 공연의 다른 팀이 이미 넘긴 곡, 이미 확정된 셋리스트는 409
+
+### SetlistConfirmRequest
+
+공연 셋리스트 확정(`PUT /v1/performances/{performanceId}/setlist`). 이전 이름 `PerformanceSetlistUpdateRequest`. 노션도 2026-11-02에 `SetlistUpdateRequest`에서 이 이름으로 맞췄다(`dto-naming.md` §9).
 
 ```json
 {
@@ -717,21 +753,15 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-### PerformanceSetlistResponse
+- 팀들이 넘긴 곡만 넣을 수 있다(아니면 409 `SONG_NOT_TEAM_CANDIDATE`). 요청에 없는 곡은 셋리스트에서 빠진다
+- 확정된 뒤에도 다시 수정·확정할 수 있다. 팀이 다시 넘기게 하려면 확정을 해제한다(아래)
 
-```json
-{
-  "performanceId": 7,
-  "setlist": [
-    {
-      "teamId": 5,
-      "teamName": "무명밴드",
-      "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" },
-      "sortOrder": 1
-    }
-  ]
-}
-```
+### 공연 셋리스트 확정 해제
+
+`PATCH /v1/performances/{performanceId}/setlist/unconfirm` — **요청 바디가 없다.** 응답은 `SetlistResponse`(`confirmed`는 `false`). 2026-11-02 추가(PR #87 리뷰).
+
+- 모임장만 한다. `performances.setlist_confirmed_at`을 NULL로, 셋리스트 행의 `sort_order`를 NULL로 되돌린다. 셋리스트에 남아 있던 곡은 그대로 두고, 팀은 다시 넘길 수 있다
+- 확정되지 않은 셋리스트, 끝났거나 취소된 공연(`DONE`·`CANCELED`)은 409 `INVALID_STATE` — 끝난 공연의 셋리스트는 기록이다
 
 ## §9. 노래 (song) · 셋리스트 (setlist)
 
@@ -780,35 +810,34 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
       },
       "score": 0.87,
       "reasons": ["팀 장르 일치: ROCK", "보컬 실력 충족", "드럼 난이도 초과"],
-      "alreadyInSetlist": false
+      "selectedByOtherTeam": false
     }
   ]
 }
 ```
 
-### TeamSetlistUpdateRequest
+- `selectedByOtherTeam`은 같은 공연의 다른 팀이 이미 고른 곡인지다("다른 팀이 이미 선택했어요" 표시). 독립 팀이면 항상 `false`. 2026-10-30에 `alreadyInSetlist`에서 이름을 바꿨다(이슈 #85, 노션도 수정)
+
+### TeamSongsSaveRequest
+
+팀 선택곡 저장(`PUT /v1/teams/{teamId}/songs`). 이전 이름 `TeamSetlistUpdateRequest`.
 
 ```json
-{
-  "items": [
-    { "songId": 88, "sortOrder": 1, "progress": "PRACTICING" },
-    { "songId": 91, "sortOrder": 2, "progress": "CANDIDATE" }
-  ]
-}
+{ "songIds": [88, 91] }
 ```
 
-### TeamSetlistResponse
+- 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제). `sortOrder`·`progress`는 2026-10-30에 없앴다 — 순서는 공연 셋리스트에서만 정한다
+
+### TeamSongsResponse
+
+이전 이름 `TeamSetlistResponse`.
 
 ```json
 {
   "teamId": 5,
-  "setlist": [
-    {
-      "id": 21,
-      "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" },
-      "sortOrder": 1,
-      "progress": "PRACTICING"
-    }
+  "songs": [
+    { "id": 21, "song": { "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen" } },
+    { "id": 22, "song": { "id": 91, "title": "Don't Stop Me Now", "artist": "Queen" } }
   ]
 }
 ```
