@@ -1,8 +1,10 @@
 package com.moyeorock.domain.setlist.service;
 
 import com.moyeorock.domain.setlist.dto.request.TeamSongsSaveRequest;
+import com.moyeorock.domain.setlist.dto.response.SetlistItemResponse;
 import com.moyeorock.domain.setlist.dto.response.TeamSongResponse;
 import com.moyeorock.domain.setlist.dto.response.TeamSongsResponse;
+import com.moyeorock.domain.setlist.entity.Setlist;
 import com.moyeorock.domain.setlist.entity.TeamSong;
 import com.moyeorock.domain.setlist.repository.SetlistRepository;
 import com.moyeorock.domain.setlist.repository.TeamSongRepository;
@@ -14,7 +16,10 @@ import com.moyeorock.global.exception.ErrorCode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,6 +67,57 @@ public class SetlistService {
     public TeamSongsResponse getTeamSongs(Long userId, Long teamId) {
         teamMemberService.ensureActiveMember(teamId, userId);
         return new TeamSongsResponse(teamId, getTeamSongs(teamId));
+    }
+
+    // ---------- 공연 셋리스트 (PerformanceService가 공연·팀 확인 뒤 부른다) ----------
+
+    /**
+     * 공연 셋리스트 행. 확정 전에는 팀들이 넘긴 곡 전체를 팀별·넘긴 순으로, 확정 후에는 확정곡을 순서대로 준다.
+     * 팀 이름은 해체된 팀도 나온다(TeamMemberService.getNames) — 끝난 공연의 셋리스트를 남긴다.
+     */
+    public List<SetlistItemResponse> getSetlist(Long performanceId, boolean confirmed) {
+        List<Setlist> rows = confirmed
+                ? setlistRepository.findAllByPerformanceIdOrderBySortOrderAscIdAsc(performanceId)
+                : setlistRepository.findAllByPerformanceIdOrderByTeamIdAscIdAsc(performanceId);
+        Map<Long, String> teamNames = teamMemberService.getNames(rows.stream().map(Setlist::getTeamId).distinct().toList());
+        Map<Long, SongSummaryResponse> songs = songService.getSummaries(rows.stream().map(Setlist::getSongId).toList());
+        return rows.stream()
+                .map(row -> SetlistItemResponse.of(row, teamNames.get(row.getTeamId()), songs.get(row.getSongId())))
+                .toList();
+    }
+
+    /**
+     * 셋리스트로 넘기기 — 그 팀이 그 공연에 넘긴 곡 전체를 요청 목록으로 바꾼다. 공연·팀장·확정 여부는 부르는 쪽이 확인한다.
+     * 같은 곡 중복 VALIDATION_FAILED, 없는 곡 SONG_NOT_FOUND, 팀 선택곡에 없는 곡 SONG_NOT_SELECTED_BY_TEAM,
+     * 같은 공연의 다른 팀이 이미 넘긴 곡 SONG_ALREADY_IN_SETLIST다. 두 팀이 같은 곡을 동시에 넘기면 사전 검사를 둘 다
+     * 통과할 수 있어서, DB 유니크 위반도 같은 에러로 바꾼다(잠그지 않는 낙관적 처리, 이슈 #103).
+     */
+    @Transactional
+    public void submit(Long performanceId, Long teamId, List<Long> songIds) {
+        if (new HashSet<>(songIds).size() != songIds.size()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        if (songService.getSummaries(songIds).size() != songIds.size()) {
+            throw new BusinessException(ErrorCode.SONG_NOT_FOUND);
+        }
+        Set<Long> selected = teamSongRepository.findAllByTeamIdOrderByIdAsc(teamId).stream()
+                .map(TeamSong::getSongId)
+                .collect(Collectors.toSet());
+        if (!selected.containsAll(songIds)) {
+            throw new BusinessException(ErrorCode.SONG_NOT_SELECTED_BY_TEAM);
+        }
+        if (!songIds.isEmpty()
+                && setlistRepository.existsByPerformanceIdAndTeamIdNotAndSongIdIn(performanceId, teamId, songIds)) {
+            throw new BusinessException(ErrorCode.SONG_ALREADY_IN_SETLIST);
+        }
+
+        setlistRepository.deleteByPerformanceIdAndTeamId(performanceId, teamId);
+        try {
+            setlistRepository.saveAllAndFlush(
+                    songIds.stream().map(songId -> Setlist.create(performanceId, teamId, songId)).toList());
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.SONG_ALREADY_IN_SETLIST);
+        }
     }
 
     // ---------- 타 도메인용 ----------

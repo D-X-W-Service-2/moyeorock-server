@@ -2,8 +2,10 @@ package com.moyeorock.domain.performance.controller;
 
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
+import com.moyeorock.domain.performance.dto.response.SetlistResponse;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.global.common.dto.ApiResponse;
@@ -26,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 공연은 생성·목록만 모임 하위 경로({@code /v1/groups/{groupId}/performances})를 쓰고,
- * 단건 조회·수정은 단독 경로({@code /v1/performances/{performanceId}})를 쓴다(api-conventions.md §5).
+ * 단건 조회·수정·셋리스트는 단독 경로({@code /v1/performances/{performanceId}})를 쓴다(api-conventions.md §5).
  * 경로가 둘이라 클래스 레벨 {@code @RequestMapping}을 두지 않는다.
  */
 @RestController
@@ -67,5 +69,20 @@ public class PerformanceController {
     public ApiResponse<PerformanceDetailResponse> update(@AuthUser Long userId, @PathVariable Long performanceId,
             @Valid @RequestBody PerformanceUpdateRequest request) {
         return ApiResponse.success(performanceService.update(userId, performanceId, request));
+    }
+
+    /** 확정 전에는 팀들이 넘긴 곡 전체, 확정 후에는 확정곡만 순서대로 준다. 팀 페이지는 teamId로 걸러 확정곡을 보여준다. */
+    @Operation(summary = "공연 셋리스트 조회")
+    @GetMapping("/v1/performances/{performanceId}/setlist")
+    public ApiResponse<SetlistResponse> getSetlist(@AuthUser Long userId, @PathVariable Long performanceId) {
+        return ApiResponse.success(performanceService.getSetlist(userId, performanceId));
+    }
+
+    /** 그 팀이 넘긴 곡 전체를 바꾼다(팀 선택곡 안에서만). 확정된 뒤에는 409, 모임장이 확정을 해제하면 다시 넘길 수 있다. */
+    @Operation(summary = "셋리스트로 넘기기")
+    @PutMapping("/v1/performances/{performanceId}/setlist/teams/{teamId}")
+    public ApiResponse<SetlistResponse> submitSetlist(@AuthUser Long userId, @PathVariable Long performanceId,
+            @PathVariable Long teamId, @Valid @RequestBody SetlistSubmitRequest request) {
+        return ApiResponse.success(performanceService.submitSetlist(userId, performanceId, teamId, request));
     }
 }

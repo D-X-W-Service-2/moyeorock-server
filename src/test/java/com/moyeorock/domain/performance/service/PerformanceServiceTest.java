@@ -13,11 +13,17 @@ import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
+import com.moyeorock.domain.performance.dto.response.SetlistResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.setlist.dto.response.SetlistItemResponse;
+import com.moyeorock.domain.setlist.service.SetlistService;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.exception.BusinessException;
@@ -37,6 +43,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PerformanceServiceTest {
@@ -59,6 +66,12 @@ class PerformanceServiceTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private SetlistService setlistService;
+
+    @Mock
+    private TeamMemberService teamMemberService;
 
     @InjectMocks
     private PerformanceService performanceService;
@@ -286,6 +299,105 @@ class PerformanceServiceTest {
         verifyNoInteractions(groupMemberService);
     }
 
+    @Test
+    @DisplayName("모임원은 공연 셋리스트를 본다 — 확정 전이면 넘겨진 곡 전체 조회를 쓴다")
+    void getSetlist_returnsSubmittedSongs_forMember() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        SetlistItemResponse item = new SetlistItemResponse(5L, "무명밴드", new SongSummaryResponse(88L, "Bohemian Rhapsody", "Queen"), null);
+        when(setlistService.getSetlist(PERFORMANCE_ID, false)).thenReturn(List.of(item));
+
+        SetlistResponse response = performanceService.getSetlist(MEMBER_ID, PERFORMANCE_ID);
+
+        verify(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+        assertThat(response).isEqualTo(new SetlistResponse(PERFORMANCE_ID, false, List.of(item)));
+    }
+
+    @Test
+    @DisplayName("모임원이 아니면 공연 셋리스트를 볼 수 없고, 없는 공연이면 모임 권한도 묻지 않는다")
+    void getSetlist_throws_whenNotMemberOrMissing() {
+        givenPerformance();
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_MEMBER))
+                .when(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.getSetlist(MEMBER_ID, PERFORMANCE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
+        verifyNoInteractions(setlistService);
+    }
+
+    @Test
+    @DisplayName("공연 팀 팀장이 넘기면 행 처리를 SetlistService에 맡기고 넘긴 뒤의 셋리스트를 돌려준다")
+    void submitSetlist_delegatesToSetlistService() {
+        givenPerformanceForSubmit();
+        when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
+        when(setlistService.getSetlist(PERFORMANCE_ID, false)).thenReturn(List.of());
+
+        SetlistResponse response = performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
+                new SetlistSubmitRequest(List.of(88L)));
+
+        verify(teamMemberService).ensureLeader(5L, MEMBER_ID);
+        verify(setlistService).submit(PERFORMANCE_ID, 5L, List.of(88L));
+        assertThat(response.confirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("팀장이 아니면 넘길 수 없고 행을 건드리지 않는다")
+    void submitSetlist_throws_whenNotLeader() {
+        givenPerformanceForSubmit();
+        doThrow(new BusinessException(ErrorCode.NOT_TEAM_LEADER)).when(teamMemberService).ensureLeader(5L, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
+                new SetlistSubmitRequest(List.of(88L))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_TEAM_LEADER);
+        verifyNoInteractions(setlistService);
+    }
+
+    @Test
+    @DisplayName("이 공연 소속이 아닌 팀(독립 팀 포함)이면 TEAM_NOT_FOUND다")
+    void submitSetlist_throws_whenTeamNotInPerformance() {
+        givenPerformanceForSubmit();
+        when(teamMemberService.getPerformanceId(5L)).thenReturn(999L);
+
+        assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
+                new SetlistSubmitRequest(List.of(88L))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.TEAM_NOT_FOUND);
+        verifyNoInteractions(setlistService);
+    }
+
+    @Test
+    @DisplayName("셋리스트가 확정됐으면 넘길 수 없다(INVALID_STATE)")
+    void submitSetlist_throws_whenConfirmed() {
+        Performance performance = givenPerformanceForSubmit();
+        ReflectionTestUtils.setField(performance, "setlistConfirmedAt", LocalDateTime.now());
+        when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
+
+        assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
+                new SetlistSubmitRequest(List.of(88L))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        verifyNoInteractions(setlistService);
+    }
+
+    @Test
+    @DisplayName("없는 공연에 넘기면 PERFORMANCE_NOT_FOUND이고 팀 확인도 하지 않는다")
+    void submitSetlist_throws_whenPerformanceMissing() {
+        when(performanceRepository.findByIdForSetlistSubmit(PERFORMANCE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
+                new SetlistSubmitRequest(List.of(88L))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PERFORMANCE_NOT_FOUND);
+        verifyNoInteractions(teamMemberService, setlistService);
+    }
+
     private PerformanceCreateRequest createRequest() {
         return new PerformanceCreateRequest("2026 정기공연", "1년에 한 번 하는 정기공연입니다.", PERFORMED_AT,
                 "홍대 롤링홀", "poster.jpg");
@@ -303,6 +415,15 @@ class PerformanceServiceTest {
         Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", performedAt,
                 "홍대 롤링홀", "poster.jpg");
         when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
+        return performance;
+    }
+
+    // 넘기기는 낙관적 락 조회로 공연을 읽는다
+    private Performance givenPerformanceForSubmit() {
+        Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", PERFORMED_AT,
+                "홍대 롤링홀", null);
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        when(performanceRepository.findByIdForSetlistSubmit(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
         return performance;
     }
 

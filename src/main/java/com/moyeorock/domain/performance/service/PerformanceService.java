@@ -3,11 +3,15 @@ package com.moyeorock.domain.performance.service;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
+import com.moyeorock.domain.performance.dto.response.SetlistResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.setlist.service.SetlistService;
+import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -28,6 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>공연 상태 변경·공연 내 팀 생성과 상세의 {@code teams}·{@code myTeamIds}는 2팀 TeamService(#79)가 생긴 뒤,
  * 상세의 {@code setlist}는 셋리스트 도메인 구현 때 붙인다.
+ *
+ * <p>공연 셋리스트 엔드포인트도 여기서 받는다(domains.md "헷갈리는 경계") — 확정 시각이 공연 컬럼이라 공연·팀·확정 여부는
+ * 여기서 확인하고, 행 처리는 {@link SetlistService}에 맡긴다. 팀 확인은 다른 Service를 부르지 않는 {@link TeamMemberService}로 한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,6 +43,8 @@ public class PerformanceService {
     private final PerformanceRepository performanceRepository;
     private final GroupMemberService groupMemberService;
     private final UserService userService;
+    private final SetlistService setlistService;
+    private final TeamMemberService teamMemberService;
 
     /** 모임장만 만든다. 새 공연은 {@code PLANNED}로 시작하고, 만든 사람이 곧 모임장이라 {@code canEdit}은 true다. */
     @Transactional
@@ -82,6 +91,37 @@ public class PerformanceService {
         performance.update(request.title(), request.description(), request.performedAt(), request.venue(),
                 request.posterImage());
         return toDetail(performance, true);
+    }
+
+    /**
+     * 공연 셋리스트 조회(모임원). 확정 전에는 넘겨진 곡 전체, 확정 후에는 확정곡만 순서대로 준다. 끝난 공연도 셋리스트는 그대로다.
+     * 공연을 읽어야 모임을 알 수 있어 404가 403보다 먼저다. 다른 도메인 Service 호출이 섞인 조회라 트랜잭션을 걸지 않는다.
+     */
+    public SetlistResponse getSetlist(Long userId, Long performanceId) {
+        Performance performance = getPerformanceOrThrow(performanceId);
+        groupMemberService.ensureActiveMember(performance.getGroupId(), userId);
+        return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, performance.isSetlistConfirmed()));
+    }
+
+    /**
+     * 셋리스트로 넘기기(공연 팀 팀장). 그 팀이 이 공연에 넘긴 곡 전체를 바꾼다. 팀장이 아니면 NOT_TEAM_LEADER, 해체·없는 팀이거나
+     * 이 공연 소속이 아니면 TEAM_NOT_FOUND, 확정된 셋리스트면 INVALID_STATE다(확정 해제 뒤엔 다시 가능).
+     * 공연은 강제 증가 낙관적 락으로 읽는다 — 그사이 확정·해제가 먼저 커밋되면 커밋 때 버전이 달라 409가 된다(이슈 #103).
+     */
+    @Transactional
+    public SetlistResponse submitSetlist(Long userId, Long performanceId, Long teamId, SetlistSubmitRequest request) {
+        Performance performance = performanceRepository.findByIdForSetlistSubmit(performanceId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PERFORMANCE_NOT_FOUND));
+        teamMemberService.ensureLeader(teamId, userId);
+        if (!performanceId.equals(teamMemberService.getPerformanceId(teamId))) {
+            throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
+        }
+        if (performance.isSetlistConfirmed()) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+
+        setlistService.submit(performanceId, teamId, request.songIds());
+        return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, false));
     }
 
     private PerformanceDetailResponse toDetail(Performance performance, boolean canEdit) {

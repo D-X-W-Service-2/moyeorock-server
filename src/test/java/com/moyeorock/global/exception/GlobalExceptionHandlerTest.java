@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -131,6 +132,15 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
+    @Test
+    @DisplayName("낙관적 락 실패 — 409 INVALID_STATE (커밋 시점 예외라 Service에서 바꾸지 못해 전역에서 처리, 이슈 #103)")
+    void optimisticLockFailure_returns409() throws Exception {
+        mockMvc.perform(get("/probe/optimistic-lock"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
     // 테스트 전용 컨트롤러 — GET /probe?id={Long}으로 타입 불일치·누락·405를, JSON 전용 POST /probe로 파싱 실패·415를 유도한다.
     // /probe/empty·/probe/business-error·/probe/valid는 봉투 모양(바디 없는 성공·에러·검증 실패)을 본다
     @RestController
@@ -144,6 +154,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/probe/business-error")
         ApiResponse<Void> businessError() {
             throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+
+        @GetMapping("/probe/optimistic-lock")
+        ApiResponse<Void> optimisticLock() {
+            throw new OptimisticLockingFailureException("version changed");
         }
 
         @PostMapping(value = "/probe/valid", consumes = MediaType.APPLICATION_JSON_VALUE)
