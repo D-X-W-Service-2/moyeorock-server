@@ -46,7 +46,11 @@ public enum ErrorCode {
     FILE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "파일 크기가 허용 범위를 초과했습니다."),
     EMPTY_FILE(HttpStatus.BAD_REQUEST, "빈 파일은 업로드할 수 없습니다."),
     // S3도 만료된 presigned URL에 403을 준다 — 로컬 업로드 수신도 같은 상태 코드로 맞춘다
-    UPLOAD_URL_EXPIRED(HttpStatus.FORBIDDEN, "업로드 URL이 만료되었습니다.");
+    UPLOAD_URL_EXPIRED(HttpStatus.FORBIDDEN, "업로드 URL이 만료되었습니다."),
+
+    // 저장 (bookmark)
+    BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장입니다."),
+    BOOKMARK_DUPLICATED(HttpStatus.CONFLICT, "이미 저장한 대상입니다.");
 
     private final HttpStatus status;
     private final String message;
