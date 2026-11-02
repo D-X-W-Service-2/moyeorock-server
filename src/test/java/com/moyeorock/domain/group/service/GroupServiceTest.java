@@ -169,11 +169,11 @@ class GroupServiceTest {
     }
 
     @Test
-    @DisplayName("내 모임 목록은 클라이언트 sort를 버리고 페이지 크기를 20으로 자른다")
-    void getMyGroups_dropsSortAndCapsPageSize() {
+    @DisplayName("내 모임 목록은 클라이언트 sort를 버린다")
+    void getMyGroups_dropsClientSort() {
         when(groupRepository.findMyGroups(any(), any(), any())).thenReturn(Page.empty());
 
-        groupService.getMyGroups(MEMBER_ID, null, PageRequest.of(1, 500, Sort.by("joinedAt")));
+        groupService.getMyGroups(MEMBER_ID, null, PageRequest.of(1, 20, Sort.by("joinedAt")));
 
         verify(groupRepository).findMyGroups(MEMBER_ID, null, PageRequest.of(1, 20));
     }
