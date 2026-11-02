@@ -159,4 +159,19 @@ class RecruitPostRepositoryTest {
 
         assertThat(result.getContent()).extracting(RecruitPost::getTitle).containsExactly("일치");
     }
+
+    @Test
+    @DisplayName("모임의 모집 중 공고만 찾는다 — 마감된 공고와 다른 모임·팀 공고는 빠진다")
+    void findByTargetGroupIdAndStatus_returnsOnlyOpenPostsOfGroup() {
+        RecruitPost open = groupPost("모집 중", Region.SEOUL, slot(Instrument.BASS));
+        RecruitPost closed = groupPost("마감", Region.SEOUL, slot(Instrument.BASS));
+        closed.close();
+        recruitPostRepository.saveAllAndFlush(List.of(open, closed,
+                RecruitPost.create(1L, null, 99L, "다른 모임", "본문", List.of(slot(Instrument.BASS)), Region.SEOUL),
+                teamPost("팀 공고", Region.SEOUL, slot(Instrument.BASS))));
+
+        assertThat(recruitPostRepository.findByTargetGroupIdAndStatus(9L, RecruitStatus.OPEN))
+                .extracting(RecruitPost::getTitle)
+                .containsExactly("모집 중");
+    }
 }
