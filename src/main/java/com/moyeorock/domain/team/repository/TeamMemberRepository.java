@@ -2,7 +2,6 @@ package com.moyeorock.domain.team.repository;
 
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
-import com.moyeorock.domain.team.enums.TeamRole;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -24,13 +23,6 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
      * 권한 확인과 "탈퇴·강퇴했던 사람이 다시 들어오는" 경우의 기존 행 복구에 쓴다.
      */
     Optional<TeamMember> findByTeamIdAndUserId(Long teamId, Long userId);
-
-    /** 현재 팀장. 팀장 위임 때 기존 팀장을 찾는 데 쓴다. */
-    default Optional<TeamMember> findActiveLeader(Long teamId) {
-        return findByTeamIdAndRoleAndStatus(teamId, TeamRole.LEADER, MemberStatus.ACTIVE);
-    }
-
-    Optional<TeamMember> findByTeamIdAndRoleAndStatus(Long teamId, TeamRole role, MemberStatus status);
 
     /** 팀 목록의 memberCount. 팀마다 count를 날리지 않고 GROUP BY 한 번으로 모은다. */
     default List<TeamMemberCount> countActiveByTeamIds(Collection<Long> teamIds) {

@@ -59,18 +59,6 @@ class TeamMemberRepositoryTest {
     }
 
     @Test
-    @DisplayName("findActiveLeader는 ACTIVE인 팀장만 찾는다")
-    void findActiveLeader_returnsOnlyActiveLeader() {
-        save(TEAM_ID, 10L, TeamRole.LEADER, MemberStatus.ACTIVE);
-        save(TEAM_ID, 11L, TeamRole.MEMBER, MemberStatus.ACTIVE);
-        save(2L, 20L, TeamRole.LEADER, MemberStatus.LEFT);
-
-        assertThat(teamMemberRepository.findActiveLeader(TEAM_ID))
-                .get().extracting(TeamMember::getUserId).isEqualTo(10L);
-        assertThat(teamMemberRepository.findActiveLeader(2L)).isEmpty();
-    }
-
-    @Test
     @DisplayName("countActiveByTeamIds는 ACTIVE 팀원만 팀별로 세고, 팀원이 없는 팀은 결과에 나오지 않는다")
     void countActiveByTeamIds_countsActiveOnlyPerTeam() {
         save(1L, 10L, TeamRole.LEADER, MemberStatus.ACTIVE);
