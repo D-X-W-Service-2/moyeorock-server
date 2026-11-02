@@ -123,4 +123,23 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             @Param("userId") Long userId,
             @Param("memberStatus") MemberStatus memberStatus,
             @Param("teamStatus") TeamStatus teamStatus);
+
+    /**
+     * 내가 속한 공연 팀. 내가 ACTIVE 팀원인 경우만 세고, 팀 상태는 걸지 않는다 — 끝난 공연의 해체된 팀도 담는다.
+     * 규칙을 한 곳에 고정하려고 상태 값을 파라미터로 받는 쿼리를 감쌌다.
+     */
+    default List<Team> findMyPerformanceTeams(Long userId) {
+        return findPerformanceTeamsByMember(userId, MemberStatus.ACTIVE);
+    }
+
+    @Query("""
+            SELECT t FROM Team t
+            JOIN TeamMember m ON m.teamId = t.id
+            WHERE m.userId = :userId
+              AND m.status = :memberStatus
+              AND t.performanceId IS NOT NULL
+            ORDER BY t.id
+            """)
+    List<Team> findPerformanceTeamsByMember(@Param("userId") Long userId,
+            @Param("memberStatus") MemberStatus memberStatus);
 }

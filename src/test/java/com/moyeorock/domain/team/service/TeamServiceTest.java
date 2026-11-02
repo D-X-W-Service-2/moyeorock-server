@@ -14,6 +14,7 @@ import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
+import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
@@ -536,12 +537,19 @@ class TeamServiceTest {
     }
 
     @Test
-    @DisplayName("팀 상세·팀원 목록: 해체된 팀은 없는 팀처럼 TEAM_NOT_FOUND")
-    void reads_disbandedTeam_isNotFound() {
+    @DisplayName("팀 상세·팀원 목록: 해체된 팀도 읽을 수 있고 상세의 status가 DISBANDED다")
+    void reads_disbandedTeam_isReadable() {
         givenTeam(disbandedTeam());
+        TeamMember leader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of(leader));
+        given(userService.getSummaries(List.of(LEADER_ID)))
+                .willReturn(Map.of(LEADER_ID, new UserSummaryResponse(LEADER_ID, "홍길동", null)));
 
-        assertErrorCode(() -> teamService.getDetail(LEADER_ID, TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
-        assertErrorCode(() -> teamService.getMembers(TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
+        TeamDetailResponse detail = teamService.getDetail(LEADER_ID, TEAM_ID);
+        TeamMembersResponse members = teamService.getMembers(TEAM_ID);
+
+        assertThat(detail.status()).isEqualTo(TeamStatus.DISBANDED);
+        assertThat(members.members()).hasSize(1);
     }
 
     @Test
@@ -605,6 +613,45 @@ class TeamServiceTest {
         assertThat(teamService.getSummaries(null)).isEmpty();
         assertThat(teamService.getSummaries(List.of())).isEmpty();
         verify(teamRepository, never()).findActiveByIdIn(any());
+    }
+
+    @Test
+    @DisplayName("요약 일괄 조회(해체 포함): 해체된 팀도 담고 없는 id만 빠진다")
+    void getSummariesIncludingDisbanded_includesDisbandedTeams() {
+        given(teamRepository.findAllById(List.of(TEAM_ID, 99L))).willReturn(List.of(disbandedTeam()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 3)));
+
+        Map<Long, TeamSummaryResponse> result = teamService.getSummariesIncludingDisbanded(List.of(TEAM_ID, 99L));
+
+        assertThat(result).containsOnlyKeys(TEAM_ID);
+        assertThat(result.get(TEAM_ID).status()).isEqualTo(TeamStatus.DISBANDED);
+        assertThat(result.get(TEAM_ID).memberCount()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("요약 일괄 조회(해체 포함): id가 없거나 비었으면 조회하지 않고 빈 Map이다")
+    void getSummariesIncludingDisbanded_withoutIds_returnsEmpty() {
+        assertThat(teamService.getSummariesIncludingDisbanded(null)).isEmpty();
+        assertThat(teamService.getSummariesIncludingDisbanded(List.of())).isEmpty();
+        verify(teamRepository, never()).findAllById(any());
+    }
+
+    @Test
+    @DisplayName("내 공연 팀: 팀 id·이름·공연 id·상태를 해체된 팀까지 그대로 돌려준다")
+    void findMyPerformanceTeams_mapsTeamsIncludingDisbanded() {
+        Team active = Team.createForPerformance(7L, "활동 중", null, Region.SEOUL);
+        ReflectionTestUtils.setField(active, "id", 5L);
+        Team disbanded = Team.createForPerformance(8L, "끝난 공연팀", null, Region.SEOUL);
+        ReflectionTestUtils.setField(disbanded, "id", 6L);
+        disbanded.disband();
+        given(teamRepository.findMyPerformanceTeams(LEADER_ID)).willReturn(List.of(active, disbanded));
+
+        List<PerformanceTeamResponse> result = teamService.findMyPerformanceTeams(LEADER_ID);
+
+        assertThat(result).containsExactly(
+                new PerformanceTeamResponse(5L, "활동 중", 7L, TeamStatus.ACTIVE),
+                new PerformanceTeamResponse(6L, "끝난 공연팀", 8L, TeamStatus.DISBANDED));
     }
 
     @Test

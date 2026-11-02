@@ -191,6 +191,28 @@ class TeamRepositoryTest {
     }
 
     @Test
+    @DisplayName("findMyPerformanceTeams는 내가 ACTIVE 팀원인 공연 팀을 해체된 팀까지 id 순으로 돌려준다")
+    void findMyPerformanceTeams_includesDisbandedTeamsButNotIndependentOrLeft() {
+        Long me = 1L;
+        Team active = teamRepository.saveAndFlush(Team.createForPerformance(7L, "활동 중", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(8L, "끝난 공연팀", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        Team independent = saveTeam("독립 팀", Region.SEOUL);
+        Team left = teamRepository.saveAndFlush(Team.createForPerformance(7L, "탈퇴한 팀", null, Region.SEOUL));
+        Team othersTeam = teamRepository.saveAndFlush(Team.createForPerformance(7L, "남의 팀", null, Region.SEOUL));
+        saveMember(active, me, MemberStatus.ACTIVE);
+        saveMember(disbanded, me, MemberStatus.ACTIVE);
+        saveMember(independent, me, MemberStatus.ACTIVE);
+        saveMember(left, me, MemberStatus.LEFT);
+        saveMember(othersTeam, 2L, MemberStatus.ACTIVE);
+
+        List<Team> result = teamRepository.findMyPerformanceTeams(me);
+
+        assertThat(result).extracting(Team::getId).containsExactly(active.getId(), disbanded.getId());
+    }
+
+    @Test
     @DisplayName("findActiveByPerformanceId는 id 순으로 돌려준다")
     void findActiveByPerformanceId_isOrderedById() {
         Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "먼저", null, Region.SEOUL));

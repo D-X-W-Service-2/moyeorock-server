@@ -5,6 +5,7 @@ import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
+import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
@@ -155,17 +156,17 @@ public class TeamService {
     }
 
     /**
-     * 팀 상세. 해체된 팀은 없는 팀(TEAM_NOT_FOUND)으로 취급한다. 중간에 user 도메인 Service를 호출하므로
-     * 트랜잭션을 붙이지 않는다(conventions.md §3 — 호출된 Service가 자기 트랜잭션을 열어 바깥에서 감싸도
-     * 같은 시점이 보장되지 않는다).
+     * 팀 상세. 해체된 팀도 읽기 전용으로 돌려주고 status로 구분한다(끝난 공연 페이지의 팀 카드가 연결된다).
+     * 중간에 user 도메인 Service를 호출하므로 트랜잭션을 붙이지 않는다(conventions.md §3 — 호출된 Service가
+     * 자기 트랜잭션을 열어 바깥에서 감싸도 같은 시점이 보장되지 않는다).
      */
     public TeamDetailResponse getDetail(Long userId, Long teamId) {
-        return toDetail(getActiveTeam(teamId), userId);
+        return toDetail(getTeam(teamId), userId);
     }
 
-    /** 팀원 목록. ACTIVE 팀원만 합류 순으로 돌려주며, 해체된 팀은 TEAM_NOT_FOUND다. */
+    /** 팀원 목록. ACTIVE 팀원만 합류 순으로 돌려주며, 해체된 팀도 읽을 수 있다. */
     public TeamMembersResponse getMembers(Long teamId) {
-        getActiveTeam(teamId);
+        getTeam(teamId);
         List<TeamMember> members = teamMemberRepository.findActiveMembers(teamId);
         return new TeamMembersResponse(toMemberResponses(members, getUsers(members)));
     }
@@ -182,8 +183,19 @@ public class TeamService {
         if (teamIds == null || teamIds.isEmpty()) {
             return Map.of();
         }
-        return buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
-                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+        return toSummaryMap(teamRepository.findActiveByIdIn(teamIds));
+    }
+
+    /**
+     * 팀 요약 일괄 조회, 해체된 팀 포함(4팀 끝난 공연 상세). 없는 id만 결과 Map에서 빠진다.
+     * 팀원 행은 해체해도 그대로라서 memberCount는 해체 당시 인원이다.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, TeamSummaryResponse> getSummariesIncludingDisbanded(Collection<Long> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) {
+            return Map.of();
+        }
+        return toSummaryMap(teamRepository.findAllById(teamIds));
     }
 
     /**
@@ -197,8 +209,7 @@ public class TeamService {
             return List.of();
         }
         List<Long> teamIds = memberships.stream().map(TeamMember::getTeamId).toList();
-        Map<Long, TeamSummaryResponse> summaries = buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
-                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+        Map<Long, TeamSummaryResponse> summaries = toSummaryMap(teamRepository.findActiveByIdIn(teamIds));
         // 해체된 팀은 요약에 없으므로 그 팀의 팀원 행도 함께 빠진다
         return memberships.stream()
                 .filter(m -> summaries.containsKey(m.getTeamId()))
@@ -249,6 +260,15 @@ public class TeamService {
         return teamRepository.findMyTeamIdsInPerformance(performanceId, userId);
     }
 
+    /**
+     * 내가 속한 공연 팀(4팀 끝난 공연 상세의 내 팀). 내가 ACTIVE 팀원이면 팀이 해체됐어도 담기고(status로 구분),
+     * 독립 팀은 빠진다. 팀 id 순이고 페이징은 없다.
+     */
+    @Transactional(readOnly = true)
+    public List<PerformanceTeamResponse> findMyPerformanceTeams(Long userId) {
+        return teamRepository.findMyPerformanceTeams(userId).stream().map(PerformanceTeamResponse::from).toList();
+    }
+
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
     @Transactional
     public void disbandAllByPerformance(Long performanceId) {
@@ -280,15 +300,6 @@ public class TeamService {
     private Team getTeam(Long teamId) {
         return teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_NOT_FOUND));
-    }
-
-    // 조회 전용: 해체된 팀은 조회에서 걸러진다(architecture.md §6)
-    private Team getActiveTeam(Long teamId) {
-        Team team = getTeam(teamId);
-        if (team.getStatus() != TeamStatus.ACTIVE) {
-            throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
-        }
-        return team;
     }
 
     private void requireActiveTeam(Team team) {
@@ -343,6 +354,10 @@ public class TeamService {
                 .orElse(null);
 
         return TeamDetailResponse.of(team, genres, leader, toMemberResponses(members, users), myRole);
+    }
+
+    private Map<Long, TeamSummaryResponse> toSummaryMap(List<Team> teams) {
+        return buildSummaries(teams).stream().collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
     }
 
     private Page<TeamSummaryResponse> toSummaries(Page<Team> teams) {
