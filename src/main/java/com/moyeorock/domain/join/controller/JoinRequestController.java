@@ -10,6 +10,7 @@ import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.TargetType;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +35,7 @@ public class JoinRequestController {
 
     private final JoinRequestService joinRequestService;
 
+    @Operation(summary = "가입 신청")
     @PostMapping("/join-requests")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<JoinRequestResponse> apply(@AuthUser Long userId,
@@ -41,6 +43,7 @@ public class JoinRequestController {
         return ApiResponse.success(joinRequestService.apply(userId, request));
     }
 
+    @Operation(summary = "받은 신청 목록")
     @GetMapping("/join-requests")
     public ApiResponse<PageResponse<JoinRequestResponse>> getReceived(@AuthUser Long userId,
             @RequestParam(required = false) TargetType targetType, @RequestParam(required = false) Long targetId,
@@ -48,12 +51,14 @@ public class JoinRequestController {
         return ApiResponse.success(joinRequestService.getReceived(userId, targetType, targetId, status, pageable));
     }
 
+    @Operation(summary = "내 신청 목록")
     @GetMapping("/users/me/join-requests")
     public ApiResponse<PageResponse<JoinRequestResponse>> getMine(@AuthUser Long userId,
             @RequestParam(required = false) JoinStatus status, @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(joinRequestService.getMine(userId, status, pageable));
     }
 
+    @Operation(summary = "신청 승인·거절·취소")
     @PatchMapping("/join-requests/{joinRequestId}/status")
     public ApiResponse<JoinResultResponse> updateStatus(@AuthUser Long userId, @PathVariable Long joinRequestId,
             @Valid @RequestBody JoinRequestStatusUpdateRequest request) {

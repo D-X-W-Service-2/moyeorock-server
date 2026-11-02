@@ -10,6 +10,7 @@ import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.TargetType;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -33,6 +34,7 @@ public class InvitationController {
 
     private final JoinRequestService joinRequestService;
 
+    @Operation(summary = "초대 보내기")
     @PostMapping("/invitations")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<InvitationResponse> invite(@AuthUser Long userId,
@@ -40,6 +42,7 @@ public class InvitationController {
         return ApiResponse.success(joinRequestService.invite(userId, request));
     }
 
+    @Operation(summary = "보낸 초대 목록")
     @GetMapping("/invitations")
     public ApiResponse<PageResponse<InvitationResponse>> getSent(@AuthUser Long userId,
             @RequestParam(required = false) TargetType targetType, @RequestParam(required = false) Long targetId,
@@ -47,6 +50,7 @@ public class InvitationController {
         return ApiResponse.success(joinRequestService.getSent(userId, targetType, targetId, status, pageable));
     }
 
+    @Operation(summary = "받은 초대 목록")
     @GetMapping("/users/me/invitations")
     public ApiResponse<PageResponse<InvitationResponse>> getReceived(@AuthUser Long userId,
             @RequestParam(required = false) TargetType targetType, @RequestParam(required = false) Long targetId,
@@ -55,6 +59,7 @@ public class InvitationController {
                 joinRequestService.getReceivedInvitations(userId, targetType, targetId, status, pageable));
     }
 
+    @Operation(summary = "초대 수락·거절·취소")
     @PatchMapping("/invitations/{invitationId}/status")
     public ApiResponse<JoinResultResponse> updateStatus(@AuthUser Long userId, @PathVariable Long invitationId,
             @Valid @RequestBody InvitationStatusUpdateRequest request) {
