@@ -6,6 +6,7 @@ import com.moyeorock.domain.notification.dto.response.NotificationsResponse;
 import com.moyeorock.domain.notification.service.NotificationService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +24,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
+    @Operation(summary = "알림 목록")
     @GetMapping
     public ApiResponse<NotificationsResponse> getNotifications(@AuthUser Long userId,
             @PageableDefault(size = 20) Pageable pageable) {
@@ -30,6 +32,7 @@ public class NotificationController {
     }
 
     /** 바디가 없거나 {@code ids}가 비어 있으면 전체 읽음이다. */
+    @Operation(summary = "알림 읽음")
     @PatchMapping("/read")
     public ApiResponse<NotificationReadResponse> markAsRead(@AuthUser Long userId,
             @Valid @RequestBody(required = false) NotificationReadRequest request) {
