@@ -165,6 +165,8 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE` |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
 | `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `getSummariesIncludingDisbanded(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 4팀 performance | 끝난 공연 상세의 팀 요약. **해체된 팀도 포함**하고 없는 id만 빠진다. `memberCount`는 `ACTIVE` 팀원 수인데 해체해도 팀원 행은 그대로라서 해체 당시 인원이다 |
+| `findMyPerformanceTeams(Long userId)` → `List<PerformanceTeamResponse>` | 4팀 performance | 내가 `ACTIVE` 팀원인 공연 팀을 해체된 팀까지 `(Long teamId, String teamName, Long performanceId, TeamStatus status)`로. 독립 팀은 빠지고 팀 id 순, 페이징 없음 |
 | `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
 | `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
 | `findMemberships(Long userId)` → `List<TeamMembershipResponse>` | 1팀 user(내 활동) | 내가 속한 활동 중인 팀마다 `(TeamSummaryResponse team, TeamRole role, Instrument instrument)`. 팀·팀원 모두 `ACTIVE`만, 최근 합류 순, 페이징 없음. 역할·악기는 `team_members`에만 있어 1팀이 직접 읽을 수 없어서 만들었다 |

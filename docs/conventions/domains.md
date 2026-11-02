@@ -99,7 +99,7 @@
 | 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 내 활동의 팀 | 1팀 activity → 2팀 `TeamService` | `TeamService.findMemberships` — 내가 속한 활동 중인 팀의 요약과 내 역할·악기 |
-| 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) |
+| 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) · `getSummariesIncludingDisbanded`(해체된 팀 포함 요약) · `findMyPerformanceTeams`(내 공연 팀, 해체된 팀 포함) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.getTeamSongs` · 공연 조회 `getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
