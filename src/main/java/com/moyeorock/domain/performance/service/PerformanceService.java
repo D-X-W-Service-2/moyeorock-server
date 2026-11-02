@@ -12,6 +12,7 @@ import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -67,11 +68,15 @@ public class PerformanceService {
         return toDetail(performance, groupMemberService.isOwner(performance.getGroupId(), userId));
     }
 
-    /** 모임장만 고친다. ensureOwner를 통과했으니 요청자가 곧 모임장이다 — 역할을 다시 묻지 않는다. */
+    /**
+     * 모임장만 고친다. ensureOwner를 통과했으니 요청자가 곧 모임장이다 — 역할을 다시 묻지 않는다.
+     * 공연 일시를 지난 시각으로 바꾸는 것은 막지만, 일시를 그대로 두면 이미 지난 공연도 고칠 수 있다.
+     */
     @Transactional
     public PerformanceDetailResponse update(Long userId, Long performanceId, PerformanceUpdateRequest request) {
         Performance performance = getPerformanceOrThrow(performanceId);
         groupMemberService.ensureOwner(performance.getGroupId(), userId);
+        ensureFutureWhenRescheduled(performance, request.performedAt());
         performance.update(request.title(), request.description(), request.performedAt(), request.venue(),
                 request.posterImage());
         return toDetail(performance, true);
@@ -93,6 +98,14 @@ public class PerformanceService {
             return null;
         }
         return userService.getSummaries(List.of(creatorId)).get(creatorId);
+    }
+
+    // 일시가 바뀔 때만 과거인지 본다. DTO에 @Future를 걸면 지난 공연의 설명만 고치는 요청까지 막혀서 여기서 확인한다.
+    // 현재 시각은 JVM 기본 타임존 기준이다(Asia/Seoul — global/config/TimezoneConfig, #91).
+    private void ensureFutureWhenRescheduled(Performance performance, LocalDateTime performedAt) {
+        if (!performedAt.equals(performance.getPerformedAt()) && !performedAt.isAfter(LocalDateTime.now())) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
     }
 
     private Performance getPerformanceOrThrow(Long performanceId) {

@@ -1,5 +1,6 @@
 package com.moyeorock.domain.performance.dto.request;
 
+import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -14,7 +15,9 @@ public record PerformanceCreateRequest(
         @Size(max = 1000, message = "공연 설명은 1,000자 이하여야 합니다.")
         String description,
 
+        // 지난 일시로는 만들 수 없다. 현재 시각은 JVM 기본 타임존 기준이다(Asia/Seoul — global/config/TimezoneConfig, #91).
         @NotNull(message = "공연 일시는 필수입니다.")
+        @Future(message = "공연 일시는 현재 이후여야 합니다.")
         LocalDateTime performedAt,
 
         // erd.md는 NULL 허용이지만 노션 API 초안(2026-10-08)이 필수로 정했다 — 애플리케이션에서만 막는다.

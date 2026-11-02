@@ -16,7 +16,9 @@ import com.moyeorock.domain.group.repository.GroupMemberRepository;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.global.security.JwtProvider;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,10 +44,16 @@ class PerformanceApiTest {
 
     private static final long NON_MEMBER_ID = 999_999L;
 
+    // 생성·수정은 지난 일시를 막아서 테스트 일시는 실행 날짜 기준으로 잡는다 — 고정 날짜는 그날이 지나면 테스트가 깨진다.
+    private static final String PERFORMED_AT = iso(LocalDate.now().plusMonths(2).atTime(18, 0));
+    private static final String EARLIER = iso(LocalDate.now().plusMonths(1).atTime(18, 0));
+    private static final String RESCHEDULED = iso(LocalDate.now().plusMonths(2).plusWeeks(1).atTime(18, 0));
+    private static final String PAST = iso(LocalDate.now().minusMonths(1).atTime(18, 0));
+
     private static final String CREATE_BODY = """
             {"title":"2026 정기공연","description":"1년에 한 번 하는 정기공연입니다.",
-             "performedAt":"2026-11-22T18:00:00","venue":"홍대 롤링홀","posterImage":"https://cdn/poster.jpg"}
-            """;
+             "performedAt":"%s","venue":"홍대 롤링홀","posterImage":"https://cdn/poster.jpg"}
+            """.formatted(PERFORMED_AT);
 
     @Autowired
     private MockMvc mockMvc;
@@ -84,7 +92,7 @@ class PerformanceApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.title").value("2026 정기공연"))
-                .andExpect(jsonPath("$.data.performedAt").value("2026-11-22T18:00:00"))
+                .andExpect(jsonPath("$.data.performedAt").value(PERFORMED_AT))
                 .andExpect(jsonPath("$.data.venue").value("홍대 롤링홀"))
                 .andExpect(jsonPath("$.data.status").value("PLANNED"))
                 .andExpect(jsonPath("$.data.group.id").value(groupId))
@@ -107,6 +115,14 @@ class PerformanceApiTest {
     }
 
     @Test
+    @DisplayName("지난 일시로 공연을 만들면 400 VALIDATION_FAILED다")
+    void create_withPastPerformedAt_returns400() throws Exception {
+        createPerformance(ownerId, CREATE_BODY.replace(PERFORMED_AT, PAST))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     @DisplayName("모임장이 아닌 모임원이 공연을 만들면 403 NOT_GROUP_OWNER다")
     void create_byMember_returns403() throws Exception {
         createPerformance(memberId, CREATE_BODY)
@@ -117,7 +133,7 @@ class PerformanceApiTest {
     @Test
     @DisplayName("모임 공연 목록은 공연일 늦은 순으로 페이징되고, 엔티티에 없는 sort를 보내도 500이 아니다")
     void getList_pagesLatestFirst_andIgnoresClientSort() throws Exception {
-        createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026-11-22T18:00:00", "2026-03-01T18:00:00")
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER)
                 .replace("2026 정기공연", "봄 공연"));
         createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "가을 공연"));
 
@@ -203,6 +219,23 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
     }
 
+    @Test
+    @DisplayName("공연 일시를 지난 시각으로 고치면 400 VALIDATION_FAILED다")
+    void update_toPastPerformedAt_returns400() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        updatePerformance(ownerId, performanceId, """
+                {"title":"2026 정기공연","performedAt":"%s","venue":"홍대 롤링홀"}
+                """.formatted(PAST))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    // 응답 JSON의 일시 형식(초까지)과 맞춘다 — LocalDateTime.toString()은 0초를 생략한다.
+    private static String iso(LocalDateTime dateTime) {
+        return dateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
     }
@@ -239,10 +272,13 @@ class PerformanceApiTest {
     }
 
     private ResultActions updatePerformance(long userId, long performanceId) throws Exception {
+        return updatePerformance(userId, performanceId, """
+                {"title":"2026 정기공연 (연기)","performedAt":"%s","venue":"신촌 클럽"}
+                """.formatted(RESCHEDULED));
+    }
+
+    private ResultActions updatePerformance(long userId, long performanceId, String body) throws Exception {
         return mockMvc.perform(put("/v1/performances/" + performanceId).header("Authorization", bearer(userId))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"title":"2026 정기공연 (연기)","performedAt":"2026-11-29T18:00:00","venue":"신촌 클럽"}
-                        """));
+                .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 }
