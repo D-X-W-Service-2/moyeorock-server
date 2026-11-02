@@ -153,9 +153,9 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|... |
+|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|GROUP_INVITE\|JOIN_REQUEST_APPROVED\|JOIN_REQUEST_REJECTED\|INVITATION_ACCEPTED\|INVITATION_DECLINED\|TEAM_MEMBER_REMOVED\|GROUP_MEMBER_REMOVED\|NOTICE_CREATED\|PERFORMANCE_CREATED\|RECRUIT_POST_APPLIED (`NotificationType`) |
 |  | `message` | `VARCHAR(255)` |  |
-| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 |
+| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 — TEAM\|GROUP\|PERFORMANCE\|NOTICE\|JOIN_REQUEST\|INVITATION (`NotificationTargetType`) |
 | ＋ | `target_id` | `BIGINT` |  |
 |  | `is_read` | `TINYINT(1) DEFAULT 0` |  |
 |  | `created_at` | `DATETIME(6)` |  |
@@ -198,7 +198,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `poster_image` | `VARCHAR(500)` | 7.4 |
 |  | `status` | `VARCHAR(20)` | PLANNED\|RECRUITING\|DONE\|CANCELED |
 | FK | `created_by` | `BIGINT` | → users |
-| ＋ | `setlist_confirmed_at` | `DATETIME(6)` | 셋리스트 확정 시각. NULL이면 미확정 — 확정되면 팀이 곡을 더 넘길 수 없다(2026-10-30, 이슈 #85) |
+| ＋ | `setlist_confirmed_at` | `DATETIME(6)` | 셋리스트 확정 시각. NULL이면 미확정 — 확정되면 팀이 곡을 더 넘길 수 없다(2026-10-30, 이슈 #85). 모임장이 확정을 해제하면 다시 NULL(2026-11-02) |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
@@ -343,7 +343,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 - **유니크** `(performance_id, song_id)` — 한 공연에 같은 곡을 두 번 넣을 수 없다(7.1.3). DB가 강제한다
 - **인덱스** `(team_id)` ← 팀 페이지의 확정곡 조회, 팀 개별 해체 시 삭제용
 
-> 행은 팀이 넘길 때 `team_songs`에서 복사한다 — 넘긴 뒤 팀이 선택곡을 고쳐도 모임장이 보는 셋리스트가 바뀌지 않게. 확정 여부는 `performances.setlist_confirmed_at`에 둔다. 팀이 **개별** 해체되면 그 팀 행을 하드 삭제해 유니크를 푼다(다른 팀이 그 곡을 넘길 수 있게). 공연 종료·취소(`DONE`·`CANCELED`)로 인한 일괄 해체에서는 남긴다 — `architecture.md` §6의 예외.
+> 행은 팀이 넘길 때 `team_songs`에서 복사한다 — 넘긴 뒤 팀이 선택곡을 고쳐도 모임장이 보는 셋리스트가 바뀌지 않게. 확정 여부는 `performances.setlist_confirmed_at`에 둔다. 팀이 **개별** 해체되면 그 팀 행을 하드 삭제해 유니크를 푼다(다른 팀이 그 곡을 넘길 수 있게). 그 팀의 `team_songs` 행도 같이 지운다. 공연 종료·취소(`DONE`·`CANCELED`)로 인한 일괄 해체에서는 둘 다 남긴다 — `architecture.md` §6의 예외. 확정을 해제하면(`PATCH .../setlist/unconfirm`) `sort_order`를 NULL로 되돌린다.
 
 ### 16. `rehearsals`
 

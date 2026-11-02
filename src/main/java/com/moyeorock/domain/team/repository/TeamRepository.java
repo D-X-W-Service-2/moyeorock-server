@@ -6,10 +6,13 @@ import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Region;
 import java.util.Collection;
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -56,6 +59,15 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             @Param("teamStatus") TeamStatus teamStatus,
             Pageable pageable);
 
+    /**
+     * 팀 행을 잠그고 읽는다(SELECT ... FOR UPDATE). 팀의 상태나 팀원 구성을 바꾸는 요청끼리 같은 팀에서는
+     * 한 번에 하나씩만 실행되도록 줄을 세우는 용도다. 잠금은 트랜잭션이 끝날 때까지 유지되므로 반드시 쓰기
+     * 트랜잭션 안에서, 그 트랜잭션의 첫 번째 조회로 불러야 한다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Team t WHERE t.id = :id")
+    Optional<Team> findByIdForUpdate(@Param("id") Long id);
+
     /** 타 도메인용 일괄 조회(getSummaries) 밑작업. 해체된 팀은 결과에서 빠진다. */
     default List<Team> findActiveByIdIn(Collection<Long> teamIds) {
         return findAllByIdInAndStatus(teamIds, TeamStatus.ACTIVE);
@@ -72,6 +84,23 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     }
 
     List<Team> findAllByPerformanceIdAndStatusOrderByIdAsc(Long performanceId, TeamStatus status);
+
+    /**
+     * 공연 종료 시 해체할 팀을 잠그고 읽는다. 여러 팀을 잠그므로 id 순으로 고정해서, 같은 팀들을 잠그려는 다른 요청과
+     * 서로 반대 순서로 기다리다 멈추는 일(교착)을 막는다.
+     */
+    default List<Team> findActiveByPerformanceIdForUpdate(Long performanceId) {
+        return findByPerformanceIdAndStatusForUpdate(performanceId, TeamStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Team t
+            WHERE t.performanceId = :performanceId AND t.status = :status
+            ORDER BY t.id
+            """)
+    List<Team> findByPerformanceIdAndStatusForUpdate(@Param("performanceId") Long performanceId,
+            @Param("status") TeamStatus status);
 
     /**
      * 내가 그 공연에서 속한 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어서(4팀 결정) 목록이다.

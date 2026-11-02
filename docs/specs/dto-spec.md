@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`BookmarkResponse` · `JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>` · `NotificationReadRequest` · `NotificationReadResponse` · `RehearsalUpdateRequest`
+`JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>` · `RehearsalUpdateRequest`
 
 ---
 
@@ -642,7 +642,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - **2026-10-30 `API 초안` 대조(이슈 #83)**: `teamCount`를 빼고 `createdAt`을 넣었다
-- `status`는 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)다. 노션 예시의 `UPCOMING`은 ERD에 없는 값이다(`api-spec.md` 공백 #12)
+- `status`는 실제 공연 상태 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)다. 목록 쿼리 `period`(`UPCOMING`·`PAST`)는 거르는 데만 쓰고 응답 `status`로 내리지 않는다 — 노션 예시의 `"status": "UPCOMING"`은 `PLANNED`로 노션 정정 완료(2026-11-02, `api-spec.md` §8 ※·공백 #13)
 
 ### PerformanceDetailResponse
 
@@ -714,7 +714,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### SetlistResponse
 
-공연 셋리스트 조회·넘기기·확정 공통 응답(2026-10-30, 이슈 #85). 이전 이름 `PerformanceSetlistResponse`.
+공연 셋리스트 조회·넘기기·확정·확정 해제 공통 응답(2026-10-30, 이슈 #85). 이전 이름 `PerformanceSetlistResponse`.
 
 ```json
 {
@@ -732,7 +732,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `confirmed`는 `performances.setlist_confirmed_at`이 있는지다
-- 확정 전에는 팀들이 넘긴 곡 전체(팀별·넘긴 순, `sortOrder`는 `null`), 확정 후에는 확정곡만(`sortOrder` 순)
+- 확정 전(또는 확정 해제 뒤)에는 팀들이 넘긴 곡 전체(팀별·넘긴 순, `sortOrder`는 `null`), 확정 후에는 확정곡만(`sortOrder` 순)
 - `setlist[]` 항목은 `SetlistItemResponse`(setlist 도메인)다. 팀이 해체돼도 `teamName`은 나온다 — 끝난 공연의 셋리스트를 남기기 때문이다
 
 ### SetlistSubmitRequest
@@ -748,7 +748,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### SetlistConfirmRequest
 
-공연 셋리스트 확정(`PUT /v1/performances/{performanceId}/setlist`). 이전 이름 `PerformanceSetlistUpdateRequest`, 노션 페이지 이름은 `SetlistUpdateRequest` — 이름은 `dto-naming.md` §9를 따른다.
+공연 셋리스트 확정(`PUT /v1/performances/{performanceId}/setlist`). 이전 이름 `PerformanceSetlistUpdateRequest`. 노션도 2026-11-02에 `SetlistUpdateRequest`에서 이 이름으로 맞췄다(`dto-naming.md` §9).
 
 ```json
 {
@@ -761,7 +761,14 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 팀들이 넘긴 곡만 넣을 수 있다(아니면 409 `SONG_NOT_TEAM_CANDIDATE`). 요청에 없는 곡은 셋리스트에서 빠진다
-- 확정된 뒤에도 다시 수정·확정할 수 있다
+- 확정된 뒤에도 다시 수정·확정할 수 있다. 팀이 다시 넘기게 하려면 확정을 해제한다(아래)
+
+### 공연 셋리스트 확정 해제
+
+`PATCH /v1/performances/{performanceId}/setlist/unconfirm` — **요청 바디가 없다.** 응답은 `SetlistResponse`(`confirmed`는 `false`). 2026-11-02 추가(PR #87 리뷰).
+
+- 모임장만 한다. `performances.setlist_confirmed_at`을 NULL로, 셋리스트 행의 `sort_order`를 NULL로 되돌린다. 셋리스트에 남아 있던 곡은 그대로 두고, 팀은 다시 넘길 수 있다
+- 확정되지 않은 셋리스트, 끝났거나 취소된 공연(`DONE`·`CANCELED`)은 409 `INVALID_STATE` — 끝난 공연의 셋리스트는 기록이다
 
 ## §9. 노래 (song) · 셋리스트 (setlist)
 
@@ -846,46 +853,84 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### NotificationsResponse
 
+배지 숫자(`unreadCount`) 때문에 래퍼를 두고, 목록 자체는 `PageResponse<NotificationResponse>`로 페이징한다. 정렬은 최신순 고정이다(클라이언트 `sort`는 무시).
+
 ```json
 {
   "unreadCount": 3,
-  "notifications": [
-    {
-      "id": 501,
-      "type": "TEAM_INVITE",
-      "message": "무명밴드에서 드럼 세션으로 초대했습니다.",
-      "targetType": "INVITATION",
-      "targetId": 91,
-      "isRead": false,
-      "createdAt": "2026-08-11T16:30:00"
-    }
-  ]
+  "notifications": {
+    "content": [
+      {
+        "id": 501,
+        "type": "TEAM_INVITE",
+        "message": "무명밴드에서 드럼 세션으로 초대했습니다.",
+        "targetType": "INVITATION",
+        "targetId": 91,
+        "isRead": false,
+        "createdAt": "2026-08-11T16:30:00"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 3,
+    "totalPages": 1,
+    "last": true
+  }
 }
 ```
 
 ### NotificationReadRequest / NotificationReadResponse
 
-**미작성** — 읽음 처리할 알림 id 목록을 담을 것으로 추정.
+`NotificationReadRequest`
+
+```json
+{ "ids": [501, 502] }
+```
+
+- `ids`는 선택이다. **null이거나 빈 배열이면 전체 읽음**이고, 요청 바디가 아예 없어도 전체 읽음이다.
+- 최대 100개 — 명세에 없는 서버 정책이다. 초과하거나 `null` 원소가 있으면 `400 VALIDATION_FAILED`.
+- 남의 알림 id·없는 id·이미 읽은 알림은 오류 없이 무시되고 `readCount`에 잡히지 않는다.
+
+`NotificationReadResponse`
+
+```json
+{ "readCount": 3, "unreadCount": 0 }
+```
+
+`readCount`는 이번 요청으로 읽음 처리된 알림 수, `unreadCount`는 처리 후 남은 안읽은 알림 수다.
 
 ### BookmarkCreateRequest
 
 ```json
-{ "targetType": "TEAM", "targetId": 5 }
+{ "targetType": "USER", "targetId": 30 }
 ```
 
-### PageResponse\<BookmarkResponse\>
+`targetType`은 `TEAM`·`USER`·`SONG`이지만 **지금은 `USER`만 저장된다**(임시, 나머지는 `400 VALIDATION_FAILED`). `api-spec.md` §10 참고.
+
+### BookmarkResponse / PageResponse\<BookmarkResponse\>
+
+저장 추가(201)는 `BookmarkResponse` 하나, 목록은 `PageResponse<BookmarkResponse>`다.
 
 ```json
 {
-  "id": 301,
-  "targetType": "TEAM",
-  "targetId": 5,
+  "id": 21,
+  "targetType": "USER",
+  "targetId": 30,
   "target": {
-    "id": 5, "name": "무명밴드", "region": "SEOUL",
-    "genres": ["ROCK"], "imageUrl": null
+    "id": 30, "name": "민서", "region": "GYEONGGI",
+    "genres": ["JAZZ"], "imageUrl": "https://.../c.jpg"
   },
-  "createdAt": "2026-08-05T14:00:00"
+  "createdAt": "2026-08-10T12:00:00"
 }
+```
+
+- `target`의 해당 없는 필드는 null이라 생략된다(곡은 `region`이 없다). 사용자 대상은 `name`=닉네임, `imageUrl`=프로필 이미지이고 온보딩 전이면 `region`·`genres`가 없다.
+- 대상이 삭제·탈퇴·해체돼 조회되지 않으면 **`target`이 `null`이다**. 항목은 목록에서 빠지지 않는다.
+
+삭제(`DELETE /v1/bookmarks/{id}`)의 응답은 `DeleteResponse`다.
+
+```json
+{ "id": 21, "deleted": true }
 ```
 
 ### PresignedUrlCreateRequest
@@ -929,13 +974,63 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## §11. 로그인 (auth)
 
+2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
+
 ### UserOAuth2CodeRequest
 
-Body가 아니라 **Query 파라미터**다.
+Body가 아니라 **Query 파라미터**다. 프론트가 카카오 로그인 리다이렉트로 받은 인가 코드를 그대로 넘긴다.
 
 ```
-http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
+POST /v1/auth/kakao?code=abc123exampleAuthCode
 ```
+
+`code`는 필수. 누락·공백이면 400 `VALIDATION_FAILED`. 인가 코드는 1회용이다.
+
+### KakaoAuthResponse
+
+카카오 인증 응답. 이 API는 계정을 만들지 않는다. `kakao_id`가 이미 있으면 `auth`에 로그인 토큰을, 없으면 `signupToken`과 `kakaoNickname`을 채운다.
+
+기존 회원 (로그인 완료):
+
+```json
+{
+  "isNewUser": false,
+  "auth": {
+    "accessToken": "string",
+    "userId": 12,
+    "nickname": "string",
+    "onboardingCompleted": true
+  }
+}
+```
+
+신규 (가입 필요):
+
+```json
+{
+  "isNewUser": true,
+  "signupToken": "string",
+  "kakaoNickname": "string"
+}
+```
+
+| 필드 | Nullable | 설명 |
+|---|---|---|
+| `isNewUser` | X | true면 신규(가입 필요), false면 기존 회원(로그인 완료) |
+| `auth` | O | 기존 회원일 때만. `AuthTokenResponse`. 신규면 null |
+| `signupToken` | O | 신규일 때만. 서버가 서명한 가입용 토큰(10분 만료, `kakao_id`·카카오 닉네임 포함). `POST /v1/auth/kakao/signup`에 그대로 전달 |
+| `kakaoNickname` | O | 신규일 때만. 카카오 프로필 닉네임(약관 화면 표시용) |
+
+### KakaoSignupRequest
+
+```json
+{
+  "signupToken": "string",
+  "privacyAgreed": true
+}
+```
+
+> 이 요청에서 계정이 생성된다. `signupToken`은 카카오 인증 응답 값 그대로(10분 만료). `privacyAgreed`는 true만 허용하고 false·누락이면 400. `privacy_agreed_at`은 서버 시각으로 저장한다.
 
 ### UserSignupRequest
 
@@ -943,12 +1038,15 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
 {
   "email": "string",
   "password": "string",
-  "name": "string"
+  "name": "string",
+  "privacyAgreed": true
 }
 ```
 
-> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 로그인도 프로필 name을 같은 방식으로 사용.
-> 미결: `nickname` UNIQUE라 동명 가입자 충돌 시 처리(임시 닉네임 suffix 등) 확정 필요.
+> `name`은 별도 컬럼이 아니라 **가입 시 `users.nickname`에 임시값으로 매핑**해 저장한다 (2026-08-19 팀 확인 — ERD에 name 컬럼이 없는 것은 의도). 정식 닉네임은 온보딩에서 재설정. 카카오 가입도 프로필 닉네임을 같은 방식으로 사용.
+> **임시 닉네임 충돌 (2026-09-28 확정)**: `nickname`이 UNIQUE라 이미 쓰는 닉네임이면 서버가 `_`+영숫자 4자를 붙여 저장한다(예: `서준_a3f9`, 20자 이내). 중복 때문에 가입이 실패하지 않는다.
+> **비밀번호 규칙 (2026-09-28 확정)**: 8~64자, 영문·숫자·특수문자를 각각 1자 이상 포함, 공백 불가. 위반 시 400. 가입에서만 검사한다.
+> `privacyAgreed`는 true만 허용하고 false·누락이면 400. 서버가 동의 시각을 `privacy_agreed_at`에 저장한다.
 
 ### UserLoginRequest
 
@@ -958,3 +1056,20 @@ http://.../login/oauth2/code/kakao?code=abc123exampleAuthCode
   "password": "string"
 }
 ```
+
+> 로그인에서는 비밀번호 규칙을 검사하지 않고(빈 값만 400) 일치 여부만 본다.
+
+### AuthTokenResponse
+
+카카오 가입 완료·이메일 가입·이메일 로그인이 공용으로 쓰고, `KakaoAuthResponse.auth`에도 담긴다. 리프레시 토큰은 없다.
+
+```json
+{
+  "accessToken": "string",
+  "userId": 12,
+  "nickname": "string",
+  "onboardingCompleted": false
+}
+```
+
+> 가입 응답의 `nickname`은 임시 닉네임이고 `onboardingCompleted`는 항상 false다. 로그인에서는 `onboardingCompleted`가 false면 온보딩 화면, true면 대시보드로 보낸다.

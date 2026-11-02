@@ -41,5 +41,8 @@ out/
 docs/plans
 docs/results
 
+# macOS
+.DS_Store
+
 # 로컬 파일 업로드 저장 경로 (file.storage.type=local 기본값)
 /uploads

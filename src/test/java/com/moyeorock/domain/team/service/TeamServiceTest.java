@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -17,6 +18,7 @@ import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
+import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
 import com.moyeorock.domain.team.dto.response.TeamStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
@@ -91,8 +93,16 @@ class TeamServiceTest {
         return member;
     }
 
+    // 쓰기 메서드는 팀 행을 잠그고(findByIdForUpdate), 조회 메서드는 일반 조회(findById)를 쓴다.
+    // 어느 쪽을 쓰는지는 각 테스트가 정할 일이 아니므로 둘 다 같은 팀을 돌려주게 해 둔다.
     private void givenTeam(Team team) {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.of(team));
+        lenient().when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team));
+        lenient().when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.of(team));
+    }
+
+    private void givenNoTeam() {
+        lenient().when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.empty());
+        lenient().when(teamRepository.findByIdForUpdate(TEAM_ID)).thenReturn(Optional.empty());
     }
 
     private void givenMember(Long userId, TeamMember member) {
@@ -183,7 +193,7 @@ class TeamServiceTest {
     @Test
     @DisplayName("팀 정보 수정: 없는 팀은 TEAM_NOT_FOUND")
     void update_unknownTeam_isNotFound() {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
 
         assertErrorCode(() -> teamService.update(LEADER_ID, TEAM_ID,
                 new TeamUpdateRequest("유명밴드", null, null, null)), ErrorCode.TEAM_NOT_FOUND);
@@ -290,14 +300,17 @@ class TeamServiceTest {
     }
 
     @Test
-    @DisplayName("팀원 변경: 대상이 팀원이 아니거나 이미 나간 사람이면 INVALID_STATE")
-    void changeMember_targetNotActive_isInvalidState() {
+    @DisplayName("팀원 변경: 대상이 팀원이 아니거나 이미 나간 사람이면 TEAM_MEMBER_NOT_FOUND")
+    void changeMember_targetNotActive_isMemberNotFound() {
         givenTeam(team());
         givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
         givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+        givenMember(99L, null);
 
         assertErrorCode(() -> teamService.changeMember(LEADER_ID, TEAM_ID, MEMBER_ID,
-                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.INVALID_STATE);
+                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+        assertErrorCode(() -> teamService.changeMember(LEADER_ID, TEAM_ID, 99L,
+                new TeamMemberUpdateRequest(TeamRole.LEADER, null)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
     }
 
     @Test
@@ -375,14 +388,27 @@ class TeamServiceTest {
     }
 
     @Test
-    @DisplayName("강퇴: 대상이 이미 나간 사람이면 INVALID_STATE")
-    void remove_targetNotActive_isInvalidState() {
+    @DisplayName("강퇴: 대상이 이미 나간 사람이거나 팀원이 아니면 TEAM_MEMBER_NOT_FOUND")
+    void remove_targetNotActive_isMemberNotFound() {
         givenTeam(team());
         givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
         givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+        givenMember(99L, null);
 
         assertErrorCode(() -> teamService.changeMemberStatus(LEADER_ID, TEAM_ID, MEMBER_ID,
-                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.INVALID_STATE);
+                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+        assertErrorCode(() -> teamService.changeMemberStatus(LEADER_ID, TEAM_ID, 99L,
+                new TeamMemberStatusUpdateRequest(MemberStatus.REMOVED)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("탈퇴: 이미 나간 사람이 다시 탈퇴를 요청하면 TEAM_MEMBER_NOT_FOUND")
+    void leave_whenAlreadyLeft_isMemberNotFound() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.LEFT));
+
+        assertErrorCode(() -> teamService.changeMemberStatus(MEMBER_ID, TEAM_ID, MEMBER_ID,
+                new TeamMemberStatusUpdateRequest(MemberStatus.LEFT)), ErrorCode.TEAM_MEMBER_NOT_FOUND);
     }
 
     @Test
@@ -521,7 +547,7 @@ class TeamServiceTest {
     @Test
     @DisplayName("팀 상세·팀원 목록: 없는 팀은 TEAM_NOT_FOUND")
     void reads_unknownTeam_isNotFound() {
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
 
         assertErrorCode(() -> teamService.getDetail(LEADER_ID, TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
         assertErrorCode(() -> teamService.getMembers(TEAM_ID), ErrorCode.TEAM_NOT_FOUND);
@@ -559,6 +585,18 @@ class TeamServiceTest {
 
         assertThat(result).containsOnlyKeys(TEAM_ID);
         assertThat(result.get(TEAM_ID).memberCount()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("요약 일괄 조회: List뿐 아니라 Set으로도 부를 수 있다")
+    void getSummaries_acceptsAnyCollection() {
+        given(teamRepository.findActiveByIdIn(java.util.Set.of(TEAM_ID))).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of());
+
+        Map<Long, TeamSummaryResponse> result = teamService.getSummaries(java.util.Set.of(TEAM_ID));
+
+        assertThat(result).containsOnlyKeys(TEAM_ID);
     }
 
     @Test
@@ -600,6 +638,54 @@ class TeamServiceTest {
 
         assertThat(teamService.findMyTeamIds(7L, MEMBER_ID)).containsExactly(5L, 6L);
         assertThat(teamService.findMyTeamIds(7L, 99L)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 속한 팀마다 팀 요약과 그 팀에서의 내 역할·악기를 합류 순으로 돌려준다")
+    void findMemberships_returnsSummaryWithMyRoleAndInstrument() {
+        Team second = Team.create("두번째 팀", null, Region.GYEONGGI);
+        ReflectionTestUtils.setField(second, "id", 6L);
+        TeamMember inSecond = TeamMember.create(6L, MEMBER_ID, TeamRole.LEADER, Instrument.DRUM);
+        TeamMember inFirst = TeamMember.create(TEAM_ID, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inSecond, inFirst));
+        given(teamRepository.findActiveByIdIn(List.of(6L, TEAM_ID))).willReturn(List.of(team(), second));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID, 6L))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(count(TEAM_ID, 4), count(6L, 1)));
+
+        List<TeamMembershipResponse> result = teamService.findMemberships(MEMBER_ID);
+
+        assertThat(result).extracting(r -> r.team().id()).containsExactly(6L, TEAM_ID);
+        assertThat(result.get(0).role()).isEqualTo(TeamRole.LEADER);
+        assertThat(result.get(0).instrument()).isEqualTo(Instrument.DRUM);
+        assertThat(result.get(1).role()).isEqualTo(TeamRole.MEMBER);
+        assertThat(result.get(1).team().memberCount()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("내 활동: 해체된 팀의 팀원 행은 결과에서 빠진다")
+    void findMemberships_excludesMembershipsOfDisbandedTeams() {
+        TeamMember inActive = TeamMember.create(TEAM_ID, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        TeamMember inDisbanded = TeamMember.create(6L, MEMBER_ID, TeamRole.MEMBER, Instrument.BASS);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inActive, inDisbanded));
+        // 해체된 팀(6L)은 활성 팀 조회에 나오지 않는다
+        given(teamRepository.findActiveByIdIn(List.of(TEAM_ID, 6L))).willReturn(List.of(team()));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of());
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count(TEAM_ID, 2)));
+
+        List<TeamMembershipResponse> result = teamService.findMemberships(MEMBER_ID);
+
+        assertThat(result).extracting(r -> r.team().id()).containsExactly(TEAM_ID);
+    }
+
+    @Test
+    @DisplayName("내 활동: 속한 팀이 없으면 빈 목록이고 팀·장르 조회도 하지 않는다")
+    void findMemberships_withoutMemberships_returnsEmpty() {
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of());
+
+        assertThat(teamService.findMemberships(MEMBER_ID)).isEmpty();
+        verify(teamRepository, never()).findActiveByIdIn(any());
+        verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
     }
 
     @Test
@@ -654,7 +740,7 @@ class TeamServiceTest {
         givenTeam(disbandedTeam());
         assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.INVALID_STATE);
 
-        given(teamRepository.findById(TEAM_ID)).willReturn(Optional.empty());
+        givenNoTeam();
         assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.TEAM_NOT_FOUND);
     }
 
@@ -688,8 +774,8 @@ class TeamServiceTest {
     void disbandAllByPerformance_disbandsAllActiveTeams() {
         Team first = team();
         Team second = team();
-        given(teamRepository.findActiveByPerformanceId(7L)).willReturn(List.of(first, second));
-        given(teamRepository.findActiveByPerformanceId(8L)).willReturn(List.of());
+        given(teamRepository.findActiveByPerformanceIdForUpdate(7L)).willReturn(List.of(first, second));
+        given(teamRepository.findActiveByPerformanceIdForUpdate(8L)).willReturn(List.of());
 
         teamService.disbandAllByPerformance(7L);
         teamService.disbandAllByPerformance(8L);

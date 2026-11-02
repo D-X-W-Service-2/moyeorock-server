@@ -26,6 +26,15 @@ public enum ErrorCode {
     TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 팀입니다."),
     NOT_TEAM_LEADER(HttpStatus.FORBIDDEN, "팀장만 가능합니다."),
     LEADER_MUST_DELEGATE_FIRST(HttpStatus.CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
+    // 모임의 GROUP_MEMBER_NOT_FOUND(404)와 같은 상황이라 프론트가 둘을 같게 다룰 수 있도록 맞췄다(PR #86 리뷰)
+    TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
+
+    // auth (노션 API 초안 로그인 4건, 2026-09-28 확정)
+    EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
+    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
+    OAUTH_FAILED(HttpStatus.BAD_REQUEST, "카카오 인증에 실패했습니다."),
+    INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "가입 요청이 만료되었습니다. 다시 시도해 주세요."),
+    ALREADY_REGISTERED(HttpStatus.CONFLICT, "이미 가입된 카카오 계정입니다."),
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
@@ -49,6 +58,10 @@ public enum ErrorCode {
 
     // 공지 (notice)
     NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공지입니다."),
+
+    // 저장 (bookmark)
+    BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장입니다."),
+    BOOKMARK_DUPLICATED(HttpStatus.CONFLICT, "이미 저장한 대상입니다."),
 
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다.");

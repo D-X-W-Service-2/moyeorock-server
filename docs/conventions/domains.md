@@ -8,7 +8,7 @@
 
 | 도메인 | 담당 | 소유 테이블 | 개수 |
 |---|---|---|---|
-| `auth` | 1팀 | (없음 · `users` 읽기) | 3 |
+| `auth` | 1팀 | (없음 · `users` 읽기·가입 시 생성) | 4 |
 | `user` | 1팀 | `users` `user_instruments` | 9 |
 | `team` | 2팀 | `teams` `team_genres` `team_members` | 10 |
 | `rehearsal` | 2팀 | `rehearsals` | 6 |
@@ -18,7 +18,7 @@
 | `bookmark` | 3팀 | `bookmarks` | 3 |
 | `group` | 4팀 | `groups_` `group_members` | 8 |
 | `notice` | 4팀 | `group_notices` | 5 |
-| `performance` | 4팀 | `performances` | 9 |
+| `performance` | 4팀 | `performances` | 10 |
 | `song` | 4팀 | `songs` | 2 |
 | `setlist` | 4팀 | `team_songs` `setlists` | 1 |
 | `dashboard` | 3팀 | (없음) | 1 |
@@ -44,7 +44,7 @@
 **팀 선택곡과 공연 셋리스트는 다른 테이블이다(2026-10-30, 이슈 #85).** `team_songs`는 팀(독립 팀 포함)이 고른 곡, `setlists`는 공연 팀이 그중에서 넘겨 모임장이 확정하는 곡이다. **팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다** — 팀은 "선택곡", 모임·공연은 "셋리스트"다. 흐름: 팀 선택곡 저장(팀장) → 셋리스트로 넘기기(공연 팀 팀장) → 모임장이 수정 후 확정 → 팀 페이지는 확정곡을 셋리스트에서 조회.
 
 - **테이블은 둘 다 `setlist` 도메인 소유**다. `song`은 곡 마스터(`songs`)만 갖는다. `performance`도 `team`도 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다
-- **엔드포인트는 나눠 갖는다.** 팀 선택곡 저장(`PUT /v1/teams/{teamId}/songs`)은 `setlist`, 공연 단위 셋리스트 3개(조회 `GET`·넘기기 `PUT .../setlist/teams/{teamId}`·확정 `PUT /v1/performances/{performanceId}/setlist`)는 `performance`가 받는다. 확정 시각(`performances.setlist_confirmed_at`)이 공연 컬럼이라 공연 존재·확정 여부·모임장을 `PerformanceService`가 확인하고, 행 처리는 `SetlistService`에 맡긴다. 반대로 하면 `PerformanceService`(상세의 셋리스트) ↔ `SetlistService`(확정 시각)가 서로 불러 순환한다(`architecture.md` §3)
+- **엔드포인트는 나눠 갖는다.** 팀 선택곡 저장(`PUT /v1/teams/{teamId}/songs`)은 `setlist`, 공연 단위 셋리스트 4개(조회 `GET`·넘기기 `PUT .../setlist/teams/{teamId}`·확정 `PUT /v1/performances/{performanceId}/setlist`·확정 해제 `PATCH .../setlist/unconfirm`)는 `performance`가 받는다. 확정 시각(`performances.setlist_confirmed_at`)이 공연 컬럼이라 공연 존재·확정 여부·모임장을 `PerformanceService`가 확인하고, 행 처리는 `SetlistService`에 맡긴다. 반대로 하면 `PerformanceService`(상세의 셋리스트) ↔ `SetlistService`(확정 시각)가 서로 불러 순환한다(`architecture.md` §3)
 - **공연 내 같은 곡 중복은 `setlists`의 `UNIQUE(performance_id, song_id)`가 막는다.** 팀 선택곡 단계에서는 막지 않고 "다른 팀이 이미 골랐어요" 표시만 한다
 - DTO 이름은 `SetlistResponse`·`SetlistSubmitRequest`·`SetlistConfirmRequest`(공연 쪽), `TeamSongsSaveRequest`·`TeamSongsResponse`(팀 쪽)다(`dto-naming.md` §10)
 
@@ -63,6 +63,7 @@
 | `Genre` | `users` `teams` `songs` |
 | `Region` | `users` `teams` `groups_` `recruit_posts` |
 | `TargetType` | `recruit_posts` `join_requests` (`TEAM` `GROUP`) |
+| `NotificationType` `NotificationTargetType` | `notifications`와 알림 발생 이벤트(`global/event/NotificationEvent`) — 2·3·4팀이 이벤트에 담아 발행한다 |
 
 **값이 다르면 공유하지 않는다.**
 
@@ -77,10 +78,10 @@
 
 | 팀 | 도메인 | 엔드포인트 |
 |---|---|---|
-| **1팀** | `auth` `user` `file` | 13 |
+| **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 25 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 26 |
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
@@ -95,13 +96,14 @@
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가(`TeamService.addMember`). 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다(`TeamService.createForPerformance`) |
-| 공연 종료·취소 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`·`CANCELED`면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트는 남긴다 |
+| 공연 종료·취소 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`·`CANCELED`면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
+| 내 활동의 팀 | 1팀 activity → 2팀 `TeamService` | `TeamService.findMemberships` — 내가 속한 활동 중인 팀의 요약과 내 역할·악기 |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) |
-| 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀이 넘긴 셋리스트(`setlists` 행)를 지워 같은 공연의 다른 팀이 그 곡을 넘길 수 있게 한다. 선택곡(`team_songs`)은 남긴다. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
+| 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.getTeamSongs` · 공연 조회 `getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
-| 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지 |
+| 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.

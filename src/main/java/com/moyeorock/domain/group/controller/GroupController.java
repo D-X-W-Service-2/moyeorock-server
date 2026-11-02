@@ -8,6 +8,7 @@ import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,7 @@ public class GroupController {
 
     private final GroupService groupService;
 
+    @Operation(summary = "모임 생성")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<GroupDetailResponse> create(@AuthUser Long userId,
@@ -39,17 +41,20 @@ public class GroupController {
     }
 
     /** 내 모임 목록. 전체 모임 목록은 두지 않는다 — 검색({@code keyword})도 내 모임 안에서만 한다. */
+    @Operation(summary = "내 모임 목록 (검색)")
     @GetMapping("/my")
     public ApiResponse<PageResponse<GroupSummaryResponse>> getMyGroups(@AuthUser Long userId,
             @RequestParam(required = false) String keyword, @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(groupService.getMyGroups(userId, keyword, pageable));
     }
 
+    @Operation(summary = "모임 상세 (동아리 홈)")
     @GetMapping("/{groupId}")
     public ApiResponse<GroupDetailResponse> getDetail(@AuthUser Long userId, @PathVariable Long groupId) {
         return ApiResponse.success(groupService.getDetail(userId, groupId));
     }
 
+    @Operation(summary = "모임 정보 수정")
     @PutMapping("/{groupId}")
     public ApiResponse<GroupDetailResponse> update(@AuthUser Long userId, @PathVariable Long groupId,
             @Valid @RequestBody GroupUpdateRequest request) {
@@ -57,6 +62,7 @@ public class GroupController {
     }
 
     /** 모임 해체. 요청 바디가 없다 — 상태 전이가 ACTIVE → DISBANDED 하나뿐이다. */
+    @Operation(summary = "모임 해체")
     @PatchMapping("/{groupId}/status")
     public ApiResponse<Void> disband(@AuthUser Long userId, @PathVariable Long groupId) {
         groupService.disband(userId, groupId);

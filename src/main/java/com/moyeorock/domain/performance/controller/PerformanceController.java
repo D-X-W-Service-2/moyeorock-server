@@ -7,6 +7,7 @@ import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
+import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.global.common.dto.ApiResponse;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,12 +48,16 @@ public class PerformanceController {
         return ApiResponse.success(performanceService.create(userId, groupId, request));
     }
 
-    /** 정렬은 공연일 늦은 순 고정이라 {@code sort}를 보내도 쓰지 않는다. */
+    /**
+     * {@code period}(UPCOMING·PAST)는 선택이고 없으면 전체다. 정렬은 period마다 고정이라 {@code sort}를 보내도 쓰지 않는다.
+     * 없는 period 값은 전역 처리대로 400이다.
+     */
     @Operation(summary = "모임 공연 목록")
     @GetMapping("/v1/groups/{groupId}/performances")
     public ApiResponse<PageResponse<PerformanceSummaryResponse>> getList(@AuthUser Long userId,
-            @PathVariable Long groupId, @PageableDefault(size = 20) Pageable pageable) {
-        return ApiResponse.success(performanceService.getList(userId, groupId, pageable));
+            @PathVariable Long groupId, @RequestParam(required = false) PerformancePeriod period,
+            @PageableDefault(size = 20) Pageable pageable) {
+        return ApiResponse.success(performanceService.getList(userId, groupId, period, pageable));
     }
 
     @Operation(summary = "공연 상세")
