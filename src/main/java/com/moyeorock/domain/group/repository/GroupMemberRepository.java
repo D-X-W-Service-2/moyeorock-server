@@ -43,6 +43,8 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
             """)
     int countActiveMembers(@Param("groupId") Long groupId);
 
+    Optional<GroupMember> findByGroupIdAndUserId(Long groupId, Long userId);
+
     boolean existsByGroupIdAndUserIdAndStatus(Long groupId, Long userId, GroupMemberStatus status);
 
     /**

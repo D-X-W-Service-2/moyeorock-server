@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.join.service.JoinRequestStatService;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostTargetResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -72,6 +73,9 @@ class RecruitPostServiceTest {
 
     @Mock
     private GroupMemberService groupMemberService;
+
+    @Mock
+    private JoinRequestStatService joinRequestStatService;
 
     @InjectMocks
     private RecruitPostService recruitPostService;

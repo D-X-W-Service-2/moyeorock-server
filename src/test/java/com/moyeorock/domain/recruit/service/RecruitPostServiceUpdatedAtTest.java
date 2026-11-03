@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.join.service.JoinRequestStatService;
 import com.moyeorock.domain.recruit.dto.request.RecruitPostCreateRequest;
 import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
@@ -44,6 +45,9 @@ class RecruitPostServiceUpdatedAtTest {
 
     @MockitoBean
     private GroupMemberService groupMemberService;
+
+    @MockitoBean
+    private JoinRequestStatService joinRequestStatService;
 
     @Test
     @DisplayName("수정 응답의 updatedAt은 수정 전 값이 아니라 갱신된 값이고 createdAt은 그대로다")

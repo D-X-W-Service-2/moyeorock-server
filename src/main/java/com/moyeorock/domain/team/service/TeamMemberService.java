@@ -1,6 +1,7 @@
 package com.moyeorock.domain.team.service;
 
 import com.moyeorock.domain.team.entity.Team;
+import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -37,6 +38,28 @@ public class TeamMemberService {
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId)
                 .filter(m -> m.getStatus() == MemberStatus.ACTIVE && m.getRole() == TeamRole.LEADER)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_TEAM_LEADER));
+    }
+
+    /** 팀장의 user id. 없는 팀이나 해체된 팀은 TEAM_NOT_FOUND다. 알림 수신자를 정할 때 쓴다(3팀). */
+    public Long getLeaderId(Long teamId) {
+        getActiveTeam(teamId);
+        return teamMemberRepository.findActiveMembers(teamId).stream()
+                .filter(m -> m.getRole() == TeamRole.LEADER)
+                .findFirst()
+                .map(TeamMember::getUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_NOT_FOUND));
+    }
+
+    /**
+     * 요청자가 이 팀의 활동 중인 팀원인지(역할은 묻지 않는다). 없는 팀·해체된 팀·팀원이 아닌 경우는 {@code false}다.
+     * 막지 않고 답만 한다 — 가입 신청·초대의 "이미 소속" 판단에 쓴다. 막아야 하면 {@link #ensureActiveMember}다.
+     */
+    public boolean isActiveMember(Long teamId, Long userId) {
+        return teamRepository.findById(teamId)
+                .filter(team -> team.getStatus() == TeamStatus.ACTIVE)
+                .flatMap(team -> teamMemberRepository.findByTeamIdAndUserId(teamId, userId))
+                .filter(m -> m.getStatus() == MemberStatus.ACTIVE)
+                .isPresent();
     }
 
     /**

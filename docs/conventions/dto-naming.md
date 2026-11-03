@@ -245,16 +245,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 패키지 `domain/join` — 컨트롤러는 `JoinRequestController`
 
-경로가 단수형 `join-request`다 — `API 초안`을 신뢰해 반영(2026-09-11, `docs/specs/api-spec.md` §5 참고). `join_requests` 테이블명은 그대로다.
+경로는 복수형 `join-requests`다 — `API 초안`이 복수형으로 바뀌어 맞췄다(2026-11-03, `docs/specs/api-spec.md` §5 참고). `join_requests` 테이블명은 그대로다.
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 가입 신청 | POST | `/v1/join-request` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
-| 받은 신청 목록 | GET | `/v1/join-request` | — | `PageResponse<JoinRequestResponse>` |
-| 내 신청 목록 | GET | `/v1/users/me/join-request` | — | `PageResponse<JoinRequestResponse>` |
-| 신청 승인 | PATCH | `/v1/join-request/{id}/approve` | — | `JoinApprovedResponse` |
-| 신청 거절 | PATCH | `/v1/join-request/{id}/reject` | — | `JoinDecisionResponse` |
-| 신청 취소 | PATCH | `/v1/join-request/{id}/cancel` | — | `JoinDecisionResponse` |
+| 가입 신청 | POST | `/v1/join-requests` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
+| 받은 신청 목록 | GET | `/v1/join-requests` | — | `PageResponse<JoinRequestResponse>` |
+| 내 신청 목록 | GET | `/v1/users/me/join-requests` | — | `PageResponse<JoinRequestResponse>` |
+| 신청 승인·거절·취소 | PATCH | `/v1/join-requests/{id}/status` | `JoinRequestStatusUpdateRequest` | `JoinApprovedResponse`(승인) / `JoinDecisionResponse`(거절·취소) |
 
 ---
 
@@ -267,9 +265,9 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 초대 보내기 | POST | `/v1/invitations` | `InvitationCreateRequest` | `InvitationResponse` |
 | 보낸 초대 목록 | GET | `/v1/invitations` | — | `PageResponse<InvitationResponse>` |
 | 받은 초대 목록 | GET | `/v1/users/me/invitations` | — | `PageResponse<InvitationResponse>` |
-| 초대 수락 | PATCH | `/v1/invitations/{id}/accept` | — | `JoinApprovedResponse` |
-| 초대 거절 | PATCH | `/v1/invitations/{id}/decline` | — | `JoinDecisionResponse` |
-| 초대 취소 | PATCH | `/v1/invitations/{id}/cancel` | — | `JoinDecisionResponse` |
+| 초대 수락·거절·취소 | PATCH | `/v1/invitations/{id}/status` | `InvitationStatusUpdateRequest` | `JoinApprovedResponse`(수락) / `JoinDecisionResponse`(거절·취소) |
+
+> 상태 변경은 2026-11-03에 Notion `API 초안`을 따라 `PATCH /{id}/status` 하나로 합쳤다(승인·거절·취소가 각각 `/approve` `/reject` `/cancel`이던 것). 요청 바디는 신청 `{status: APPROVED|REJECTED|CANCELED}`, 초대 `{status: ACCEPTED|DECLINED|CANCELED}`이고 바디 값은 초안에 없어 서버가 정했다. 반환 타입이 하나라 `JoinResultResponse`(sealed interface)로 두 응답을 묶었다 — JSON은 각 record 모양 그대로 나간다. 수락해도 응답 `status`는 `APPROVED`다(`JoinStatus`를 공유).
 
 **§6·§7 공용 DTO** — 엔티티가 `JoinRequest` 하나이므로 결과 응답도 공유한다.
 

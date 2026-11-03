@@ -378,7 +378,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 > - `target`은 `TeamSummary` 자리표시자가 아니라 **recruit 자체 축약형** `{id, name, region, genres}`이다(`docs/conventions/dto-naming.md` §5). `author`는 `UserSummaryResponse`이며 Notion 예시는 `{id, nickname}`만 있다.
 > - `wantedSlots[].appliedCount`는 대기(`PENDING`) 신청 수. 작성 직후 응답 예시는 `0`이다.
 > - `canEdit`은 수정 권한 여부이고 Notion Actor가 `모임장 / 팀장`이다. `myJoinRequest`는 신청 이력이 없으면 `null`이며 Notion에 "상의 필요" 메모가 있다.
-> - **구현 현황 (2026-11-03)**: `author`는 `UserSummaryResponse`로 채우고 탈퇴한 작성자면 `null`이다. `target`은 팀이면 이름·지역·장르를, 모임이면 `GroupBriefResponse`가 이름만 줘서 **이름만** 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체되거나 없는 팀·모임은 공고를 빼지 않고 `target`에 `id`만 남는다(명세가 `target`을 non-null로 정의해 객체를 유지). `myJoinRequest`는 join 도메인 미머지로 필드 자체를 뺐고, `appliedCount`는 계산할 수 없어 `null`이다.
+> - **구현 현황 (2026-11-03)**: `author`는 `UserSummaryResponse`로 채우고 탈퇴한 작성자면 `null`이다. `target`은 팀이면 이름·지역·장르를, 모임이면 `GroupBriefResponse`가 이름만 줘서 **이름만** 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체되거나 없는 팀·모임은 공고를 빼지 않고 `target`에 `id`만 남는다(명세가 `target`을 non-null로 정의해 객체를 유지). `wantedSlots[].appliedCount`는 그 세션의 대기(`PENDING`) 신청 수이고, `myJoinRequest`는 보는 사람이 그 공고에 낸 가장 최근 신청(`{id, status}`)이다 — 비로그인이거나 신청한 적이 없으면 `null`이다(2026-11-03 join 구현으로 채움).
 
 ### RecruitPostUpdateRequest
 
@@ -420,7 +420,29 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### JoinRequestResponse / PageResponse\<JoinRequestResponse\>
 
-**미작성.**
+```json
+{
+  "id": 77,
+  "targetType": "TEAM",
+  "target": { "id": 5, "name": "무명밴드", "region": "SEOUL", "genres": ["ROCK"] },
+  "applicant": { "id": 30, "nickname": "홍길동", "profileImage": null },
+  "recruitPostId": 14,
+  "instrument": "BASS",
+  "message": "베이스 3년 쳤습니다.",
+  "status": "PENDING",
+  "createdAt": "2026-08-11T15:10:00"
+}
+```
+
+> 2026-11-03 Notion `API 초안`(가입 신청)과 대조해 반영했다. `direction`·`targetUser`는 담지 않는다. `instrument`는 요청·응답 모두 **단수**다(Notion 요청이 `List`("다중 고려")였으나 단수로 확정). `message`는 요청에도 선택 필드로 둔다(초안 요청 표에는 빠져 있었다). 모임 대상은 `target.region`·`target.genres`가 `null`이고 `instrument`도 `null`이다. 해체된 대상은 `target`에 `id`만 남고, 탈퇴한 신청자는 `applicant`가 `null`이다.
+
+### JoinRequestStatusUpdateRequest / InvitationStatusUpdateRequest
+
+```json
+{ "status": "APPROVED" }
+```
+
+신청은 `APPROVED` · `REJECTED` · `CANCELED`, 초대는 `ACCEPTED` · `DECLINED` · `CANCELED`다. Notion 초안에는 요청 바디가 없어("Request Body 없음") 상태 변경을 `PATCH /{id}/status` 하나로 합치면서 서버가 정했다(2026-11-03).
 
 ### JoinApprovedResponse (승인)
 
@@ -457,9 +479,23 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-### PageResponse\<InvitationResponse\>
+### InvitationResponse / PageResponse\<InvitationResponse\>
 
-**미작성** (보낸/받은 목록용 페이지 2개 모두 비어 있음).
+```json
+{
+  "id": 91,
+  "targetType": "TEAM",
+  "target": { "id": 5, "name": "무명밴드", "region": "SEOUL", "genres": ["ROCK"] },
+  "inviter": { "id": 12, "nickname": "김철수", "profileImage": null },
+  "invitee": { "id": 30, "nickname": "이영희", "profileImage": null },
+  "instrument": "DRUM",
+  "message": "드럼 자리 비어 있어요, 같이 하실래요?",
+  "status": "PENDING",
+  "createdAt": "2026-08-11T16:00:00"
+}
+```
+
+> 2026-11-03 Notion `받은 초대 목록` 응답 표와 대조해 반영했다(보낸 목록도 같은 모양). `recruitPostId`·`direction`은 담지 않는다. `inviter`·`invitee`는 탈퇴한 사용자면 `null`이다.
 
 ### JoinApprovedResponse / JoinDecisionResponse
 

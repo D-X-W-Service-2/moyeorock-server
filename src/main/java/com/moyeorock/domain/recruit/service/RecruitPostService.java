@@ -5,7 +5,10 @@ import com.moyeorock.domain.recruit.dto.request.RecruitPostSearchCondition;
 import com.moyeorock.domain.recruit.dto.request.RecruitPostStatusUpdateRequest;
 import com.moyeorock.domain.recruit.dto.request.RecruitPostUpdateRequest;
 import com.moyeorock.domain.recruit.dto.request.WantedSlotRequest;
+import com.moyeorock.domain.join.service.JoinRequestStatService;
+import com.moyeorock.domain.recruit.dto.response.RecruitPostApplyInfoResponse;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostDetailResponse;
+import com.moyeorock.domain.recruit.dto.response.RecruitPostDetailResponse.MyJoinRequest;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostStatusResponse;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostTargetResponse;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostSummaryResponse;
@@ -63,6 +66,7 @@ public class RecruitPostService {
     private final TeamService teamService;
     private final TeamMemberService teamMemberService;
     private final GroupMemberService groupMemberService;
+    private final JoinRequestStatService joinRequestStatService;
 
     @Transactional
     public RecruitPostDetailResponse create(Long userId, RecruitPostCreateRequest request) {
@@ -134,6 +138,20 @@ public class RecruitPostService {
         recruitPostRepository.findByTargetGroupIdAndStatus(groupId, RecruitStatus.OPEN).forEach(RecruitPost::close);
     }
 
+    /**
+     * join 도메인이 공고 기반 신청을 검증할 때 부른다. 없는 공고는 RECRUIT_POST_NOT_FOUND, 마감된 공고는 INVALID_STATE다.
+     * 다른 Service를 부르지 않는다 — join이 이 Service를 부르고 이 Service가 join의 조회 Service를 부르므로
+     * 여기서 JoinRequestService를 부르면 순환이 된다.
+     */
+    public RecruitPostApplyInfoResponse getOpenPostForApply(Long postId) {
+        RecruitPost post = getPostOrThrow(postId);
+        if (post.getStatus() != RecruitStatus.OPEN) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+        return new RecruitPostApplyInfoResponse(post.getId(), post.getAuthorId(), post.getTargetType(),
+                post.getTargetId(), post.getWantedSlots().stream().map(WantedSlot::instrument).toList());
+    }
+
     private RecruitPost getPostOrThrow(Long postId) {
         return recruitPostRepository.findById(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RECRUIT_POST_NOT_FOUND));
@@ -170,7 +188,12 @@ public class RecruitPostService {
         if (post.getTargetGroupId() != null) {
             findGroupBrief(post.getTargetGroupId()).ifPresent(brief -> groups.put(post.getTargetGroupId(), brief));
         }
-        return RecruitPostDetailResponse.of(post, targetOf(post, teams, groups), author, canManage(post, viewerId, teams));
+        Map<Instrument, Long> appliedCounts = joinRequestStatService.countPendingByInstrument(post.getId());
+        MyJoinRequest myJoinRequest = joinRequestStatService.findMyLatestApplication(post.getId(), viewerId)
+                .map(brief -> new MyJoinRequest(brief.id(), brief.status()))
+                .orElse(null);
+        return RecruitPostDetailResponse.of(post, targetOf(post, teams, groups), author,
+                canManage(post, viewerId, teams), appliedCounts, myJoinRequest);
     }
 
     private RecruitPostTargetResponse targetOf(RecruitPost post, Map<Long, TeamSummaryResponse> teams,
