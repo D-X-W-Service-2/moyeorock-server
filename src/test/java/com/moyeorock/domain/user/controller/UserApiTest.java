@@ -306,6 +306,22 @@ class UserApiTest {
     }
 
     @Test
+    @DisplayName("탈퇴: 일반 팀원으로 있던 팀에서 빠져 팀원 수가 줄어든다(팀원 행 LEFT)")
+    void withdraw_leavesTeamsAsMember() throws Exception {
+        long leader = saveUser("leader@example.com", "팀장");
+        long member = saveUser("member@example.com", "팀원");
+        long teamId = createTeam(leader, "무명밴드");
+        teamService.addMember(teamId, member, Instrument.DRUM);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(2);
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(member)))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(member)).isEmpty();
+    }
+
+    @Test
     @DisplayName("탈퇴: 모임장인 활동 중인 모임이 있으면 409이고 메시지에 모임 이름이 담기며, 모임을 해체하면 200이다")
     void withdraw_blockedWhileOwningGroup_thenAllowedAfterDisband() throws Exception {
         long id = saveUser("seojun@example.com", "임시서준");

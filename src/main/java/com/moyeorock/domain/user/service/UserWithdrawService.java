@@ -25,7 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>UserService에 두지 않는 이유: TeamService가 UserService를 주입받고 있어 UserService가 그쪽을 주입받으면
  * 생성자 순환이 된다(architecture.md §3, UserActivityService와 같은 사정). 다른 도메인은 이 클래스를 주입받지 않는다.
  *
- * <p>통과하면 모임원 행을 전부 LEFT로 바꾼다(4팀 #112). 팀원 행 정리는 2팀 메서드가 생기면 같은 자리에 잇는다.
+ * <p>통과하면 모임원 행(4팀 leaveAllGroups, #112)과 팀원 행(2팀 leaveAllTeams, #97)을 전부 LEFT로 바꾼다. 그대로 두면 탈퇴 회원이
+ * memberCount에는 세어지는데 목록에서는 빠져 둘이 어긋난다.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,7 +39,8 @@ public class UserWithdrawService {
     /**
      * 사용자 행을 잠근 뒤 직책을 확인한다(잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush가 되돌린다, PR #57 리뷰).
      * 팀장인 활동 중인 팀이나 모임장인 활동 중인 모임이 하나라도 있으면 409 WITHDRAW_BLOCKED_BY_ROLE이고, 어느 팀·모임인지 message에 담는다.
-     * 판정 뒤 위임이 끼어드는 경우는 leaveAllGroups가 모임 행을 잠그고 다시 확인해 OWNER_CANNOT_LEAVE로 막는다(팀 행은 잠그지 않는다).
+     * 판정 뒤 위임·합류가 끼어드는 경우는 leaveAllGroups·leaveAllTeams가 각각 모임 행·팀 행을 잠그고 다시 확인해
+     * OWNER_CANNOT_LEAVE·LEADER_MUST_DELEGATE_FIRST로 막고, 트랜잭션 전체가 롤백된다.
      */
     @Transactional
     public UserWithdrawResponse withdraw(Long userId) {
@@ -50,6 +52,7 @@ public class UserWithdrawService {
             throw new BusinessException(ErrorCode.WITHDRAW_BLOCKED_BY_ROLE, blockedMessage(ledTeams, ownedGroups));
         }
         groupMemberService.leaveAllGroups(userId);
+        teamService.leaveAllTeams(userId);
         user.withdraw();
         return new UserWithdrawResponse(user.getWithdrawnAt());
     }

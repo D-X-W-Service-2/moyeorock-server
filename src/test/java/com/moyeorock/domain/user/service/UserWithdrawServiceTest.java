@@ -79,6 +79,7 @@ class UserWithdrawServiceTest {
         assertThat(user.getNickname()).isEqualTo("탈퇴회원_" + USER_ID);
         assertThat(response.withdrawnAt()).isEqualTo(user.getWithdrawnAt());
         verify(groupMemberService).leaveAllGroups(USER_ID);
+        verify(teamService).leaveAllTeams(USER_ID);
     }
 
     @Test
@@ -96,6 +97,7 @@ class UserWithdrawServiceTest {
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("seojun@example.com");
         verify(groupMemberService, never()).leaveAllGroups(USER_ID);
+        verify(teamService, never()).leaveAllTeams(USER_ID);
     }
 
     @Test
