@@ -2,6 +2,7 @@ package com.moyeorock.domain.group.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -21,6 +22,7 @@ import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class GroupMemberServiceTest {
@@ -313,6 +316,35 @@ class GroupMemberServiceTest {
         assertThat(brief.name()).isEqualTo("홍대 밴드부");
         assertThat(brief.coverImage()).isEqualTo("cover.jpg");
         verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("활동 모임원이면 isActiveMember는 true, 아니면(해체된 모임 포함) false다")
+    void isActiveMember_answersWithoutThrowing() {
+        when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID))
+                .thenReturn(Optional.of(member(MEMBER_ID, GroupRole.MEMBER)));
+        when(groupMemberRepository.findActiveMember(GROUP_ID, 99L)).thenReturn(Optional.empty());
+
+        assertThat(groupMemberService.isActiveMember(GROUP_ID, MEMBER_ID)).isTrue();
+        assertThat(groupMemberService.isActiveMember(GROUP_ID, 99L)).isFalse();
+    }
+
+    @Test
+    @DisplayName("모임 이름 일괄 조회는 해체되지 않은 모임만 id → 이름으로 돌려준다")
+    void getNames_returnsActiveGroupNames() {
+        Group group = Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null);
+        ReflectionTestUtils.setField(group, "id", GROUP_ID);
+        when(groupRepository.findAllByIdInAndStatus(List.of(GROUP_ID, 2L), GroupStatus.ACTIVE))
+                .thenReturn(List.of(group));
+
+        assertThat(groupMemberService.getNames(List.of(GROUP_ID, 2L))).containsExactly(entry(GROUP_ID, "홍대 밴드부"));
+    }
+
+    @Test
+    @DisplayName("모임 id가 없으면 조회하지 않고 빈 Map을 돌려준다")
+    void getNames_returnsEmpty_whenNoIds() {
+        assertThat(groupMemberService.getNames(List.of())).isEmpty();
+        verifyNoInteractions(groupRepository);
     }
 
     @Test

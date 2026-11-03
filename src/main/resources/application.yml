@@ -57,14 +57,29 @@ file:
       base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
       upload-url-expiry-seconds: 600
 
+# 문서(/v3/api-docs, /swagger-ui.html)는 SWAGGER_ENABLED=true일 때만 열린다. 값이 없으면 닫힌다 — 운영 배포에서
+# 설정을 빠뜨려도 API 문서가 노출되지 않게 하려는 것이다(PR #114 리뷰). 로컬·개발은 .env에 SWAGGER_ENABLED=true를 둔다.
 springdoc:
   api-docs:
     path: /v3/api-docs
+    enabled: ${SWAGGER_ENABLED:false}
   swagger-ui:
     path: /swagger-ui.html
+    enabled: ${SWAGGER_ENABLED:false}
     operations-sorter: method
     tags-sorter: alpha
     display-request-duration: true
+
+# 배포 스크립트(.github/workflows/deploy-dev.yml)가 재시작 뒤 /actuator/health로 성공을 판단한다. DB 연결까지 보고
+# UP/DOWN만 답한다. health 말고는 열지 않고, 컴포넌트별 상세는 밖에 보이지 않게 둔다(둘 다 기본값이지만 명시).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
 
 server:
   port: 8080

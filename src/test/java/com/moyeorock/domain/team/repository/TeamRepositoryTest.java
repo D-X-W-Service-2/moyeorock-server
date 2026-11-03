@@ -56,7 +56,11 @@ class TeamRepositoryTest {
     }
 
     private TeamMember saveMember(Team team, Long userId, MemberStatus status) {
-        TeamMember member = TeamMember.create(team.getId(), userId, TeamRole.MEMBER, Instrument.BASS);
+        return saveMember(team, userId, TeamRole.MEMBER, status);
+    }
+
+    private TeamMember saveMember(Team team, Long userId, TeamRole role, MemberStatus status) {
+        TeamMember member = TeamMember.create(team.getId(), userId, role, Instrument.BASS);
         if (status != MemberStatus.ACTIVE) {
             member.updateStatus(status);
         }
@@ -188,6 +192,81 @@ class TeamRepositoryTest {
         List<Long> result = teamRepository.findMyTeamIdsInPerformance(7L, me);
 
         assertThat(result).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("findMyPerformanceTeams는 내가 ACTIVE 팀원인 공연 팀을 해체된 팀까지 id 순으로 돌려준다")
+    void findMyPerformanceTeams_includesDisbandedTeamsButNotIndependentOrLeft() {
+        Long me = 1L;
+        Team active = teamRepository.saveAndFlush(Team.createForPerformance(7L, "활동 중", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(8L, "끝난 공연팀", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        Team independent = saveTeam("독립 팀", Region.SEOUL);
+        Team left = teamRepository.saveAndFlush(Team.createForPerformance(7L, "탈퇴한 팀", null, Region.SEOUL));
+        Team othersTeam = teamRepository.saveAndFlush(Team.createForPerformance(7L, "남의 팀", null, Region.SEOUL));
+        saveMember(active, me, MemberStatus.ACTIVE);
+        saveMember(disbanded, me, MemberStatus.ACTIVE);
+        saveMember(independent, me, MemberStatus.ACTIVE);
+        saveMember(left, me, MemberStatus.LEFT);
+        saveMember(othersTeam, 2L, MemberStatus.ACTIVE);
+
+        List<Team> result = teamRepository.findMyPerformanceTeams(me);
+
+        assertThat(result).extracting(Team::getId).containsExactly(active.getId(), disbanded.getId());
+    }
+
+    @Test
+    @DisplayName("findActiveTeamsLedBy는 내가 ACTIVE 팀장인 ACTIVE 팀만 id 순으로 돌려준다")
+    void findActiveTeamsLedBy_returnsOnlyActiveTeamsILead() {
+        Long me = 1L;
+        Team first = saveTeam("첫째", Region.SEOUL);
+        Team second = saveTeam("둘째", Region.SEOUL);
+        Team disbanded = saveDisbandedTeam("해체됨", Region.SEOUL);
+        Team asMember = saveTeam("팀원으로만", Region.SEOUL);
+        Team left = saveTeam("탈퇴함", Region.SEOUL);
+        Team othersTeam = saveTeam("남의 팀", Region.SEOUL);
+        saveMember(first, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(second, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(disbanded, me, TeamRole.LEADER, MemberStatus.ACTIVE);
+        saveMember(asMember, me, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        saveMember(left, me, TeamRole.LEADER, MemberStatus.LEFT);
+        saveMember(othersTeam, 2L, TeamRole.LEADER, MemberStatus.ACTIVE);
+
+        List<Team> result = teamRepository.findActiveTeamsLedBy(me);
+
+        assertThat(result).extracting(Team::getId).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("findActiveByPerformanceIdInForUpdate는 주어진 공연들의 활성 팀만 id 순으로 돌려준다")
+    void findActiveByPerformanceIdInForUpdate_returnsActiveTeamsOfGivenPerformances() {
+        Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "첫째", null, Region.SEOUL));
+        Team second = teamRepository.saveAndFlush(Team.createForPerformance(8L, "둘째", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(7L, "해체됨", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        teamRepository.saveAndFlush(Team.createForPerformance(9L, "다른 공연", null, Region.SEOUL));
+        saveTeam("독립 팀", Region.SEOUL);
+
+        List<Team> result = teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L));
+
+        assertThat(result).extracting(Team::getId).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("findActiveByIdInForUpdate는 주어진 id 중 활성 팀만 id 순으로 돌려준다")
+    void findActiveByIdInForUpdate_returnsActiveTeamsAmongGivenIds() {
+        Team independent = saveTeam("독립 팀", Region.SEOUL);
+        Team performance = teamRepository.saveAndFlush(Team.createForPerformance(7L, "공연 팀", null, Region.SEOUL));
+        Team disbanded = saveDisbandedTeam("해체됨", Region.SEOUL);
+        Team notRequested = saveTeam("요청 안 함", Region.SEOUL);
+
+        List<Team> result = teamRepository.findActiveByIdInForUpdate(
+                List.of(performance.getId(), disbanded.getId(), independent.getId()));
+
+        assertThat(result).extracting(Team::getId).containsExactly(independent.getId(), performance.getId());
+        assertThat(result).doesNotContain(notRequested);
     }
 
     @Test

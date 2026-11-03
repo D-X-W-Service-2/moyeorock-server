@@ -12,7 +12,9 @@ public enum PublicEndpoints {
     API_DOCS("/v3/api-docs"),
     API_DOCS_RESOURCES("/v3/api-docs/**"),
     // 프로필·커버·포스터 이미지는 공개 정보라 인증 없이 연다(로컬 스토리지 임시 서빙 엔드포인트)
-    LOCAL_FILE_SERVING("/v1/files/local/**");
+    LOCAL_FILE_SERVING("/v1/files/local/**"),
+    // 배포 스크립트가 토큰 없이 부르는 헬스 체크. UP/DOWN만 보인다(application.yml management 절)
+    HEALTH("/actuator/health");
 
     private final String path;
 

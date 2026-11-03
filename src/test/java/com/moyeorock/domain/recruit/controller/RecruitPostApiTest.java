@@ -14,7 +14,9 @@ import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
 import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
+import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
@@ -361,8 +363,18 @@ class RecruitPostApiTest {
     @Test
     @DisplayName("탈퇴한 작성자는 author가 null이다")
     void withdrawnAuthor_isNull() throws Exception {
-        long id = createPostAndGetId(authorId, teamBody());
-        userService.withdraw(authorId);
+        // 직책(팀장·모임장)을 가진 채로는 탈퇴할 수 없게 막을 예정이라(1팀), 직책이 없는 작성자로 만든다.
+        // 공고는 팀장만 쓰므로 쓴 뒤에 팀장을 넘긴다 — 작성자는 현재 팀장이 아니어도 공고의 작성자로 남는다.
+        long writerId = saveUser("작성자").getId();
+        long writerTeamId = teamService.create(writerId,
+                new TeamCreateRequest("작성자밴드", null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
+        teamService.addMember(writerTeamId, otherId, Instrument.DRUM);
+        long id = createPostAndGetId(writerId, """
+                {"targetType":"TEAM","targetId":%d,"title":"t","body":"b",
+                 "wantedSlots":[{"instrument":"KEY","count":1}],"region":"SEOUL"}
+                """.formatted(writerTeamId));
+        teamService.changeMember(writerId, writerTeamId, otherId, new TeamMemberUpdateRequest(TeamRole.LEADER, null));
+        userService.withdraw(writerId);
 
         mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(otherId)))
                 .andExpect(status().isOk())

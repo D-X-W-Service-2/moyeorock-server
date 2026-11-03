@@ -2,6 +2,7 @@ package com.moyeorock.domain.group.service;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.dto.response.GroupMemberResponse;
+import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
 import com.moyeorock.domain.group.enums.GroupRole;
@@ -11,6 +12,9 @@ import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>모임 자체(생성·상세·수정)는 {@link GroupService}가 담당한다. 이 클래스가
  * {@code NoticeService}를 모르게 두는 것이 중요하다 — {@code GroupService → NoticeService →
  * GroupMemberService} 방향을 지켜 순환 참조를 만들지 않는다. 같은 이유로 다른 도메인이 쓰는 모임 조회
- * (존재 확인·표시용 정보)도 {@code GroupService}가 아니라 여기에 둔다.
+ * (존재 확인·표시용 정보·이름)도 {@code GroupService}가 아니라 여기에 둔다.
  */
 @Service
 @RequiredArgsConstructor
@@ -176,6 +180,18 @@ public class GroupMemberService {
         return groupRepository.findByIdAndStatus(groupId, GroupStatus.ACTIVE)
                 .map(GroupBriefResponse::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+    }
+
+    /**
+     * 모임 이름 일괄 조회(내 활동 공연의 모임 이름 등). 해체된 모임과 없는 id는 결과에서 빠진다 —
+     * 해체된 모임은 없는 모임으로 보는 규칙 그대로라, 부르는 쪽이 빠진 id의 항목을 거른다.
+     */
+    public Map<Long, String> getNames(Collection<Long> groupIds) {
+        if (groupIds == null || groupIds.isEmpty()) {
+            return Map.of();
+        }
+        return groupRepository.findAllByIdInAndStatus(groupIds, GroupStatus.ACTIVE).stream()
+                .collect(Collectors.toMap(Group::getId, Group::getName));
     }
 
     /** 해체된 모임이면 0이다. */
