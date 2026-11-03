@@ -50,3 +50,7 @@ file:
       base-path: build/test-uploads
       base-url: http://localhost:8080
       upload-url-expiry-seconds: 600
+
+# main application.yml의 cors.allowed-origins 기본값과 같게 둔다(CorsConfigTest가 이 목록으로 검증, #123).
+cors:
+  allowed-origins: "http://localhost:*,https://moyeorock.kro.kr,https://moyeorak.pages.dev,https://moyeorock-client-test-alpha.vercel.app"
