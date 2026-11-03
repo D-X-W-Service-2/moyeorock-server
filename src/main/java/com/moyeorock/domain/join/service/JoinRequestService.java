@@ -15,6 +15,7 @@ import com.moyeorock.domain.join.enums.InvitationDecision;
 import com.moyeorock.domain.join.enums.JoinDirection;
 import com.moyeorock.domain.join.enums.JoinStatus;
 import com.moyeorock.domain.join.repository.JoinRequestRepository;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostApplyInfoResponse;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
@@ -78,6 +79,7 @@ public class JoinRequestService {
     private final TeamMemberService teamMemberService;
     private final GroupMemberService groupMemberService;
     private final RecruitPostService recruitPostService;
+    private final PerformanceMemberService performanceMemberService;
     private final ApplicationEventPublisher eventPublisher;
 
     // ---------------------------------------------------------------- 가입 신청
@@ -94,6 +96,7 @@ public class JoinRequestService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
         ensureNotMember(targetType, targetId, userId);
+        ensurePerformanceGroupMember(targetType, targetId, userId);
         if (request.recruitPostId() != null) {
             validateRecruitPost(request.recruitPostId(), request, instrument, userId);
         }
@@ -157,6 +160,7 @@ public class JoinRequestService {
             throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
         ensureNotMember(targetType, targetId, inviteeId);
+        ensurePerformanceGroupMember(targetType, targetId, inviteeId);
         ensureNoPending(inviteeId, targetType, targetId);
 
         JoinRequest saved = joinRequestRepository.save(JoinRequest.invite(userId, inviteeId,
@@ -318,6 +322,21 @@ public class JoinRequestService {
                 : groupMemberService.isActiveMember(targetId, userId);
         if (member) {
             throw new BusinessException(ErrorCode.ALREADY_MEMBER);
+        }
+    }
+
+    /**
+     * 공연 팀(공연에 속한 팀)에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다(#96). 신청·초대를 만들 때 미리 막아
+     * 모임 밖 사람의 신청이 팀장에게 쌓이지 않게 한다. 승인·수락 때는 {@code TeamService.addMember}가 같은 확인을 다시 한다 —
+     * 그사이 모임을 나갔을 수 있어서다. 모임 대상이거나 독립 팀이면 확인할 것이 없다.
+     */
+    private void ensurePerformanceGroupMember(TargetType targetType, Long targetId, Long userId) {
+        if (targetType != TargetType.TEAM) {
+            return;
+        }
+        Long performanceId = teamMemberService.getPerformanceId(targetId);
+        if (performanceId != null) {
+            performanceMemberService.ensureGroupMember(performanceId, userId);
         }
     }
 

@@ -102,6 +102,7 @@
 
 > ¶ 받은 신청 목록의 쿼리 파라미터: `targetType` · `targetId` · `status`. **`targetType`·`targetId`는 필수다**(권한을 대상 단위로 확인하므로. Notion은 "전부 선택"이라 적었지만 대상 없이는 모임장/팀장을 정할 수 없다 — 명세에 없는 서버 정책). 정렬은 최신순 고정.
 > **상태 변경**: 바디 `{"status": "APPROVED" | "REJECTED" | "CANCELED"}`(Notion 초안에는 바디 설명이 없어 서버가 정했다). `PENDING`은 400, 이미 처리된 신청은 409 `INVALID_STATE`, 권한 없는 사람은 403(`NOT_TEAM_LEADER`·`NOT_GROUP_OWNER`, 취소는 신청자가 아니면 `NO_PERMISSION`)이다. 권한을 먼저 보고 상태를 본다. 승인하면 팀원/모임원(`MEMBER`)이 된다. 승인 시점에 이미 소속이면 409 `ALREADY_MEMBER`이고 신청은 대기로 남는다.
+> **공연 팀**: 대상 팀이 공연에 속한 팀이면 신청자가 그 공연을 연 모임의 활동 모임원이어야 한다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`다(#96). 신청을 만들 때와 승인할 때(`TeamService.addMember`) 두 번 확인한다 — 그사이 모임을 나갔을 수 있어서다. 초대도 같다(초대받는 사람이 모임원이어야 하고, 수락 때 다시 확인).
 > **신청 검증**: 팀 대상은 `instrument` 필수(없으면 400), 모임 대상은 `instrument`를 저장하지 않는다. `message`는 선택(최대 500자). 같은 사람·같은 대상에 대기(`PENDING`) 신청이나 초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`(신청·초대를 가리지 않음), 이미 팀원/모임원이면 409 `ALREADY_MEMBER`, 팀장/모임장이 자기 팀·모임에 신청하면 400이다. 거절·취소된 뒤에는 다시 신청할 수 있다.
 > **공고를 거친 신청(`recruitPostId`)**: 없는 공고 404 `RECRUIT_POST_NOT_FOUND`, 마감된 공고 409 `INVALID_STATE`, 요청 대상과 다른 대상의 공고·모집하지 않는 세션(팀 공고)·내가 쓴 공고는 400이다. **정원은 검사하지 않는다** — 신청은 항상 받고 팀장이 승인 때 판단한다. 공고가 마감된 뒤에도 이미 들어온 대기 신청은 승인할 수 있다. 공고 상세의 `wantedSlots[].appliedCount`는 그 세션의 대기 신청 수, `myJoinRequest`는 내가 그 공고에 낸 가장 최근 신청(`{id, status}`, 없으면 `null`)이다.
 > **알림**(트랜잭션 안에서 이벤트 발행): 팀 신청 → 팀장 `TEAM_APPLY`, 모임 신청 → 모임장 `RECRUIT_POST_APPLIED`(모임용 전용 타입이 없어 대신 썼다), 승인·거절 → 신청자 `JOIN_REQUEST_APPROVED`·`JOIN_REQUEST_REJECTED`. 취소는 알리지 않는다.
@@ -123,7 +124,7 @@
 
 > ¶ 보낸 초대 목록의 쿼리 파라미터: `targetType` · `targetId` · `status`. **보낸 목록은 `targetType`·`targetId`가 필수**(팀장/모임장 권한을 대상 단위로 확인). 받은 목록은 내 초대만 보이므로 `targetType`·`targetId`(함께 줘야 함)·`status`는 거르는 용도의 선택이다(Notion은 받은 목록도 대상을 필수로 적었으나 복사된 표로 보인다 — 서버 정책).
 > **상태 변경**: 바디 `{"status": "ACCEPTED" | "DECLINED" | "CANCELED"}`. 수락·거절은 초대받은 본인, 취소는 팀장/모임장이 한다. 수락하면 팀원/모임원이 되고 응답 `status`는 `APPROVED`(수락)·`REJECTED`(거절)·`CANCELED`로 가입 신청과 같은 값이다. 신청 id로 초대 경로를 부르면(또는 반대) 404 `JOIN_REQUEST_NOT_FOUND`다.
-> **초대 검증**: 팀장/모임장만 보낼 수 있다(403·404). 자기 자신 400, 없는 사용자 404 `USER_NOT_FOUND`, 이미 소속 409 `ALREADY_MEMBER`, 대기 중인 신청·초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`, 팀 초대는 `instrument` 필수다.
+> **초대 검증**: 팀장/모임장만 보낼 수 있다(403·404). 공연 팀이면 초대받는 사람이 그 공연을 연 모임의 모임원이어야 한다(`403 NOT_PERFORMANCE_GROUP_MEMBER`). 자기 자신 400, 없는 사용자 404 `USER_NOT_FOUND`, 이미 소속 409 `ALREADY_MEMBER`, 대기 중인 신청·초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`, 팀 초대는 `instrument` 필수다.
 > **알림**: 초대 → 초대받은 사람 `TEAM_INVITE`·`GROUP_INVITE`, 수락·거절 → 초대한 사람 `INVITATION_ACCEPTED`·`INVITATION_DECLINED`. 취소는 알리지 않는다. 경로는 모두 복수형 `invitations`다.
 
 ---
