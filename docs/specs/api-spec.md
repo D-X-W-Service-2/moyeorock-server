@@ -106,7 +106,7 @@
 > **신청 검증**: 팀 대상은 `instrument` 필수(없으면 400), 모임 대상은 `instrument`를 저장하지 않는다. `message`는 선택(최대 500자). 같은 사람·같은 대상에 대기(`PENDING`) 신청이나 초대가 있으면 409 `JOIN_REQUEST_DUPLICATED`(신청·초대를 가리지 않음), 이미 팀원/모임원이면 409 `ALREADY_MEMBER`, 팀장/모임장이 자기 팀·모임에 신청하면 400이다. 거절·취소된 뒤에는 다시 신청할 수 있다.
 > **공고를 거친 신청(`recruitPostId`)**: 없는 공고 404 `RECRUIT_POST_NOT_FOUND`, 마감된 공고 409 `INVALID_STATE`, 요청 대상과 다른 대상의 공고·모집하지 않는 세션(팀 공고)·내가 쓴 공고는 400이다. **정원은 검사하지 않는다** — 신청은 항상 받고 팀장이 승인 때 판단한다. 공고가 마감된 뒤에도 이미 들어온 대기 신청은 승인할 수 있다. 공고 상세의 `wantedSlots[].appliedCount`는 그 세션의 대기 신청 수, `myJoinRequest`는 내가 그 공고에 낸 가장 최근 신청(`{id, status}`, 없으면 `null`)이다.
 > **알림**(트랜잭션 안에서 이벤트 발행): 팀 신청 → 팀장 `TEAM_APPLY`, 모임 신청 → 모임장 `RECRUIT_POST_APPLIED`(모임용 전용 타입이 없어 대신 썼다), 승인·거절 → 신청자 `JOIN_REQUEST_APPROVED`·`JOIN_REQUEST_REJECTED`. 취소는 알리지 않는다.
-> 응답의 `target`은 팀이면 이름·지역·장르, 모임이면 이름만 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체된 대상은 내 신청 목록에서도 빼지 않고 `target`에 `id`만 남는다. `applicant`는 탈퇴한 신청자면 `null`이다.
+> 응답의 `target`은 팀이면 이름·지역·장르, 모임이면 이름만 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체된 대상은 내 신청 목록에서도 빼지 않고 `target`에 `id`만 남는다. 해체된 대상의 처리: 초대 거절(`DECLINED`)·신청 취소(`CANCELED`)는 되고(알림 문구는 "해체된 팀"·"해체된 모임"), 초대 수락·신청 승인은 안 된다(팀 `409 INVALID_STATE`, 모임 `404 GROUP_NOT_FOUND`). 팀장·모임장 쪽 승인·거절·취소와 받은 신청·보낸 초대 목록은 대상 확인에서 404다. `target`이 id만 오면(`name == null`) 해체된 대상이다 — Notion 반영 필요. `applicant`는 탈퇴한 신청자면 `null`이다.
 > 경로는 복수형 `join-requests`다 — 상단 "경로 표기" 참고. `join_requests` 테이블명은 그대로다.
 
 ---

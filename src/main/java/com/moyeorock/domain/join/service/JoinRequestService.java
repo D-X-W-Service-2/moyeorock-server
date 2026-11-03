@@ -262,7 +262,7 @@ public class JoinRequestService {
 
     // 승인·거절 알림. 신청은 신청자에게, 초대는 초대한 사람에게 간다. 취소는 알리지 않는다(알맞은 타입이 없다).
     private void notifyDecision(JoinRequest request, Long deciderId, boolean approved) {
-        String targetName = getTargetOrThrow(request.getTargetType(), request.getTargetId()).name();
+        String targetName = targetNameOf(request.getTargetType(), request.getTargetId());
         if (request.getDirection() == JoinDirection.APPLY) {
             publish(request.getUserId(),
                     approved ? NotificationType.JOIN_REQUEST_APPROVED : NotificationType.JOIN_REQUEST_REJECTED,
@@ -275,6 +275,15 @@ public class JoinRequestService {
                 approved ? NotificationType.INVITATION_ACCEPTED : NotificationType.INVITATION_DECLINED,
                 nickname + "님이 " + targetName + " 초대를 " + (approved ? "수락했습니다." : "거절했습니다."),
                 NotificationTargetType.INVITATION, request.getId());
+    }
+
+    // 알림 문구용 이름. 해체된 대상의 신청·초대도 거절할 수 있어야 하므로 대상이 없어도 예외 없이 대체 문구를 쓴다.
+    private String targetNameOf(TargetType targetType, Long targetId) {
+        if (targetType == TargetType.TEAM) {
+            TeamSummaryResponse team = teamService.getSummaries(List.of(targetId)).get(targetId);
+            return team != null ? team.name() : "해체된 팀";
+        }
+        return findGroupBrief(targetId).map(GroupBriefResponse::name).orElse("해체된 모임");
     }
 
     // ---------------------------------------------------------------- 검증
