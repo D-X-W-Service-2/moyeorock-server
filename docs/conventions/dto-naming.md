@@ -370,7 +370,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `PerformanceBriefResponse` | `(Long id, String title, String groupName, LocalDateTime performedAt)` — 다른 도메인이 공연을 표시할 때 쓰는 요약(팀 상세의 `performance`). `PerformanceMemberService.getBrief`가 준다. 모임이 해체됐으면 `groupName`은 null (2026-11-02, 이슈 #105) |
 | `SetlistResponse` | `(Long performanceId, boolean confirmed, List<SetlistItemResponse> setlist)` — 공연 셋리스트 조회·넘기기·확정 공통. 확정 전에는 넘겨진 곡 전체(`sortOrder` null), 확정 후에는 확정곡만 |
 | `SetlistSubmitRequest` | `(List<Long> songIds)` — 그 팀의 선택곡 안에서 고른다. 그 팀이 넘긴 곡 전체를 바꾼다 |
-| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다 |
+| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다. `SetlistService`에는 같은 모양의 값 `SetlistService.ConfirmItem`으로 바꿔 넘긴다 |
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 
@@ -378,7 +378,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
-## 10. song · setlist (4)
+## 10. song · setlist (5)
 
 패키지 `domain/song`, 팀 선택곡·셋리스트 항목은 `domain/setlist`. 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(2026-10-30, 이슈 #85) — 공연 셋리스트 엔드포인트는 §9
 
@@ -388,12 +388,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
+| 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
 
 **보조 DTO**
 
 | 클래스 | 설명 |
 |---|---|
-| `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, Map<Instrument, Level> difficulty)` |
+| `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, List<SongDifficultyResponse> difficulty)` — 곡 검색·추천의 곡 정보 |
+| `SongDifficultyResponse` | `(Instrument part, Level level)` — 파트별 난이도. 정보가 없는 파트는 목록에서 빠진다 |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 선택곡·셋리스트 항목용 축약형 |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song)` — 팀 선택곡 항목. 팀 상세 `songs`·팀 선택곡 저장 응답에서 재사용 |
 | `TeamSongsSaveRequest` | `(List<Long> songIds)` — 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제) |
@@ -403,7 +405,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 이전 이름 `TeamSetlistUpdateRequest`·`TeamSetlistResponse`와 `SongProgress`(`CANDIDATE|SELECTED|PRACTICING|DONE`)는 2026-10-30에 없앴다.
 
-`difficulty`를 `Map<Instrument, Level>`로 받는 건 `songs.difficulty` JSON 컬럼 구조를 그대로 반영한 것이다.
+`songs.difficulty` JSON 컬럼과 엔티티는 `Map<Instrument, Level>` 그대로 두고, 응답에서만 노션대로 `[{part, level}]` 배열로 펼친다(2026-11-02, 이슈 #103 — 전에는 응답도 Map 객체였다). 팀 선택곡 조회는 노션 "[추가 필요]" 페이지(`/v1/teams/{teamId}/setlist`)를 `/songs`로 맞춰 추가했다(이슈 #103).
 
 추천 2개는 **구현 방식 미정** 항목이다. 외부 모델을 붙이면 동기 응답이 불가능해져 `SongRecommendationJobResponse`(작업 id) + 폴링 조회가 추가된다. 지금 이름은 룰 기반 전제다.
 
@@ -450,14 +452,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 80 |
+| 엔드포인트 | 81 |
 | Request DTO | 36 |
 | Response DTO | 60 |
 | 전역 공통 | 5 |
 
-요청 DTO가 36개뿐인 이유는 80개 중 **47개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 36개뿐인 이유는 81개 중 **48개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
 
 ### 재사용 상위 5개
 

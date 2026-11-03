@@ -190,7 +190,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 외부(독립) 팀은 `performance`가 null.
 
-> 구현은 `setlist`(→ `songs`)를 응답에서 **뺐다**(2026-10-31). 4팀 `SetlistService.getTeamSongs`가 `main`에 들어오면 추가한다. `performance`는 4팀 `PerformanceMemberService.getBrief`(#105)로 채운다(2026-11-03) — 공연 팀이면 `(id, title, groupName, performedAt)`, 독립 팀이면 `null`, 모임이 해체됐으면 `groupName`만 `null`. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀도 상세를 읽을 수 있다(`status = DISBANDED`, 2026-11-02).
+> 구현은 `setlist`(→ `songs`)를 응답에서 **뺐다**(2026-10-31). 4팀 `SetlistService.findTeamSongs`가 `main`에 들어오면 추가한다. `performance`는 4팀 `PerformanceMemberService.getBrief`(#105)로 채운다(2026-11-03) — 공연 팀이면 `(id, title, groupName, performedAt)`, 독립 팀이면 `null`, 모임이 해체됐으면 `groupName`만 `null`. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀도 상세를 읽을 수 있다(`status = DISBANDED`, 2026-11-02).
 
 ```json
 {
@@ -754,7 +754,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 그 팀의 선택곡 안에서 고른다(전체도 가능). 그 팀이 이전에 넘긴 곡 전체를 바꾸고, 빈 목록이면 넘긴 곡을 모두 뺀다
-- 선택곡에 없는 곡, 같은 공연의 다른 팀이 이미 넘긴 곡, 이미 확정된 셋리스트는 409
+- 선택곡에 없는 곡은 409 `SONG_NOT_SELECTED_BY_TEAM`, 같은 공연의 다른 팀이 이미 넘긴 곡은 409 `SONG_ALREADY_IN_SETLIST`(동시에 넘겨도 DB 유니크가 막아 같은 응답), 이미 확정된 셋리스트는 409 `INVALID_STATE`(확정과 동시에 넘겨도 공연 행 잠금으로 차례로 처리돼 같은 응답. 같은 공연에 두 팀이 동시에 넘기는 것만으로는 실패하지 않는다) — 2026-11-02, 이슈 #103 · 2026-11-03 PR #111 리뷰
 
 ### SetlistConfirmRequest
 
@@ -771,7 +771,9 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 팀들이 넘긴 곡만 넣을 수 있다(아니면 409 `SONG_NOT_TEAM_CANDIDATE`). 요청에 없는 곡은 셋리스트에서 빠진다
+- `items`는 비어 있을 수 없고, 같은 곡은 한 번만, `sortOrder`는 1부터 빈틈없이(1..n) 매긴다 — 어기면 400 `VALIDATION_FAILED`(2026-11-03, 이슈 #103). 빈 목록을 막는 이유는 실수 한 번에 넘겨진 곡이 전부 지워지기 때문이다
 - 확정된 뒤에도 다시 수정·확정할 수 있다. 팀이 다시 넘기게 하려면 확정을 해제한다(아래)
+- 끝났거나 취소된 공연(`DONE`·`CANCELED`)은 확정도 409 `INVALID_STATE`다 — 해제와 같은 이유(2026-11-02, 이슈 #103)
 
 ### 공연 셋리스트 확정 해제
 
@@ -792,9 +794,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   "genre": "ROCK",
   "songKey": "Bb",
   "bpm": 72,
-  "difficulty": { "VOCAL": "ADVANCED", "EL_GT": "ADVANCED", "DRUM": "INTERMEDIATE" }
+  "difficulty": [
+    { "part": "VOCAL", "level": "ADVANCED" },
+    { "part": "EL_GT", "level": "ADVANCED" },
+    { "part": "DRUM", "level": "INTERMEDIATE" }
+  ]
 }
 ```
+
+- `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
+- 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
 ### SongRecommendationResponse
 
@@ -805,7 +814,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
       "song": {
         "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen",
         "genre": "ROCK", "songKey": "Bb", "bpm": 72,
-        "difficulty": { "VOCAL": "ADVANCED" }
+        "difficulty": [{ "part": "VOCAL", "level": "ADVANCED" }]
       },
       "score": 0.91
     }
@@ -823,7 +832,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
       "song": {
         "id": 88, "title": "Bohemian Rhapsody", "artist": "Queen",
         "genre": "ROCK", "songKey": "Bb", "bpm": 72,
-        "difficulty": { "VOCAL": "ADVANCED" }
+        "difficulty": [{ "part": "VOCAL", "level": "ADVANCED" }]
       },
       "score": 0.87,
       "reasons": ["팀 장르 일치: ROCK", "보컬 실력 충족", "드럼 난이도 초과"],
@@ -833,6 +842,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 추천 두 응답의 `song`은 곡 검색과 같은 전체 정보(`SongResponse`)이고, 선택곡·셋리스트 항목의 `song`은 축약형(`SongSummaryResponse` — `id`·`title`·`artist`)이다(2026-11-02, 이슈 #103). 추천 2개는 이슈 #103 구현 범위 밖이다
 - `selectedByOtherTeam`은 같은 공연의 다른 팀이 이미 고른 곡인지다("다른 팀이 이미 선택했어요" 표시). 독립 팀이면 항상 `false`. 2026-10-30에 `alreadyInSetlist`에서 이름을 바꿨다(이슈 #85, 노션도 수정)
 
 ### TeamSongsSaveRequest
@@ -844,10 +854,11 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제). `sortOrder`·`progress`는 2026-10-30에 없앴다 — 순서는 공연 셋리스트에서만 정한다
+- `songIds`는 필수이고 같은 곡이 두 번 있으면 400, 없는 곡이 섞이면 404 `SONG_NOT_FOUND`(2026-11-02, 이슈 #103)
 
 ### TeamSongsResponse
 
-이전 이름 `TeamSetlistResponse`.
+이전 이름 `TeamSetlistResponse`. 팀 선택곡 저장(`PUT`)과 조회(`GET /v1/teams/{teamId}/songs`, 2026-11-02 신규) 공통 응답이다.
 
 ```json
 {

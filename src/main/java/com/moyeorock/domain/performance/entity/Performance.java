@@ -78,6 +78,19 @@ public class Performance extends BaseEntity {
         this.posterImage = posterImage;
     }
 
+    public boolean isSetlistConfirmed() {
+        return setlistConfirmedAt != null;
+    }
+
+    // 확정된 셋리스트를 다시 확정하면 확정 시각도 새로 찍는다
+    public void confirmSetlist(LocalDateTime now) {
+        this.setlistConfirmedAt = now;
+    }
+
+    public void unconfirmSetlist() {
+        this.setlistConfirmedAt = null;
+    }
+
     public void changeStatus(PerformanceStatus status) {
         this.status = status;
     }

@@ -63,6 +63,14 @@ public enum ErrorCode {
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장입니다."),
     BOOKMARK_DUPLICATED(HttpStatus.CONFLICT, "이미 저장한 대상입니다."),
 
+    // 노래 (song) — 코드 이름은 노션에 없어 4팀이 정했다(이슈 #103)
+    SONG_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 곡입니다."),
+
+    // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
+    SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),
+    SONG_ALREADY_IN_SETLIST(HttpStatus.CONFLICT, "같은 공연의 다른 팀이 이미 넘긴 곡입니다."),
+    SONG_NOT_TEAM_CANDIDATE(HttpStatus.CONFLICT, "팀이 셋리스트로 넘긴 곡만 확정할 수 있습니다."),
+
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다."),
     // 공연 팀원은 그 공연을 연 모임의 활동 모임원만 될 수 있다(#96). 코드 이름은 4팀이 정했다 — 기존 코드를 빌리면 프론트가 구분하기 어렵다

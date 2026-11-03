@@ -20,7 +20,7 @@
 | `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 10 |
 | `song` | 4팀 | `songs` | 2 |
-| `setlist` | 4팀 | `team_songs` `setlists` | 1 |
+| `setlist` | 4팀 | `team_songs` `setlists` | 2 |
 | `dashboard` | 3팀 | (없음) | 1 |
 
 > **엔드포인트 상세 명세(요청·응답 구조)는 `docs/specs/`에 있다** (`api-spec.md` · `dto-spec.md`). 정본은 노션 `API 명세서 v0`, `docs/specs/`는 대조 날짜가 명시된 스냅샷이다.
@@ -81,7 +81,9 @@
 | **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 26 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` | 27 |
+
+> 팀 곡 추천(AI)은 song·setlist 중 소유가 정해지지 않아(`docs/specs/api-spec.md` 공백 #5) 위 개수에 넣지 않았다 — `docs/conventions/dto-naming.md` §10(5개)과 합계가 1 다른 이유다. setlist 2개는 팀 선택곡 저장·조회(조회는 2026-11-02, 이슈 #103 신규).
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
@@ -104,7 +106,7 @@
 | 회원 탈퇴 차단 | 1팀 user → 2팀 `TeamService` | `TeamService.findLedTeams` — 내가 팀장인 활동 중인 팀 요약. 비어 있어야 탈퇴할 수 있다 |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) · `getSummariesIncludingDisbanded`(해체된 팀 포함 요약) · `findMyPerformanceTeams`(내 공연 팀, 해체된 팀 포함) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 4팀이 메서드를 만든 뒤 연결(`docs/conventions/architecture.md` §6) |
-| 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.getTeamSongs` · `PerformanceMemberService.getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
+| 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.findTeamSongs` · `PerformanceMemberService.getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
 | 공연 팀원 확인 | 2팀 `TeamService.addMember` · 3팀 가입 신청·초대 → 4팀 `PerformanceMemberService.ensureGroupMember` | 공연 팀에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`(#96·#105). `PerformanceMemberService`는 `GroupMemberService`만 불러 순환이 없다 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |

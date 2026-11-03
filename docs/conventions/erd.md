@@ -336,7 +336,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | FK | `performance_id` | `BIGINT NOT NULL` | → performances |
 | FK | `team_id` | `BIGINT NOT NULL` | → teams · 곡을 넘긴 팀 |
 | FK | `song_id` | `BIGINT NOT NULL` | → songs |
-|  | `sort_order` | `INT` | 공연 셋리스트 순서. 모임장이 확정할 때 정한다(확정 전 NULL) |
+|  | `sort_order` | `INT` | 공연 셋리스트 순서. 모임장이 확정할 때 1부터 빈틈없이 정한다(확정 전 NULL) |
 |  | `created_at` | `DATETIME(6)` |  |
 |  | `updated_at` | `DATETIME(6)` |  |
 
