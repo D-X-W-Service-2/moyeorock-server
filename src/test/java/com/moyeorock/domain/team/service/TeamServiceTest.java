@@ -34,6 +34,7 @@ import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
+import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -538,6 +539,23 @@ class TeamServiceTest {
         assertThat(asStranger.myRole()).isNull();
         assertThat(asStranger.memberCount()).isEqualTo(2);
         assertThat(asStranger.leader().nickname()).isEqualTo("홍길동");
+    }
+
+    @Test
+    @DisplayName("팀 상세: 공연 팀이면 소속 공연 요약이 담기고 독립 팀이면 null이다")
+    void getDetail_performanceIsBriefForPerformanceTeam_nullForIndependentTeam() {
+        PerformanceBriefResponse brief = new PerformanceBriefResponse(7L, "정기공연", "홍대 밴드부",
+                java.time.LocalDateTime.of(2026, 11, 22, 18, 0));
+        given(performanceMemberService.getBrief(7L)).willReturn(brief);
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of());
+        given(userService.getSummaries(List.of())).willReturn(Map.of());
+
+        givenTeam(performanceTeam(TEAM_ID, 7L));
+        assertThat(teamService.getDetail(LEADER_ID, TEAM_ID).performance()).isEqualTo(brief);
+
+        givenTeam(team());
+        assertThat(teamService.getDetail(LEADER_ID, TEAM_ID).performance()).isNull();
+        verify(performanceMemberService).getBrief(7L);
     }
 
     @Test

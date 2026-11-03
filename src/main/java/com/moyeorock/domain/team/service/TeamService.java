@@ -23,6 +23,7 @@ import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
@@ -419,7 +420,12 @@ public class TeamService {
                 .map(TeamMember::getRole)
                 .orElse(null);
 
-        return TeamDetailResponse.of(team, genres, leader, toMemberResponses(members, users), myRole);
+        // 독립 팀은 소속 공연이 없다. 해체된 모임의 공연이면 모임 이름만 null로 내려간다.
+        PerformanceBriefResponse performance = team.getPerformanceId() == null
+                ? null
+                : performanceMemberService.getBrief(team.getPerformanceId());
+
+        return TeamDetailResponse.of(team, genres, performance, leader, toMemberResponses(members, users), myRole);
     }
 
     private Map<Long, TeamSummaryResponse> toSummaryMap(List<Team> teams) {

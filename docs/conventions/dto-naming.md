@@ -153,7 +153,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
-`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`songs`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceBriefResponse`(`performance` — 4팀 `PerformanceMemberService.getBrief`)를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
+`TeamDetailResponse`는 참조가 가장 많다(단 `songs`는 4팀 메서드가 `main`에 들어올 때까지 응답에서 뺐다. `performance`는 `PerformanceMemberService.getBrief`로 채운다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceBriefResponse`(`performance` — 4팀 `PerformanceMemberService.getBrief`)를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
 
 `TeamMemberUpdateRequest(TeamRole role, Instrument instrument)` — 두 필드 모두 `null` 허용이고, 보낸 것만 반영한다. `role = LEADER`면 팀장 위임이다.
 
