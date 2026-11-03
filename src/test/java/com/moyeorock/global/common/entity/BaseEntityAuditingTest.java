@@ -52,8 +52,11 @@ class BaseEntityAuditingTest {
     @Test
     @DisplayName("수정하면 updatedAt만 갱신되고 createdAt은 바뀌지 않는다")
     void update_refreshes_updated_at_but_keeps_created_at() throws InterruptedException {
-        AuditingProbe probe = new AuditingProbe();
-        Long id = entityManager.persistAndFlush(probe).getId();
+        Long id = entityManager.persistAndFlush(new AuditingProbe()).getId();
+        entityManager.clear();
+        // 기준값은 메모리가 아니라 DB에서 다시 읽은 값으로 잡는다. Linux는 now()가 나노초까지 나오고
+        // DATETIME(6)은 마이크로초로 반올림해 저장하므로, 메모리 값과 비교하면 OS에 따라 어긋난다(이슈 #117).
+        AuditingProbe probe = entityManager.find(AuditingProbe.class, id);
         LocalDateTime createdAt = probe.getCreatedAt();
         LocalDateTime updatedAtBefore = probe.getUpdatedAt();
 
