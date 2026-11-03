@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 팀 요약. 목록 항목이며 bookmark·activity·performance 등 다른 도메인도 재사용한다.
- * 필드는 dto-spec 공용 참조 표의 제안 그대로다(4팀 요청). 해체된 팀은 요약 조회에서 빠지므로 status는 지금은 항상 ACTIVE다.
+ * 필드는 dto-spec 공용 참조 표의 제안 그대로다(4팀 요청). getSummaries 등은 해체된 팀을 빼서 status가 ACTIVE지만, getSummariesIncludingDisbanded는 DISBANDED도 담는다.
  */
 public record TeamSummaryResponse(
         Long id,

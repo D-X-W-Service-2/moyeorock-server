@@ -159,6 +159,20 @@ class GroupRepositoryTest {
         assertThat(groupRepository.findByIdAndStatusForUpdate(disbanded.getId(), GroupStatus.ACTIVE)).isEmpty();
     }
 
+    @Test
+    @DisplayName("모임 id 일괄 조회를 ACTIVE로 하면 해체된 모임은 빠진다")
+    void findAllByIdInAndStatus_excludesDisbandedGroups() {
+        Group active = groupRepository.save(group("활동 중"));
+        Group disbanded = groupRepository.save(group("해체됨"));
+        disbanded.disband();
+        groupRepository.flush();
+
+        assertThat(groupRepository.findAllByIdInAndStatus(
+                List.of(active.getId(), disbanded.getId()), GroupStatus.ACTIVE))
+                .extracting(Group::getId)
+                .containsExactly(active.getId());
+    }
+
     // findMyGroups의 각 행은 [Group, 내 역할]이다
     private static List<Long> groupIds(Page<Object[]> page) {
         return page.getContent().stream().map(row -> ((Group) row[0]).getId()).toList();

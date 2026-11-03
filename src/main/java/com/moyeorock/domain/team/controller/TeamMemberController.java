@@ -8,6 +8,7 @@ import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,17 +25,20 @@ public class TeamMemberController {
 
     private final TeamService teamService;
 
+    @Operation(summary = "팀원 목록")
     @GetMapping
     public ApiResponse<TeamMembersResponse> getMembers(@PathVariable Long teamId) {
         return ApiResponse.success(teamService.getMembers(teamId));
     }
 
+    @Operation(summary = "팀원 역할·세션 변경")
     @PatchMapping("/{userId}")
     public ApiResponse<TeamMemberResponse> changeMember(@AuthUser Long requesterId, @PathVariable Long teamId,
             @PathVariable Long userId, @Valid @RequestBody TeamMemberUpdateRequest request) {
         return ApiResponse.success(teamService.changeMember(requesterId, teamId, userId, request));
     }
 
+    @Operation(summary = "팀원 탈퇴·내보내기")
     @PatchMapping("/{userId}/status")
     public ApiResponse<TeamMemberStatusResponse> changeMemberStatus(@AuthUser Long requesterId,
             @PathVariable Long teamId, @PathVariable Long userId,

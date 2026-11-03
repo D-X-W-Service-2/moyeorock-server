@@ -2,10 +2,12 @@ package com.moyeorock.domain.team.repository;
 
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,6 +35,19 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     }
 
     List<TeamMember> findAllByUserIdAndStatusOrderByJoinedAtDescIdDesc(Long userId, MemberStatus status);
+
+    /**
+     * 그 사람이 주어진 팀들에서 가진 ACTIVE 팀원 행을 잠그고 읽는다(모임 탈퇴·강퇴, 회원 탈퇴 때 팀에서 빼기).
+     * 잠금 읽기는 트랜잭션 시작 이후의 낡은 화면이 아니라 가장 최근에 커밋된 값을 읽으므로, 같은 트랜잭션에서 앞서
+     * 팀원 행을 읽었더라도 그 사이에 바뀐 역할(팀장 위임 등)을 놓치지 않는다. id 순으로 고정한다.
+     */
+    default List<TeamMember> findActiveByUserIdAndTeamIdInForUpdate(Long userId, Collection<Long> teamIds) {
+        return findAllByUserIdAndTeamIdInAndStatusOrderByIdAsc(userId, teamIds, MemberStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<TeamMember> findAllByUserIdAndTeamIdInAndStatusOrderByIdAsc(Long userId, Collection<Long> teamIds,
+            MemberStatus status);
 
     /** 팀 목록의 memberCount. 팀마다 count를 날리지 않고 GROUP BY 한 번으로 모은다. */
     default List<TeamMemberCount> countActiveByTeamIds(Collection<Long> teamIds) {
