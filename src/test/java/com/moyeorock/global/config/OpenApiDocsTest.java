@@ -16,7 +16,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** 실제로 생성된 /v3/api-docs로 Swagger 전역 보정(OpenApiConfig)이 먹었는지 확인한다. */
-@SpringBootTest
+// 기본값은 문서 닫힘이라(SWAGGER_ENABLED 없음) 문서를 읽는 이 테스트는 켜 둔다
+@SpringBootTest(properties = "springdoc.api-docs.enabled=true")
 @AutoConfigureMockMvc
 @Import(TestcontainersConfig.class)
 class OpenApiDocsTest {

@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** 운영에서 SWAGGER_ENABLED=false로 문서를 닫는 경우. */
+/** 문서를 닫는 경우 — 운영 기본값(SWAGGER_ENABLED 없음)과 같은 상태다. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfig.class)

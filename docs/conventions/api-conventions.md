@@ -179,6 +179,6 @@ ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 
 | 미디어 타입 | 응답은 `application/json`으로 표기한다 |
 | `@AuthUser` | 파라미터로 노출하지 않는다 |
 
-운영에서 문서를 닫으려면 환경변수 `SWAGGER_ENABLED=false`로 배포한다(`/v3/api-docs`와 `/swagger-ui.html`이 404). 기본은 켜짐이다.
+**문서는 기본이 꺼짐이다.** `SWAGGER_ENABLED=true`를 준 환경에서만 `/v3/api-docs`와 `/swagger-ui.html`이 열리고, 값이 없으면 404다. 운영 배포에서 설정을 빠뜨려도 API 문서가 노출되지 않게 하려는 것이다. 로컬·개발은 `.env`에 `SWAGGER_ENABLED=true`를 둔다(`.env.example` 참고).
 
 `OpenApiDocsTest`가 위 동작을 실제 `/v3/api-docs`로 확인한다. 이 규칙을 깨는 변경(예: 다른 방식의 페이징 파라미터)은 테스트가 알려 준다.
