@@ -17,6 +17,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByIdAndStatus(Long id, UserStatus status);
 
+    /** 타인 프로필 조회용(UserActivityService.getProfile). 지정 상태(탈퇴)만 제외하므로 정지 회원은 조회된다(이슈 #90 P-7). */
+    Optional<User> findByIdAndStatusNot(Long id, UserStatus status);
+
     /**
      * 쓰기 전용 잠금 조회. 온보딩·세션 교체처럼 user_instruments를 지우고 다시 넣는 요청이
      * 같은 사용자에게 동시에 오면 UNIQUE(user_id, instrument)에 걸려 500이 나므로 행 잠금으로 직렬화한다.

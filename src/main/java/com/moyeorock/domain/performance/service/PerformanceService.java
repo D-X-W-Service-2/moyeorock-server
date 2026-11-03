@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 공연 생성·목록·상세·수정·상태 변경과 공연 내 팀 생성. 모임 권한과 모임 정보는 {@code GroupService}가 아니라 {@code GroupMemberService}로만
- * 받는다 — 나중에 모임 홈의 다가오는 공연 때문에 {@code GroupService → PerformanceService}가 생겨도 순환하지 않게.
+ * 받는다 — 모임 홈의 다가오는 공연 때문에 {@code GroupService → PerformanceService}가 있어서 순환하지 않게.
  *
  * <p>참여 팀({@code teams})과 내가 속한 팀({@code myTeamIds})은 2팀 {@code TeamService}로 받는다.
  * 상세의 {@code setlist}는 셋리스트 도메인 구현 때 붙인다.
@@ -63,6 +63,17 @@ public class PerformanceService {
         groupMemberService.ensureActiveMember(groupId, userId);
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return PageResponse.from(findPage(groupId, period, unsorted).map(PerformanceSummaryResponse::from));
+    }
+
+    /**
+     * 동아리 홈의 다가오는 공연 — {@code PLANNED}·{@code RECRUITING} 공연을 공연일 가까운 순으로 최대 3건(공연 목록 UPCOMING과
+     * 같은 기준). GroupService가 부르고 모임 권한은 부르는 쪽이 확인한다. 없으면 빈 목록이다.
+     */
+    public List<PerformanceSummaryResponse> findUpcoming(Long groupId) {
+        return performanceRepository.findTop3ByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(
+                groupId, PerformancePeriod.UPCOMING.getStatuses()).stream()
+                .map(PerformanceSummaryResponse::from)
+                .toList();
     }
 
     /**

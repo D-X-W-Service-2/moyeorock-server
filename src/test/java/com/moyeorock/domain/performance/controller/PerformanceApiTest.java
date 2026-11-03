@@ -159,6 +159,31 @@ class PerformanceApiTest {
     }
 
     @Test
+    @DisplayName("동아리 홈의 upcomingPerformances는 공연이 없으면 빈 배열이고, 있으면 PLANNED·RECRUITING을 가까운 순으로 최대 3건 준다")
+    void groupHome_upcomingPerformances() throws Exception {
+        mockMvc.perform(get("/v1/groups/" + groupId).header("Authorization", bearer(memberId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.upcomingPerformances").isArray())
+                .andExpect(jsonPath("$.data.upcomingPerformances").isEmpty());
+
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "두 달 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER).replace("2026 정기공연", "한 달 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, RESCHEDULED).replace("2026 정기공연", "더 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, RESCHEDULED).replace("2026 정기공연", "가장 뒤 공연"));
+        long doneId = createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER).replace("2026 정기공연", "끝난 공연"));
+        performanceRepository.findById(doneId).orElseThrow().changeStatus(PerformanceStatus.DONE);
+
+        mockMvc.perform(get("/v1/groups/" + groupId).header("Authorization", bearer(memberId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.upcomingPerformances.length()").value(3))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].title").value("한 달 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[1].title").value("두 달 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[2].title").value("더 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].posterImage").value("https://cdn/poster.jpg"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].status").value("PLANNED"));
+    }
+
+    @Test
     @DisplayName("period=UPCOMING은 PLANNED·RECRUITING 공연을 가까운 순으로, PAST는 DONE·CANCELED 공연을 주고 status는 실제 상태다")
     void getList_filtersByPeriod() throws Exception {
         createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "겨울 공연"));

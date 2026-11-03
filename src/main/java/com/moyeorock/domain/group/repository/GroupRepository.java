@@ -3,6 +3,8 @@ package com.moyeorock.domain.group.repository;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupStatus;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +19,8 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     Optional<Group> findByIdAndStatus(Long id, GroupStatus status);
 
     boolean existsByIdAndStatus(Long id, GroupStatus status);
+
+    List<Group> findAllByIdInAndStatus(Collection<Long> ids, GroupStatus status);
 
     /**
      * 쓰기 전용 잠금 조회. 위임·탈퇴·강퇴·해체가 같은 모임에 동시에 오면 모임장이 0명·2명이 되거나
@@ -47,4 +51,19 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
             ORDER BY m.joinedAt DESC, g.id DESC
             """)
     Page<Object[]> findMyGroups(@Param("userId") Long userId, @Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * 내가 모임장인, 해체되지 않은 모임(모임 id 순). 회원 탈퇴 차단에 쓴다(1팀 #100) — 해체는 soft delete라
+     * 모임원 행이 ACTIVE로 남아 있어 모임 상태까지 본다.
+     */
+    @Query("""
+            SELECT g FROM Group g, GroupMember m
+            WHERE m.groupId = g.id
+              AND m.userId = :userId
+              AND m.role = com.moyeorock.domain.group.enums.GroupRole.OWNER
+              AND m.status = com.moyeorock.domain.group.enums.GroupMemberStatus.ACTIVE
+              AND g.status = com.moyeorock.domain.group.enums.GroupStatus.ACTIVE
+            ORDER BY g.id
+            """)
+    List<Group> findOwnedGroups(@Param("userId") Long userId);
 }

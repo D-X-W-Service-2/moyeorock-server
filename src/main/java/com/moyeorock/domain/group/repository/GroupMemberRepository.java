@@ -2,10 +2,13 @@ package com.moyeorock.domain.group.repository;
 
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
+import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -44,6 +47,23 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
     int countActiveMembers(@Param("groupId") Long groupId);
 
     boolean existsByGroupIdAndUserIdAndStatus(Long groupId, Long userId, GroupMemberStatus status);
+
+    // 회원 탈퇴 — 내가 ACTIVE 모임원인 모임 id(해체된 모임 포함). 모임 행을 이 순서로 잠근다
+    @Query("""
+            SELECT m.groupId FROM GroupMember m
+            WHERE m.userId = :userId
+              AND m.status = com.moyeorock.domain.group.enums.GroupMemberStatus.ACTIVE
+            ORDER BY m.groupId
+            """)
+    List<Long> findActiveGroupIds(@Param("userId") Long userId);
+
+    /**
+     * 모임원 행 잠금 조회. 모임 행을 잠근 뒤 부른다 — 같은 트랜잭션에서 앞서 일반 조회를 했으면 스냅샷이 그때 잡혀서
+     * 그사이 커밋된 위임을 일반 조회로는 못 본다(REPEATABLE READ). 잠금 조회는 최신 커밋을 읽는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT m FROM GroupMember m WHERE m.groupId = :groupId AND m.userId = :userId")
+    Optional<GroupMember> findByGroupIdAndUserIdForUpdate(@Param("groupId") Long groupId, @Param("userId") Long userId);
 
     /**
      * 모임장을 맨 위에, 그다음은 가입 순. role은 {@code EnumType.STRING}으로 저장돼 있어
