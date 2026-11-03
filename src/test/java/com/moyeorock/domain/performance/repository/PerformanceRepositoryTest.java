@@ -84,6 +84,22 @@ class PerformanceRepositoryTest {
     }
 
     @Test
+    @DisplayName("동아리 홈의 다가오는 공연은 다가올 공연과 같은 기준·순서로 앞의 3건만 준다")
+    void findTop3Upcoming_limitsToThree() {
+        save(GROUP_ID, "12월 공연", LocalDateTime.of(2026, 12, 1, 18, 0), PerformanceStatus.PLANNED);
+        save(GROUP_ID, "9월 공연", LocalDateTime.of(2026, 9, 1, 18, 0), PerformanceStatus.RECRUITING);
+        save(GROUP_ID, "10월 공연", LocalDateTime.of(2026, 10, 1, 18, 0), PerformanceStatus.PLANNED);
+        save(GROUP_ID, "11월 공연", LocalDateTime.of(2026, 11, 1, 18, 0), PerformanceStatus.PLANNED);
+        save(GROUP_ID, "끝난 공연", LocalDateTime.of(2026, 8, 1, 18, 0), PerformanceStatus.DONE);
+        save(OTHER_GROUP_ID, "다른 모임 공연", LocalDateTime.of(2026, 8, 15, 18, 0), PerformanceStatus.PLANNED);
+
+        assertThat(performanceRepository.findTop3ByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(
+                GROUP_ID, PerformancePeriod.UPCOMING.getStatuses()))
+                .extracting(Performance::getTitle)
+                .containsExactly("9월 공연", "10월 공연", "11월 공연");
+    }
+
+    @Test
     @DisplayName("지난 공연은 그 모임의 DONE·CANCELED만 공연일 최근 순으로 주고, 공연일이 같으면 나중에 만든 공연이 먼저다")
     void findPast_filtersStatuses_andOrdersByPerformedAtDescThenIdDesc() {
         save(GROUP_ID, "봄 공연", LocalDateTime.of(2026, 3, 1, 18, 0), PerformanceStatus.DONE);

@@ -156,6 +156,23 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("동아리 홈의 다가오는 공연은 UPCOMING 상태(PLANNED·RECRUITING)로 앞의 3건을 요약으로 준다")
+    void findUpcoming_mapsTop3UpcomingPerformances() {
+        Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", null, PERFORMED_AT,
+                "홍대 롤링홀", "poster.jpg");
+        when(performanceRepository.findTop3ByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(
+                GROUP_ID, PerformancePeriod.UPCOMING.getStatuses())).thenReturn(List.of(performance));
+
+        assertThat(performanceService.findUpcoming(GROUP_ID))
+                .singleElement()
+                .satisfies(summary -> {
+                    assertThat(summary.title()).isEqualTo("2026 정기공연");
+                    assertThat(summary.status()).isEqualTo(PerformanceStatus.PLANNED);
+                });
+        verifyNoInteractions(groupMemberService);
+    }
+
+    @Test
     @DisplayName("모임원이 아니면 공연 상세를 볼 수 없다")
     void getDetail_throws_whenNotMember() {
         givenPerformance();
