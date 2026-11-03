@@ -12,6 +12,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
+import com.moyeorock.domain.group.enums.GroupType;
+import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -64,6 +67,9 @@ class UserApiTest {
 
     @Autowired
     private TeamService teamService;
+
+    @Autowired
+    private GroupService groupService;
 
     private long saveUser(String email, String nickname) {
         return userRepository.saveAndFlush(
@@ -297,6 +303,23 @@ class UserApiTest {
         mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.withdrawnAt").exists());
+    }
+
+    @Test
+    @DisplayName("탈퇴: 모임장인 활동 중인 모임이 있으면 409이고 메시지에 모임 이름이 담기며, 모임을 해체하면 200이다")
+    void withdraw_blockedWhileOwningGroup_thenAllowedAfterDisband() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        long groupId = groupService.create(id,
+                new GroupCreateRequest("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WITHDRAW_BLOCKED_BY_ROLE"))
+                .andExpect(jsonPath("$.message").value("모임 '홍대 밴드부'의 모임장을 위임하거나 모임을 해체한 뒤 탈퇴할 수 있습니다."));
+
+        groupService.disband(id, groupId);
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk());
     }
 
     @Test
