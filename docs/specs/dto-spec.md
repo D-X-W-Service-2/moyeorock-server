@@ -385,7 +385,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 > - `target`은 `TeamSummary` 자리표시자가 아니라 **recruit 자체 축약형** `{id, name, region, genres}`이다(`docs/conventions/dto-naming.md` §5). `author`는 `UserSummaryResponse`이며 Notion 예시는 `{id, nickname}`만 있다.
 > - `wantedSlots[].appliedCount`는 대기(`PENDING`) 신청 수. 작성 직후 응답 예시는 `0`이다.
 > - `canEdit`은 수정 권한 여부이고 Notion Actor가 `모임장 / 팀장`이다. `myJoinRequest`는 신청 이력이 없으면 `null`이며 Notion에 "상의 필요" 메모가 있다.
-> - **구현 현황**: `author`·`myJoinRequest`는 해당 도메인(user·join) 미머지로 필드 자체를 뺐고, `appliedCount`는 키를 뺀다(null), `target`은 `id`만 채운다. 도메인이 머지되면 채운다.
+> - **구현 현황 (2026-11-03)**: `author`는 `UserSummaryResponse`로 채우고 탈퇴한 작성자면 `null`이다. `target`은 팀이면 이름·지역·장르를, 모임이면 `GroupBriefResponse`가 이름만 줘서 **이름만** 채운다(`region`·`genres`는 `null`, 4팀 일괄 조회가 생기면 채움). 해체되거나 없는 팀·모임은 공고를 빼지 않고 `target`에 `id`만 남는다(명세가 `target`을 non-null로 정의해 객체를 유지). `myJoinRequest`는 join 도메인 미머지로 필드 자체를 뺐고, `appliedCount`는 계산할 수 없어 `null`이다.
 
 ### RecruitPostUpdateRequest
 

@@ -20,11 +20,11 @@ public record RecruitPostSummaryResponse(
         LocalDateTime createdAt
 ) {
 
-    public static RecruitPostSummaryResponse from(RecruitPost post) {
+    public static RecruitPostSummaryResponse of(RecruitPost post, RecruitPostTargetResponse target) {
         return new RecruitPostSummaryResponse(
                 post.getId(),
                 post.getTargetType(),
-                RecruitPostTargetResponse.from(post),
+                target,
                 post.getTitle(),
                 post.getWantedSlots().stream().map(WantedSlotSummary::from).toList(),
                 post.getRegion(),
