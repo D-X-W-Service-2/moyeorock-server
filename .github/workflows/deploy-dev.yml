@@ -63,7 +63,7 @@ jobs:
           echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
           scp -i ~/.ssh/deploy_key "$JAR" "$EC2_USER@$EC2_HOST:/opt/moyeorock/releases/$RELEASE"
 
-      # 헬스 체크는 /v3/api-docs로 한다 — dev 서버에서 Swagger를 끄면(SWAGGER_ENABLED=false) 매번 롤백된다
+      # 헬스 체크는 /actuator/health(DB 연결 포함)로 한다 — Swagger(SWAGGER_ENABLED) 켜짐 여부와 무관하다
       - name: Switch and restart
         run: |
           ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "RELEASE=$RELEASE bash -s" << 'EOF'
@@ -74,7 +74,7 @@ jobs:
           sudo systemctl restart moyeorock
 
           for i in $(seq 1 40); do
-            if curl -fs http://127.0.0.1:8080/v3/api-docs > /dev/null; then
+            if curl -fs http://127.0.0.1:8080/actuator/health > /dev/null; then
               echo "배포 성공: $RELEASE"
               ls -1t releases/*.jar | tail -n +4 | xargs -r rm --   # 최근 3개만 남긴다
               exit 0
