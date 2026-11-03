@@ -2,6 +2,7 @@ package com.moyeorock.domain.group.service;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.dto.response.GroupMemberResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
@@ -13,6 +14,7 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>모임 자체(생성·상세·수정)는 {@link GroupService}가 담당한다. 이 클래스가
  * {@code NoticeService}를 모르게 두는 것이 중요하다 — {@code GroupService → NoticeService →
  * GroupMemberService} 방향을 지켜 순환 참조를 만들지 않는다. 같은 이유로 다른 도메인이 쓰는 모임 조회
- * (존재 확인·표시용 정보·이름)도 {@code GroupService}가 아니라 여기에 둔다.
+ * (존재 확인·표시용 정보·이름·내 모임 전체)도 {@code GroupService}가 아니라 여기에 둔다.
  */
 @Service
 @RequiredArgsConstructor
@@ -172,6 +174,16 @@ public class GroupMemberService {
         }
         return groupRepository.findAllByIdInAndStatus(groupIds, GroupStatus.ACTIVE).stream()
                 .collect(Collectors.toMap(Group::getId, Group::getName));
+    }
+
+    /**
+     * 내가 ACTIVE 모임원인 해체되지 않은 모임 전체와 그 모임에서의 내 역할(1팀 내 활동). 가입 최신순이고 페이징은 없다.
+     * 화면용 {@code GroupService.getMyGroups}는 페이지를 다시 만들어서 {@code Pageable.unpaged()}를 받을 수 없어 따로 둔다.
+     */
+    public List<GroupSummaryResponse> findMyGroupSummaries(Long userId) {
+        return groupRepository.findAllMyGroups(userId).stream()
+                .map(row -> GroupSummaryResponse.of((Group) row[0], (GroupRole) row[1]))
+                .toList();
     }
 
     /** 해체된 모임이면 0이다. */

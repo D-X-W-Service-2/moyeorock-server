@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.entity.GroupMember;
 import com.moyeorock.domain.group.enums.GroupMemberStatus;
@@ -358,6 +359,17 @@ class GroupMemberServiceTest {
     }
 
     @Test
+    @DisplayName("내 모임 전체는 각 행의 모임과 그 모임에서의 내 역할로 요약을 만든다")
+    void findMyGroupSummaries_mapsGroupAndMyRole() {
+        Group group = groupWithId(GROUP_ID, "홍대 밴드부", "cover.jpg");
+        when(groupRepository.findAllMyGroups(MEMBER_ID))
+                .thenReturn(List.<Object[]>of(new Object[] {group, GroupRole.MEMBER}));
+
+        assertThat(groupMemberService.findMyGroupSummaries(MEMBER_ID)).containsExactly(
+                new GroupSummaryResponse(GROUP_ID, "홍대 밴드부", GroupType.REGULAR, GroupRole.MEMBER, "cover.jpg"));
+    }
+
+    @Test
     @DisplayName("현재 모임장이면 isOwner는 true다")
     void isOwner_returnsTrue_forOwner() {
         givenActiveMember(OWNER_ID, member(OWNER_ID, GroupRole.OWNER));
@@ -393,6 +405,12 @@ class GroupMemberServiceTest {
 
     private void givenActiveMember(Long userId, GroupMember member) {
         when(groupMemberRepository.findActiveMember(GROUP_ID, userId)).thenReturn(Optional.of(member));
+    }
+
+    private static Group groupWithId(Long id, String name, String coverImage) {
+        Group group = Group.create(name, null, GroupType.REGULAR, Region.SEOUL, coverImage);
+        ReflectionTestUtils.setField(group, "id", id);
+        return group;
     }
 
     private static GroupMember member(Long userId, GroupRole role) {

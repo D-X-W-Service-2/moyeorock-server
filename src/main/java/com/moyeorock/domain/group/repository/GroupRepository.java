@@ -51,4 +51,18 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
             ORDER BY m.joinedAt DESC, g.id DESC
             """)
     Page<Object[]> findMyGroups(@Param("userId") Long userId, @Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * 내 모임 전체(다른 도메인용 — 1팀 내 활동). 조건·정렬·행 모양({@code [Group, GroupRole]})은 findMyGroups와 같고
+     * keyword와 페이징이 없다. 한 사람이 속한 모임 수는 많지 않아 한 번에 돌려준다.
+     */
+    @Query("""
+            SELECT g, m.role FROM Group g, GroupMember m
+            WHERE m.groupId = g.id
+              AND m.userId = :userId
+              AND m.status = com.moyeorock.domain.group.enums.GroupMemberStatus.ACTIVE
+              AND g.status = com.moyeorock.domain.group.enums.GroupStatus.ACTIVE
+            ORDER BY m.joinedAt DESC, g.id DESC
+            """)
+    List<Object[]> findAllMyGroups(@Param("userId") Long userId);
 }
