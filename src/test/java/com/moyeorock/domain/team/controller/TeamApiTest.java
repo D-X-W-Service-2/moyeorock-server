@@ -266,18 +266,19 @@ class TeamApiTest {
     }
 
     @Test
-    @DisplayName("해체된 팀의 상세와 팀원 목록은 404 TEAM_NOT_FOUND다")
-    void disbandedTeam_detailAndMembers_returnNotFound() throws Exception {
+    @DisplayName("해체된 팀의 상세와 팀원 목록은 읽을 수 있고 상세의 status가 DISBANDED다")
+    void disbandedTeam_detailAndMembers_areReadable() throws Exception {
         long teamId = createTeam(LEADER_ID);
         send(patch("/v1/teams/" + teamId + "/status"), LEADER_ID, "{\"status\":\"DISBANDED\"}")
                 .andExpect(status().isOk());
 
         read("/v1/teams/" + teamId, LEADER_ID)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DISBANDED"))
+                .andExpect(jsonPath("$.data.myRole").value("LEADER"));
         read("/v1/teams/" + teamId + "/members", LEADER_ID)
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.members[0].role").value("LEADER"));
     }
 
     @Test

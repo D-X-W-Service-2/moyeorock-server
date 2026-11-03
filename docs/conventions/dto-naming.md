@@ -153,7 +153,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
-`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`songs`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceBriefResponse`(`performance` — 4팀 `PerformanceMemberService.getBrief`)를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
+`TeamDetailResponse`는 참조가 가장 많다(단 `songs`는 4팀 메서드가 `main`에 들어올 때까지 응답에서 뺐다. `performance`는 `PerformanceMemberService.getBrief`로 채운다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceBriefResponse`(`performance` — 4팀 `PerformanceMemberService.getBrief`)를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
 
 `TeamMemberUpdateRequest(TeamRole role, Instrument instrument)` — 두 필드 모두 `null` 허용이고, 보낸 것만 반영한다. `role = LEADER`면 팀장 위임이다.
 
@@ -162,9 +162,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 메서드 | 쓰는 쪽 | 내용 |
 |---|---|---|
 | `getSummaries(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
-| `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE` |
+| `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE`. 공연 팀이면 `PerformanceMemberService.ensureGroupMember`로 그 공연을 연 모임의 활동 모임원인지 확인해 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER` |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
 | `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `leavePerformanceTeams(Long userId, Collection<Long> performanceIds)` | 4팀 group(모임 탈퇴·강퇴) | 호출한 쪽 트랜잭션에 참여. 그 공연들의 활동 중인 팀에서 이 사람의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀·이미 나간 팀은 지나간다. 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 모임 탈퇴·강퇴 전체가 막히고 위임 안내 |
+| `leaveAllTeams(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람이 속한 활동 중인 모든 팀(공연 팀·독립 팀)의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀은 지나간다(해체 당시 인원 기록을 남기려고). 팀장 행이 남아 있으면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 1팀이 먼저 `findLedTeams`로 막으므로 안전장치다 |
+| `findLedTeams(Long userId)` → `List<TeamSummaryResponse>` | 1팀 user(회원 탈퇴) | 내가 팀장인 활동 중인 팀. 팀원 행 `ACTIVE`·`LEADER`이고 팀도 `ACTIVE`인 경우만, 해체된 팀은 빠진다. 팀 id 순, 페이징 없음. 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에 막혔는지 안내한다 |
+| `getSummariesIncludingDisbanded(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 4팀 performance | 끝난 공연 상세의 팀 요약. **해체된 팀도 포함**하고 없는 id만 빠진다. `memberCount`는 `ACTIVE` 팀원 수인데 해체해도 팀원 행은 그대로라서 해체 당시 인원이다 |
+| `findMyPerformanceTeams(Long userId)` → `List<PerformanceTeamResponse>` | 4팀 performance | 내가 `ACTIVE` 팀원인 공연 팀을 해체된 팀까지 `(Long teamId, String teamName, Long performanceId, TeamStatus status)`로. 독립 팀은 빠지고 팀 id 순, 페이징 없음 |
 | `getActiveSummaries(Long performanceId)` → `List<TeamSummaryResponse>` | 4팀 performance | 공연 상세의 팀 요약. 해체된 팀은 빠져서 끝난 공연은 빈 목록 |
 | `findMyTeamIds(Long performanceId, Long userId)` → `List<Long>` | 4팀 performance | 내가 그 공연에서 속한 활성 팀 id. 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록 |
 | `findMemberships(Long userId)` → `List<TeamMembershipResponse>` | 1팀 user(내 활동) | 내가 속한 활동 중인 팀마다 `(TeamSummaryResponse team, TeamRole role, Instrument instrument)`. 팀·팀원 모두 `ACTIVE`만, 최근 합류 순, 페이징 없음. 역할·악기는 `team_members`에만 있어 1팀이 직접 읽을 수 없어서 만들었다 |

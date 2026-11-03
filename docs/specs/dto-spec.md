@@ -12,7 +12,7 @@
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
 | `UserSummary` | `UserSummaryResponse` | user (1팀) | `(Long id, String nickname, String profileImage)` | **제안** — 재사용 1위라 최소로. 세션·지역이 필요한 곳(팀원·추천)은 감싸는 DTO가 이미 별도 필드로 가짐 |
-| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. 해체된 팀은 요약 조회에서 빠지므로 지금은 항상 `ACTIVE`다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
+| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. `getSummaries` 등은 해체된 팀을 빼서 `ACTIVE`지만, 4팀용 `getSummariesIncludingDisbanded`는 `DISBANDED`도 담는다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
 | `MemberItem` | `TeamMemberResponse` | team (2팀) | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` | 확정 (`dto-naming.md` §3) |
 | `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
@@ -183,7 +183,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 외부(독립) 팀은 `performance`가 null.
 
-> 구현은 `performance`·`setlist`를 응답에서 **뺐다**(2026-10-31). 둘 다 4팀 소유 DTO(`PerformanceSummaryResponse` `TeamSongResponse`)가 필요한데 아직 없다. 4팀 DTO가 생기면 필드를 추가한다. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀은 상세 대신 `404`다.
+> 구현은 `setlist`(→ `songs`)를 응답에서 **뺐다**(2026-10-31). 4팀 `SetlistService.getTeamSongs`가 `main`에 들어오면 추가한다. `performance`는 4팀 `PerformanceMemberService.getBrief`(#105)로 채운다(2026-11-03) — 공연 팀이면 `(id, title, groupName, performedAt)`, 독립 팀이면 `null`, 모임이 해체됐으면 `groupName`만 `null`. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀도 상세를 읽을 수 있다(`status = DISBANDED`, 2026-11-02).
 
 ```json
 {
