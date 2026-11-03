@@ -52,13 +52,16 @@ class BaseEntityAuditingTest {
     @Test
     @DisplayName("수정하면 updatedAt만 갱신되고 createdAt은 바뀌지 않는다")
     void update_refreshes_updated_at_but_keeps_created_at() throws InterruptedException {
-        AuditingProbe probe = new AuditingProbe();
-        Long id = entityManager.persistAndFlush(probe).getId();
-        LocalDateTime createdAt = probe.getCreatedAt();
-        LocalDateTime updatedAtBefore = probe.getUpdatedAt();
+        Long id = entityManager.persistAndFlush(new AuditingProbe()).getId();
+        entityManager.clear();
+        // 비교 기준도 DB에서 다시 읽는다 — 리눅스 JVM 시계는 나노초까지 찍히지만 DATETIME(6)은 마이크로초까지만 저장해서
+        // 메모리의 값과 비교하면 macOS에서는 통과하고 CI(리눅스)에서만 어긋난다.
+        AuditingProbe saved = entityManager.find(AuditingProbe.class, id);
+        LocalDateTime createdAt = saved.getCreatedAt();
+        LocalDateTime updatedAtBefore = saved.getUpdatedAt();
 
         Thread.sleep(10);
-        probe.rename("changed");
+        saved.rename("changed");
         entityManager.flush();
         entityManager.clear();
 
