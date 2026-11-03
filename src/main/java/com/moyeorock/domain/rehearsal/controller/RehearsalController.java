@@ -8,6 +8,7 @@ import com.moyeorock.domain.rehearsal.service.RehearsalService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class RehearsalController {
     private final RehearsalService rehearsalService;
 
     // from·to는 2026-09-01 같은 날짜다. 생략 규칙(이번 달)과 기간 상한은 Service가 정한다.
+    @Operation(summary = "팀 합주 일정 목록")
     @GetMapping("/teams/{teamId}/rehearsals")
     public ApiResponse<RehearsalsResponse> getTeamRehearsals(@AuthUser Long userId, @PathVariable Long teamId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -40,6 +42,7 @@ public class RehearsalController {
         return ApiResponse.success(rehearsalService.getTeamRehearsals(userId, teamId, from, to));
     }
 
+    @Operation(summary = "합주 일정 생성")
     @PostMapping("/teams/{teamId}/rehearsals")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<RehearsalDetailResponse> create(@AuthUser Long userId, @PathVariable Long teamId,
@@ -47,11 +50,13 @@ public class RehearsalController {
         return ApiResponse.success(rehearsalService.create(userId, teamId, request));
     }
 
+    @Operation(summary = "합주 일정 상세")
     @GetMapping("/rehearsals/{id}")
     public ApiResponse<RehearsalDetailResponse> getDetail(@AuthUser Long userId, @PathVariable Long id) {
         return ApiResponse.success(rehearsalService.getDetail(userId, id));
     }
 
+    @Operation(summary = "합주 일정 수정")
     @PutMapping("/rehearsals/{id}")
     public ApiResponse<RehearsalDetailResponse> update(@AuthUser Long userId, @PathVariable Long id,
             @Valid @RequestBody RehearsalUpdateRequest request) {
@@ -59,11 +64,13 @@ public class RehearsalController {
     }
 
     // 삭제 응답은 204가 아니라 200 + DeleteResponse다(api-conventions.md)
+    @Operation(summary = "합주 일정 삭제")
     @DeleteMapping("/rehearsals/{id}")
     public ApiResponse<DeleteResponse> delete(@AuthUser Long userId, @PathVariable Long id) {
         return ApiResponse.success(rehearsalService.delete(userId, id));
     }
 
+    @Operation(summary = "내 합주 일정")
     @GetMapping("/users/me/rehearsals")
     public ApiResponse<RehearsalsResponse> getMyRehearsals(@AuthUser Long userId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

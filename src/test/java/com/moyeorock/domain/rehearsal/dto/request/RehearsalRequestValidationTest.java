@@ -56,4 +56,18 @@ class RehearsalRequestValidationTest {
         assertThat(validator.validate(longPlace)).hasSize(1);
         assertThat(validator.validate(missingTimes)).hasSize(2);
     }
+
+    @Test
+    @DisplayName("합주 생성·수정: 메모는 20,000자까지 통과하고 20,001자부터 거절된다")
+    void memo_allowsUpTo20000Chars() {
+        var createOk = new RehearsalCreateRequest("합주", START, END, null, "가".repeat(20000));
+        var createTooLong = new RehearsalCreateRequest("합주", START, END, null, "가".repeat(20001));
+        var updateOk = new RehearsalUpdateRequest("합주", START, END, null, "가".repeat(20000));
+        var updateTooLong = new RehearsalUpdateRequest("합주", START, END, null, "가".repeat(20001));
+
+        assertThat(validator.validate(createOk)).isEmpty();
+        assertThat(validator.validate(createTooLong)).hasSize(1);
+        assertThat(validator.validate(updateOk)).isEmpty();
+        assertThat(validator.validate(updateTooLong)).hasSize(1);
+    }
 }

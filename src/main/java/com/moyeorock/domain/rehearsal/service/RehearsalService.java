@@ -41,8 +41,8 @@ public class RehearsalService {
 
     /** 팀 합주 목록. 그 팀의 활동 중 팀원만 볼 수 있고, 없는·해체된 팀은 TEAM_NOT_FOUND다. */
     public RehearsalsResponse getTeamRehearsals(Long userId, Long teamId, LocalDate from, LocalDate to) {
-        Period period = resolvePeriod(from, to);
         teamMemberService.ensureActiveMember(teamId, userId);
+        Period period = resolvePeriod(from, to);
 
         List<Rehearsal> rehearsals = rehearsalRepository.findInPeriod(teamId, period.start(), period.end());
         String teamName = teamMemberService.getNames(List.of(teamId)).get(teamId);
@@ -81,8 +81,8 @@ public class RehearsalService {
     /** 합주 생성. 그 팀의 활동 중 팀원이면 누구나 만들 수 있고, 만든 사람이 작성자가 된다. */
     @Transactional
     public RehearsalDetailResponse create(Long userId, Long teamId, RehearsalCreateRequest request) {
-        validateTimes(request.startsAt(), request.endsAt());
         teamMemberService.ensureActiveMember(teamId, userId);
+        validateTimes(request.startsAt(), request.endsAt());
 
         Rehearsal rehearsal = rehearsalRepository.save(Rehearsal.create(teamId, userId, request.title(),
                 request.startsAt(), request.endsAt(), request.place(), request.memo()));
@@ -92,8 +92,8 @@ public class RehearsalService {
     /** 합주 수정(전체 교체). 작성자나 팀장만 할 수 있고, 보내지 않은 장소·메모는 비워진다. */
     @Transactional
     public RehearsalDetailResponse update(Long userId, Long rehearsalId, RehearsalUpdateRequest request) {
-        validateTimes(request.startsAt(), request.endsAt());
         Rehearsal rehearsal = getEditableRehearsal(userId, rehearsalId);
+        validateTimes(request.startsAt(), request.endsAt());
 
         rehearsal.update(request.title(), request.startsAt(), request.endsAt(), request.place(), request.memo());
         return toDetail(rehearsal, userId);
@@ -123,6 +123,7 @@ public class RehearsalService {
     }
 
     // 종료는 시작보다 늦어야 한다. 필드 하나로는 판단할 수 없어 DTO 어노테이션이 아니라 여기서 검사한다.
+    // 권한 확인(팀원·작성자·팀장)을 먼저 하고 부른다 — 권한이 없는 사람에게는 입력이 맞는지보다 403이 먼저다.
     private void validateTimes(LocalDateTime startsAt, LocalDateTime endsAt) {
         if (!endsAt.isAfter(startsAt)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);

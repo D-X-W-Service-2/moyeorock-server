@@ -147,7 +147,7 @@ class RehearsalServiceTest {
     }
 
     @Test
-    @DisplayName("기간: 하나만 보냈거나 to가 from보다 앞서거나 3달을 넘으면 VALIDATION_FAILED이고 팀 확인도 하지 않는다")
+    @DisplayName("기간: 팀원이 하나만 보냈거나 to가 from보다 앞서거나 3달을 넘으면 VALIDATION_FAILED이고 조회하지 않는다")
     void getTeamRehearsals_rejects_invalidPeriod() {
         assertErrorCode(() -> rehearsalService.getTeamRehearsals(MEMBER_ID, TEAM_ID, FROM, null),
                 ErrorCode.VALIDATION_FAILED);
@@ -157,7 +157,16 @@ class RehearsalServiceTest {
                 ErrorCode.VALIDATION_FAILED);
         assertErrorCode(() -> rehearsalService.getTeamRehearsals(MEMBER_ID, TEAM_ID, FROM, LocalDate.of(2026, 12, 2)),
                 ErrorCode.VALIDATION_FAILED);
-        verify(teamMemberService, never()).ensureActiveMember(any(), any());
+        verify(rehearsalRepository, never()).findInPeriod(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("기간: 팀원이 아니면 기간이 잘못돼도 NO_PERMISSION이다(권한 확인이 먼저)")
+    void getTeamRehearsals_checksPermissionBeforePeriod() {
+        givenNotMember(TEAM_ID, MEMBER_ID);
+
+        assertErrorCode(() -> rehearsalService.getTeamRehearsals(MEMBER_ID, TEAM_ID, TO, FROM),
+                ErrorCode.NO_PERMISSION);
     }
 
     @Test
@@ -302,14 +311,23 @@ class RehearsalServiceTest {
     }
 
     @Test
-    @DisplayName("합주 생성: 종료가 시작과 같거나 앞서면 VALIDATION_FAILED이고 팀 확인도 하지 않는다")
+    @DisplayName("합주 생성: 팀원이 종료를 시작과 같거나 앞서게 보내면 VALIDATION_FAILED이고 저장하지 않는다")
     void create_rejects_endNotAfterStart() {
         var same = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT, null, null);
         var before = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT.minusMinutes(1), null, null);
 
         assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, same), ErrorCode.VALIDATION_FAILED);
         assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, before), ErrorCode.VALIDATION_FAILED);
-        verify(teamMemberService, never()).ensureActiveMember(any(), any());
+        verify(rehearsalRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("합주 생성: 팀원이 아니면 시각이 잘못돼도 NO_PERMISSION이다(권한 확인이 먼저)")
+    void create_checksPermissionBeforeTimes() {
+        givenNotMember(TEAM_ID, MEMBER_ID);
+        var request = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, request), ErrorCode.NO_PERMISSION);
     }
 
     // ---------- 합주 수정 ----------
@@ -374,12 +392,24 @@ class RehearsalServiceTest {
     }
 
     @Test
-    @DisplayName("합주 수정: 종료가 시작보다 늦지 않으면 VALIDATION_FAILED이고 합주를 조회하지 않는다")
+    @DisplayName("합주 수정: 작성자가 종료를 시작보다 늦지 않게 보내면 VALIDATION_FAILED이고 값이 바뀌지 않는다")
     void update_rejects_endNotAfterStart() {
-        var request = new RehearsalUpdateRequest("합주", STARTS_AT, STARTS_AT, null, null);
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        var request = new RehearsalUpdateRequest("새 제목", STARTS_AT, STARTS_AT, null, null);
 
         assertErrorCode(() -> rehearsalService.update(CREATOR_ID, REHEARSAL_ID, request), ErrorCode.VALIDATION_FAILED);
-        verify(rehearsalRepository, never()).findById(any());
+        assertThat(existing.getTitle()).isEqualTo("옛 제목");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 권한이 없으면 시각이 잘못돼도 NO_PERMISSION이다(권한 확인이 먼저)")
+    void update_checksPermissionBeforeTimes() {
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(rehearsal(REHEARSAL_ID, TEAM_ID, "합주")));
+        given(teamMemberService.isLeader(TEAM_ID, MEMBER_ID)).willReturn(false);
+        var request = new RehearsalUpdateRequest("합주", STARTS_AT, STARTS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.update(MEMBER_ID, REHEARSAL_ID, request), ErrorCode.NO_PERMISSION);
     }
 
     // ---------- 합주 삭제 ----------
