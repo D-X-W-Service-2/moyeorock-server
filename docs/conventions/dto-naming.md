@@ -165,7 +165,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `getSummaries(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
 | `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE`. 공연 팀이면 `PerformanceMemberService.ensureGroupMember`로 그 공연을 연 모임의 활동 모임원인지 확인해 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER` |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
-| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료·취소(`DONE`·`CANCELED`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 기록을 남기려고 셋리스트·선택곡(`setlists`·`team_songs`)은 지우지 않는다 |
 | `leavePerformanceTeams(Long userId, Collection<Long> performanceIds)` | 4팀 group(모임 탈퇴·강퇴) | 호출한 쪽 트랜잭션에 참여. 그 공연들의 활동 중인 팀에서 이 사람의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀·이미 나간 팀은 지나간다. 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 모임 탈퇴·강퇴 전체가 막히고 위임 안내 |
 | `leaveAllTeams(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람이 속한 활동 중인 모든 팀(공연 팀·독립 팀)의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀은 지나간다(해체 당시 인원 기록을 남기려고). 팀장 행이 남아 있으면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 1팀이 먼저 `findLedTeams`로 막으므로 안전장치다 |
 | `findLedTeams(Long userId)` → `List<TeamSummaryResponse>` | 1팀 user(회원 탈퇴) | 내가 팀장인 활동 중인 팀. 팀원 행 `ACTIVE`·`LEADER`이고 팀도 `ACTIVE`인 경우만, 해체된 팀은 빠진다. 팀 id 순, 페이징 없음. 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에 막혔는지 안내한다 |
@@ -374,7 +374,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 
-공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`으로 바뀌면 소속 팀이 자동 해체된다. 응답에 영향받은 팀 수를 넣을지는 결정 필요.
+공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`·`CANCELED`로 바뀌면 소속 팀이 자동 해체된다. 응답은 명세대로 `(id, status)`만 담고 영향받은 팀 수는 넣지 않았다(2026-11-01, 이슈 #88).
 
 ---
 

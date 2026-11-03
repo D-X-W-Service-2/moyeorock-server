@@ -12,14 +12,25 @@ import static org.mockito.Mockito.when;
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
+import com.moyeorock.domain.performance.dto.request.PerformanceStatusUpdateRequest;
+import com.moyeorock.domain.performance.dto.request.PerformanceTeamCreateRequest;
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
+import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
+import com.moyeorock.domain.team.enums.TeamRole;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDate;
@@ -37,6 +48,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class PerformanceServiceTest {
@@ -59,6 +71,9 @@ class PerformanceServiceTest {
 
     @Mock
     private UserService userService;
+
+    @Mock
+    private TeamService teamService;
 
     @InjectMocks
     private PerformanceService performanceService;
@@ -210,6 +225,24 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("공연 상세의 참여 팀과 내가 속한 팀 id는 TeamService에서 받는다")
+    void getDetail_fillsTeamsAndMyTeamIds_fromTeamService() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        givenDetailParts();
+        TeamSummaryResponse team = new TeamSummaryResponse(5L, "무명밴드", Region.SEOUL, List.of(Genre.ROCK),
+                TeamStatus.ACTIVE, 3);
+        when(teamService.getActiveSummaries(PERFORMANCE_ID)).thenReturn(List.of(team));
+        when(teamService.findMyTeamIds(PERFORMANCE_ID, MEMBER_ID)).thenReturn(List.of(5L));
+
+        PerformanceDetailResponse response = performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID);
+
+        assertThat(response.teams()).containsExactly(team);
+        assertThat(response.myTeamIds()).containsExactly(5L);
+    }
+
+    @Test
     @DisplayName("공연을 만든 사람이 탈퇴했으면 createdBy는 null이다")
     void getDetail_returnsNullCreatedBy_whenCreatorWithdrawn() {
         givenPerformance();
@@ -263,6 +296,21 @@ class PerformanceServiceTest {
     }
 
     @Test
+    @DisplayName("끝난 공연(DONE·CANCELED)은 고칠 수 없다(INVALID_STATE) — 값은 그대로다")
+    void update_throws_whenFinished() {
+        Performance performance = givenPerformance();
+
+        for (PerformanceStatus finished : List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED)) {
+            performance.changeStatus(finished);
+            assertThatThrownBy(() -> performanceService.update(OWNER_ID, PERFORMANCE_ID, updateRequest()))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_STATE);
+        }
+        assertThat(performance.getTitle()).isEqualTo("2026 정기공연");
+    }
+
+    @Test
     @DisplayName("공연 일시를 지난 시각으로 바꾸면 VALIDATION_FAILED이고 값은 그대로다")
     void update_throws_whenRescheduledToPast() {
         Performance performance = givenPerformance();
@@ -278,7 +326,7 @@ class PerformanceServiceTest {
     }
 
     @Test
-    @DisplayName("일시를 그대로 두면 이미 지난 공연도 고칠 수 있다")
+    @DisplayName("일시를 그대로 두면 일시가 지났어도 끝나지 않은 공연은 고칠 수 있다")
     void update_allowsPastPerformance_whenPerformedAtUnchanged() {
         Performance performance = givenPerformance(PAST);
         givenDetailParts();
@@ -303,6 +351,138 @@ class PerformanceServiceTest {
         verifyNoInteractions(groupMemberService);
     }
 
+    @Test
+    @DisplayName("모임장이 공연을 모집 중으로 바꾸면 상태만 바뀌고 팀은 해체하지 않는다")
+    void changeStatus_toRecruiting_doesNotDisbandTeams() {
+        Performance performance = givenPerformance();
+
+        PerformanceStatusResponse response = performanceService.changeStatus(OWNER_ID, PERFORMANCE_ID,
+                statusRequest(PerformanceStatus.RECRUITING));
+
+        assertThat(performance.getStatus()).isEqualTo(PerformanceStatus.RECRUITING);
+        assertThat(response.status()).isEqualTo(PerformanceStatus.RECRUITING);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("공연을 종료하면 소속 팀을 모두 해체한다")
+    void changeStatus_toDone_disbandsTeams() {
+        Performance performance = givenPerformance();
+
+        performanceService.changeStatus(OWNER_ID, PERFORMANCE_ID, statusRequest(PerformanceStatus.DONE));
+
+        assertThat(performance.getStatus()).isEqualTo(PerformanceStatus.DONE);
+        verify(teamService).disbandAllByPerformance(PERFORMANCE_ID);
+    }
+
+    @Test
+    @DisplayName("공연을 취소해도 소속 팀을 모두 해체한다")
+    void changeStatus_toCanceled_disbandsTeams() {
+        Performance performance = givenPerformance();
+
+        performanceService.changeStatus(OWNER_ID, PERFORMANCE_ID, statusRequest(PerformanceStatus.CANCELED));
+
+        assertThat(performance.getStatus()).isEqualTo(PerformanceStatus.CANCELED);
+        verify(teamService).disbandAllByPerformance(PERFORMANCE_ID);
+    }
+
+    @Test
+    @DisplayName("끝난 공연은 상태를 바꿀 수 없고(INVALID_STATE) 팀 해체도 다시 하지 않는다")
+    void changeStatus_throws_whenFinished() {
+        Performance performance = givenPerformance();
+        performance.changeStatus(PerformanceStatus.DONE);
+
+        assertThatThrownBy(() -> performanceService.changeStatus(OWNER_ID, PERFORMANCE_ID,
+                statusRequest(PerformanceStatus.PLANNED)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        assertThat(performance.getStatus()).isEqualTo(PerformanceStatus.DONE);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("모임장이 아니면 상태를 바꿀 수 없고 팀도 해체하지 않는다")
+    void changeStatus_throws_whenNotOwner() {
+        Performance performance = givenPerformance();
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_OWNER))
+                .when(groupMemberService).ensureOwner(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.changeStatus(MEMBER_ID, PERFORMANCE_ID,
+                statusRequest(PerformanceStatus.DONE)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        assertThat(performance.getStatus()).isEqualTo(PerformanceStatus.PLANNED);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("없는 공연의 상태를 바꾸려 하면 PERFORMANCE_NOT_FOUND다")
+    void changeStatus_throws_whenPerformanceMissing() {
+        when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> performanceService.changeStatus(OWNER_ID, PERFORMANCE_ID,
+                statusRequest(PerformanceStatus.DONE)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PERFORMANCE_NOT_FOUND);
+        verifyNoInteractions(groupMemberService, teamService);
+    }
+
+    @Test
+    @DisplayName("모임원이 공연 안에 팀을 만들면 요청 값을 그대로 TeamService에 넘기고 팀 상세를 돌려준다")
+    void createTeam_byMember_createsTeamViaTeamService() {
+        givenPerformance();
+        TeamDetailResponse team = new TeamDetailResponse(5L, "무명밴드", "발라드 위주로 갑니다.", Region.SEOUL,
+                List.of(Genre.BALLAD, Genre.ROCK), TeamStatus.ACTIVE, null, null, 1, List.of(), TeamRole.LEADER, null);
+        when(teamService.createForPerformance(MEMBER_ID, PERFORMANCE_ID, "무명밴드", "발라드 위주로 갑니다.",
+                Region.SEOUL, List.of(Genre.BALLAD, Genre.ROCK), Instrument.BASS)).thenReturn(team);
+
+        TeamDetailResponse response = performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest());
+
+        verify(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+        assertThat(response).isSameAs(team);
+    }
+
+    @Test
+    @DisplayName("모임원이 아니면 공연 안에 팀을 만들 수 없다")
+    void createTeam_throws_whenNotMember() {
+        givenPerformance();
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_MEMBER))
+                .when(groupMemberService).ensureActiveMember(GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_MEMBER);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("끝난 공연(취소)에는 팀을 만들 수 없다(INVALID_STATE)")
+    void createTeam_throws_whenFinished() {
+        givenPerformance().changeStatus(PerformanceStatus.CANCELED);
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        verifyNoInteractions(teamService);
+    }
+
+    @Test
+    @DisplayName("없는 공연에 팀을 만들려 하면 PERFORMANCE_NOT_FOUND다")
+    void createTeam_throws_whenPerformanceMissing() {
+        when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> performanceService.createTeam(MEMBER_ID, PERFORMANCE_ID, teamCreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PERFORMANCE_NOT_FOUND);
+        verifyNoInteractions(groupMemberService, teamService);
+    }
+
     private PerformanceCreateRequest createRequest() {
         return new PerformanceCreateRequest("2026 정기공연", "1년에 한 번 하는 정기공연입니다.", PERFORMED_AT,
                 "홍대 롤링홀", "poster.jpg");
@@ -310,6 +490,15 @@ class PerformanceServiceTest {
 
     private PerformanceUpdateRequest updateRequest() {
         return new PerformanceUpdateRequest("2026 정기공연 (연기)", null, PERFORMED_AT.plusWeeks(1), "신촌 클럽", null);
+    }
+
+    private PerformanceTeamCreateRequest teamCreateRequest() {
+        return new PerformanceTeamCreateRequest("무명밴드", "발라드 위주로 갑니다.", Region.SEOUL,
+                List.of(Genre.BALLAD, Genre.ROCK), Instrument.BASS);
+    }
+
+    private PerformanceStatusUpdateRequest statusRequest(PerformanceStatus status) {
+        return new PerformanceStatusUpdateRequest(status);
     }
 
     private Performance givenPerformance() {

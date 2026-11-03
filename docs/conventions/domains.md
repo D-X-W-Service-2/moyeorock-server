@@ -96,7 +96,7 @@
 | `file` presigned URL | 1팀 → 4팀 | 모임 커버·공연 포스터가 이 API를 기다린다 |
 | 신청·초대 승인 | 3팀 → 2팀 `TeamService` · 4팀 `GroupService` | 승인 시 멤버 추가(`TeamService.addMember`). 3팀이 직접 `team_members`를 만들지 않는다 |
 | 공연 내 팀 생성 | 4팀 → 2팀 `TeamService` | `POST /v1/performances/{performanceId}/teams`가 팀을 만든다(`TeamService.createForPerformance`) |
-| 공연 종료 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`이면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
+| 공연 종료·취소 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`·`CANCELED`면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 내 활동의 팀 | 1팀 activity → 2팀 `TeamService` | `TeamService.findMemberships` — 내가 속한 활동 중인 팀의 요약과 내 역할·악기 |
 | 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#96). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |

@@ -635,6 +635,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `title`·`performedAt`·`venue` 필수, `description`·`posterImage` 선택 — `API 초안`(2026-10-08) 기준. `venue`는 이전 `erd.md`에서 "필수 X"였으나 노션 기준으로 필수다(2026-10-30, 이슈 #83)
 - 길이: `title`·`venue` 100자, `description` 1,000자(모임 소개와 같은 기준 — 긴 안내는 공지로), `posterImage` 500자
 - `posterImage`는 파일 API(`POST /v1/files/presigned-url`, `domain=PERFORMANCE_POSTER`)로 받은 `fileUrl` 문자열을 그대로 보낸다. 공연 쪽은 URL만 저장한다(`erd.md` §17)
+- 끝난 공연(`DONE`·`CANCELED`)은 수정할 수 없다 — 409 `INVALID_STATE`(2026-11-03, PR #104 리뷰). 상태 변경·공연 내 팀 생성·셋리스트 확정과 같이 끝난 공연은 기록으로 둔다. 일시가 지났어도 아직 끝나지 않은 공연은 일시를 그대로 두면 고칠 수 있다
 
 ### PageResponse\<PerformanceSummaryResponse\>
 
@@ -684,11 +685,11 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `setlist`는 확정된 것만 담는다 (원본 메모)
-- `teams`는 끝난 공연(`DONE`)이면 빈 목록이다 — 끝난 공연은 참여 팀을 보여주지 않는다(2026-10-30 결정)
+- `teams`는 해체되지 않은 참여 팀이라 끝난 공연(`DONE`·`CANCELED`)이면 빈 목록이다 — 끝난 공연은 참여 팀을 보여주지 않는다(2026-10-30 결정, 2026-11-01 취소도 팀을 해체하기로 해서 함께)
 - `myTeamIds`는 요청자가 속한, 이 공연의 참여 팀 id 목록이다(없으면 빈 목록). 한 사용자가 같은 공연의 여러 팀에 속할 수 있어 **2026-10-30에 `myTeamId`(단일)에서 바꿨다**(노션도 수정, 이슈 #79 댓글)
 - `canEdit`은 요청자가 그 모임의 모임장인지다
 - `createdBy`는 공연을 만든 사람이 탈퇴했으면 `null`이다(노션은 Nullable X — 탈퇴 회원 표시 정책이 생기면 맞춘다)
-- **이슈 #83 구현 범위에서는 `teams`·`setlist`·`myTeamIds`가 응답에 없다.** `teams`·`myTeamIds`는 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다(`api-spec.md` §8 ※)
+- **`setlist`는 아직 응답에 없다** — 셋리스트 도메인 구현 때 추가한다. `teams`·`myTeamIds`는 이슈 #88에서 추가했다(`api-spec.md` §8 ⊕). 생성·수정 응답도 같은 DTO라 함께 채워지고, 막 만든 공연은 둘 다 빈 목록이다
 
 ### PerformanceStatusUpdateRequest / PerformanceStatusResponse
 
@@ -700,9 +701,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "id": 7, "status": "DONE" }
 ```
 
+- `status`는 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)이고 필수다. 노션 값(`ENDED` 등)은 `400 VALIDATION_FAILED`
+- 끝난 공연(`DONE`·`CANCELED`)은 바꿀 수 없다(`409 INVALID_STATE`). `DONE`·`CANCELED`로 바꾸면 소속 팀이 모두 해체된다(`api-spec.md` §8 ⊕)
+
 ### PerformanceTeamCreateRequest
 
 `instrument`는 생성자 본인의 세션. Response는 TeamDetailResponse와 같은 형태다 (원본 페이지에 함께 기재됨).
+
+- 제약은 `TeamCreateRequest`와 같다 — `name` 필수·50자, `description` 1,000자, `region` 선택, `genres` 5개까지, `instrument` 필수(2026-11-01, 이슈 #88)
+- 응답은 `201` + `TeamDetailResponse`다. 2팀 구현(#86)에 `performance` 필드가 아직 없어 이 응답에도 없다
+- `PLANNED`·`RECRUITING` 공연에서만 만들 수 있다 — 끝난 공연은 `409 INVALID_STATE`
 
 ```json
 {
