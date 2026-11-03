@@ -7,7 +7,7 @@
 ```
 com.moyeorock
 ├── global/
-│   ├── config/          SwaggerConfig, CorsConfig, WebConfig, JpaAuditingConfig
+│   ├── config/          OpenApiConfig, SecurityConfig(CORS 포함), WebConfig, JpaAuditingConfig, TimezoneConfig
 │   ├── security/        JwtProvider, JwtAuthenticationFilter,
 │   │                    AuthUserArgumentResolver, @AuthUser
 │   ├── exception/       GlobalExceptionHandler, ErrorCode, BusinessException
