@@ -153,7 +153,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamStatusResponse` | `(Long id, TeamStatus status)` |
 | `TeamMemberRecommendationResponse` | `(Instrument instrument, List<Candidate> candidates)`, 중첩 `Candidate(UserSummaryResponse user, double score, List<String> reasons)` |
 
-`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`songs`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceSummaryResponse`를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
+`TeamDetailResponse`는 참조가 가장 많다(단 `performance`·`songs`는 4팀 DTO가 생길 때까지 응답에서 뺐다). `UserSummaryResponse`(leader) · `TeamMemberResponse` · `TeamSongResponse`(`songs` — 팀 선택곡) · `PerformanceBriefResponse`(`performance` — 4팀 `PerformanceMemberService.getBrief`)를 모두 물고 있어서, 여기서 조회 쿼리를 잘못 짜면 N+1이 한 번에 터진다. `@EntityGraph` 또는 `join fetch` 대상.
 
 `TeamMemberUpdateRequest(TeamRole role, Instrument instrument)` — 두 필드 모두 `null` 허용이고, 보낸 것만 반영한다. `role = LEADER`면 팀장 위임이다.
 
@@ -365,6 +365,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 |---|---|
 | `PerformanceSummaryResponse` | `TeamDetailResponse`·`GroupDetailResponse`·`UserActivityResponse`에서 재사용 |
 | `PerformanceStatusResponse` | `(Long id, PerformanceStatus status)` |
+| `PerformanceBriefResponse` | `(Long id, String title, String groupName, LocalDateTime performedAt)` — 다른 도메인이 공연을 표시할 때 쓰는 요약(팀 상세의 `performance`). `PerformanceMemberService.getBrief`가 준다. 모임이 해체됐으면 `groupName`은 null (2026-11-02, 이슈 #105) |
 | `SetlistResponse` | `(Long performanceId, boolean confirmed, List<SetlistItemResponse> setlist)` — 공연 셋리스트 조회·넘기기·확정 공통. 확정 전에는 넘겨진 곡 전체(`sortOrder` null), 확정 후에는 확정곡만 |
 | `SetlistSubmitRequest` | `(List<Long> songIds)` — 그 팀의 선택곡 안에서 고른다. 그 팀이 넘긴 곡 전체를 바꾼다 |
 | `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다 |
@@ -449,12 +450,12 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 |---|---|
 | 엔드포인트 | 80 |
 | Request DTO | 36 |
-| Response DTO | 59 |
+| Response DTO | 60 |
 | 전역 공통 | 5 |
 
 요청 DTO가 36개뿐인 이유는 80개 중 **47개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
 
 ### 재사용 상위 5개
 
