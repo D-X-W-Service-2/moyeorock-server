@@ -23,6 +23,7 @@ import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -53,6 +54,7 @@ public class TeamService {
     private final TeamGenreRepository teamGenreRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserService userService;
+    private final PerformanceMemberService performanceMemberService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -230,6 +232,7 @@ public class TeamService {
     /**
      * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
      * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
+     * 공연 팀이면 그 공연을 연 모임의 활동 모임원만 들어올 수 있다(아니면 NOT_PERFORMANCE_GROUP_MEMBER, #96).
      *
      * <p>이 메서드는 첫 조회로 팀 행을 잠그지만, 호출한 쪽의 트랜잭션에 참여하므로 호출한 쪽이 이 메서드를 부르기 전에
      * 다른 조회를 이미 했다면 그 조회 시점의 낡은 화면으로 팀원 정보를 읽을 수 있다(MySQL 기본 격리 수준 때문).
@@ -237,7 +240,11 @@ public class TeamService {
      */
     @Transactional
     public void addMember(Long teamId, Long userId, Instrument instrument) {
-        requireActiveTeam(getTeamForUpdate(teamId));
+        Team team = getTeamForUpdate(teamId);
+        requireActiveTeam(team);
+        if (team.getPerformanceId() != null) {
+            performanceMemberService.ensureGroupMember(team.getPerformanceId(), userId);
+        }
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId).ifPresentOrElse(
                 member -> {
                     if (member.getStatus() == MemberStatus.ACTIVE) {

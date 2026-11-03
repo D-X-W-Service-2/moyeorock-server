@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,6 +34,7 @@ import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
@@ -71,6 +73,8 @@ class TeamServiceTest {
     TeamMemberRepository teamMemberRepository;
     @Mock
     UserService userService;
+    @Mock
+    PerformanceMemberService performanceMemberService;
     @InjectMocks
     TeamService teamService;
 
@@ -641,6 +645,41 @@ class TeamServiceTest {
         Team team = Team.createForPerformance(performanceId, "공연팀", null, Region.SEOUL);
         ReflectionTestUtils.setField(team, "id", id);
         return team;
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 공연 팀이면 공연을 연 모임의 모임원인지 확인하고 통과하면 저장한다")
+    void addMember_performanceTeam_checksGroupMember() {
+        givenTeam(performanceTeam(TEAM_ID, 7L));
+        givenMember(MEMBER_ID, null);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM);
+
+        verify(performanceMemberService).ensureGroupMember(7L, MEMBER_ID);
+        verify(teamMemberRepository).save(any(TeamMember.class));
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 공연을 연 모임의 모임원이 아니면 예외가 그대로 나가고 저장하지 않는다")
+    void addMember_performanceTeam_rejectsNonGroupMember() {
+        givenTeam(performanceTeam(TEAM_ID, 7L));
+        willThrow(new BusinessException(ErrorCode.NOT_PERFORMANCE_GROUP_MEMBER))
+                .given(performanceMemberService).ensureGroupMember(7L, MEMBER_ID);
+
+        assertErrorCode(() -> teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM),
+                ErrorCode.NOT_PERFORMANCE_GROUP_MEMBER);
+        verify(teamMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 독립 팀은 모임원 확인을 하지 않는다")
+    void addMember_independentTeam_skipsGroupMemberCheck() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, null);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM);
+
+        verify(performanceMemberService, never()).ensureGroupMember(any(), any());
     }
 
     @Test
