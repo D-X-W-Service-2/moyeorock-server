@@ -637,6 +637,57 @@ class TeamServiceTest {
         verify(teamGenreRepository, never()).findAllByTeamIdIn(any());
     }
 
+    private Team performanceTeam(Long id, Long performanceId) {
+        Team team = Team.createForPerformance(performanceId, "공연팀", null, Region.SEOUL);
+        ReflectionTestUtils.setField(team, "id", id);
+        return team;
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 그 공연 팀들의 내 활동 팀원 행이 LEFT가 된다")
+    void leavePerformanceTeams_marksMembershipsLeft() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L)))
+                .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
+        TeamMember first = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember second = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(MEMBER_ID, List.of(5L, 6L)))
+                .willReturn(List.of(first, second));
+
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L, 8L));
+
+        assertThat(first.getStatus()).isEqualTo(MemberStatus.LEFT);
+        assertThat(second.getStatus()).isEqualTo(MemberStatus.LEFT);
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 한 팀이라도 팀장이면 LEADER_MUST_DELEGATE_FIRST이고 아무 행도 바꾸지 않는다")
+    void leavePerformanceTeams_rejectsLeader_andChangesNothing() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L)))
+                .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
+        TeamMember asMember = member(LEADER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember asLeader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(LEADER_ID, List.of(5L, 6L)))
+                .willReturn(List.of(asMember, asLeader));
+
+        assertErrorCode(() -> teamService.leavePerformanceTeams(LEADER_ID, List.of(7L, 8L)),
+                ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+
+        assertThat(asMember.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(asLeader.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 공연 id가 없거나 활동 중인 팀이 없으면 팀원 행을 조회하지 않는다")
+    void leavePerformanceTeams_withoutTeams_doesNothing() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of());
+
+        teamService.leavePerformanceTeams(MEMBER_ID, null);
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of());
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L));
+
+        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdIn(any(), any());
+    }
+
     @Test
     @DisplayName("요약 일괄 조회(해체 포함): 해체된 팀도 담고 없는 id만 빠진다")
     void getSummariesIncludingDisbanded_includesDisbandedTeams() {

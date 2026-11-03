@@ -279,6 +279,32 @@ public class TeamService {
         return teamRepository.findMyPerformanceTeams(userId).stream().map(PerformanceTeamResponse::from).toList();
     }
 
+    /**
+     * 모임 탈퇴·강퇴 시 그 모임 공연들의 팀에서 이 사람을 뺀다(4팀 GroupService). 호출한 쪽의 트랜잭션에 참여한다.
+     * 활동 중인 팀의 ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀과 이미 나간 팀은 지나간다.
+     * 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던져 모임 탈퇴·강퇴 전체를 막는다.
+     *
+     * <p>팀 행을 id 순으로 잠그고 시작한다. 호출한 쪽이 이 메서드 전에 팀 조회를 했다면 그 시점의 낡은 화면을 볼 수 있으니
+     * 가능한 한 트랜잭션 앞쪽에서 불러 달라(addMember와 같다).
+     */
+    @Transactional
+    public void leavePerformanceTeams(Long userId, Collection<Long> performanceIds) {
+        if (performanceIds == null || performanceIds.isEmpty()) {
+            return;
+        }
+        List<Long> teamIds = teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds).stream()
+                .map(Team::getId)
+                .toList();
+        if (teamIds.isEmpty()) {
+            return;
+        }
+        List<TeamMember> memberships = teamMemberRepository.findActiveByUserIdAndTeamIdIn(userId, teamIds);
+        if (memberships.stream().anyMatch(m -> m.getRole() == TeamRole.LEADER)) {
+            throw new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+        }
+        memberships.forEach(m -> m.updateStatus(MemberStatus.LEFT));
+    }
+
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
     @Transactional
     public void disbandAllByPerformance(Long performanceId) {

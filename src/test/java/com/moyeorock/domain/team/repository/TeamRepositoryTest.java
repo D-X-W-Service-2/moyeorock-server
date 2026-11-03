@@ -239,6 +239,22 @@ class TeamRepositoryTest {
     }
 
     @Test
+    @DisplayName("findActiveByPerformanceIdInForUpdate는 주어진 공연들의 활성 팀만 id 순으로 돌려준다")
+    void findActiveByPerformanceIdInForUpdate_returnsActiveTeamsOfGivenPerformances() {
+        Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "첫째", null, Region.SEOUL));
+        Team second = teamRepository.saveAndFlush(Team.createForPerformance(8L, "둘째", null, Region.SEOUL));
+        Team disbanded = teamRepository.saveAndFlush(Team.createForPerformance(7L, "해체됨", null, Region.SEOUL));
+        disbanded.disband();
+        teamRepository.saveAndFlush(disbanded);
+        teamRepository.saveAndFlush(Team.createForPerformance(9L, "다른 공연", null, Region.SEOUL));
+        saveTeam("독립 팀", Region.SEOUL);
+
+        List<Team> result = teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L));
+
+        assertThat(result).extracting(Team::getId).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
     @DisplayName("findActiveByPerformanceId는 id 순으로 돌려준다")
     void findActiveByPerformanceId_isOrderedById() {
         Team first = teamRepository.saveAndFlush(Team.createForPerformance(7L, "먼저", null, Region.SEOUL));
