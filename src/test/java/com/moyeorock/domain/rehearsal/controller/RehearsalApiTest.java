@@ -13,8 +13,11 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
+import com.moyeorock.domain.user.entity.User;
+import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.security.JwtProvider;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +63,9 @@ class RehearsalApiTest {
     @Autowired
     private TeamMemberRepository teamMemberRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
     private ResultActions send(MockHttpServletRequestBuilder request, long userId, String body) throws Exception {
         return mockMvc.perform(request.header("Authorization", "Bearer " + jwtProvider.generateToken(userId))
                 .contentType(MediaType.APPLICATION_JSON).content(body));
@@ -71,6 +77,12 @@ class RehearsalApiTest {
 
     private long idOf(MvcResult result) throws Exception {
         return ((Number) JsonPath.read(result.getResponse().getContentAsString(), "$.data.id")).longValue();
+    }
+
+    // 작성자 요약(createdBy)은 users 행이 있어야 채워진다. 다른 테스트의 7·8번 같은 임의 id는 사용자 행이 없다.
+    private User saveUser(String email, String nickname) {
+        return userRepository.saveAndFlush(
+                User.signupWithEmail(email, "hash", nickname, LocalDateTime.of(2026, 1, 1, 0, 0)));
     }
 
     private long createTeam(long leaderId) throws Exception {
@@ -260,5 +272,43 @@ class RehearsalApiTest {
                 .andExpect(jsonPath("$.data.rehearsals[1].title").value("B팀 합주"));
         send(get("/v1/users/me/rehearsals").param("from", "2026-09-01").param("to", "2026-09-30"), STRANGER_ID)
                 .andExpect(jsonPath("$.data.rehearsals.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("실제 사용자가 만든 합주는 생성 응답과 다른 팀원의 상세 조회 모두 작성자 닉네임이 채워진다")
+    void createdBy_isFilledWithRealUser() throws Exception {
+        User author = saveUser("author@example.com", "작성자");
+        User viewer = saveUser("viewer@example.com", "구경꾼");
+        long teamId = createTeam(author.getId());
+        addMember(teamId, viewer.getId());
+
+        long rehearsalId = idOf(send(post("/v1/teams/" + teamId + "/rehearsals"), author.getId(), REHEARSAL_BODY)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.createdBy.id").value(author.getId()))
+                .andExpect(jsonPath("$.data.createdBy.nickname").value("작성자"))
+                .andReturn());
+
+        send(get("/v1/rehearsals/" + rehearsalId), viewer.getId())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.createdBy.id").value(author.getId()))
+                .andExpect(jsonPath("$.data.createdBy.nickname").value("작성자"))
+                .andExpect(jsonPath("$.data.canEdit").value(false));
+    }
+
+    @Test
+    @DisplayName("작성자가 탈퇴했으면 합주는 남고 createdBy만 null이다")
+    void createdBy_isNull_whenAuthorWithdrew() throws Exception {
+        User author = saveUser("gone@example.com", "탈퇴자");
+        User leader = saveUser("leader@example.com", "팀장");
+        long teamId = createTeam(leader.getId());
+        addMember(teamId, author.getId());
+        long rehearsalId = createRehearsal(teamId, author.getId(), REHEARSAL_BODY);
+        author.withdraw();
+        userRepository.saveAndFlush(author);
+
+        send(get("/v1/rehearsals/" + rehearsalId), leader.getId())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("1차 합주"))
+                .andExpect(jsonPath("$.data.createdBy").doesNotExist());
     }
 }
