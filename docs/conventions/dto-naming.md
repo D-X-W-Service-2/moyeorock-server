@@ -37,16 +37,16 @@ public record TeamCreateRequest(
 ) {}
 
 public record UserActivityResponse(
-        List<TeamActivity> teams,
-        List<GroupActivity> groups,
+        List<TeamMembershipResponse> teams,      // 2팀: (TeamSummaryResponse team, TeamRole role, Instrument instrument)
+        List<GroupSummaryResponse> groups,       // 4팀: (Long id, String name, GroupType type, GroupRole role, String coverImage)
         List<PerformanceActivity> performances
 ) {
-    public record TeamActivity(TeamSummaryResponse team, TeamRole role, Instrument instrument) {}
-    public record GroupActivity(Long id, String name, GroupType type, GroupRole role, String coverImage) {}
     public record PerformanceActivity(Long id, String title, String groupName,
                                       LocalDateTime performedAt, PerformanceStatus status, String teamName) {}
 }
 ```
+
+위 예시의 `teams`·`groups`는 원래 중첩 record(`TeamActivity`·`GroupActivity`)였으나, 2팀 `TeamMembershipResponse`(PR #86)와 4팀 `GroupSummaryResponse`(PR #67)가 같은 모양으로 들어와 규칙 3에 따라 그대로 담는다(2026-11-02, 이슈 #90). JSON 모양은 바뀌지 않았다. `performances`는 4팀 `PerformanceActivityResponse`(이슈 #95)가 들어오면 같은 방식으로 바꾼다.
 
 ### 패키지
 ```
@@ -113,12 +113,13 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `UserInstrumentRequest` | `(Instrument instrument, Level level)` — 온보딩·세션수정 요청 양쪽에서 재사용. `customInstrument`는 2026-09-28 ETC 폐지로 제거 |
 | `UserInstrumentResponse` | 위에 `id` 추가된 응답형 |
 | `UserInstrumentsResponse` | `(List<UserInstrumentResponse> instruments)` |
+| `UserProfileResponse.ProfileInstrument` | `(Instrument instrument, Level level)` 중첩. 타인 프로필에는 세션 `id`를 노출하지 않아 `UserInstrumentResponse`를 재사용하지 않는다 |
 | `UserSummaryResponse` | **최다 재사용.** team·join·invitation·recruit 전부에서 참조 |
 | `UserProfileSummaryResponse` | `(Long id, String nickname, Region region, List<Genre> genres, String profileImage)` — 사용자를 카드로 보여주는 곳(북마크 대상 요약)용. 공용 `UserSummaryResponse`에 필드를 늘리지 않으려고 따로 둔다(§12). `UserService.getProfileSummaries`가 돌려준다 |
 | `UserWithdrawResponse` | `(LocalDateTime withdrawnAt)` |
 | `NicknameCheckResponse` | `(String nickname, boolean available)` |
 
-`UserMeResponse`와 `UserProfileResponse`를 나눈 건 노출 범위가 다르기 때문이다. `UserMeResponse`는 `email`·`isRecommendable`·`isActivityPublic`을 담고, `UserProfileResponse`는 절대 담지 않는다. 하나로 합치고 `null` 처리하면 실수로 새어나간다.
+`UserMeResponse`와 `UserProfileResponse`를 나눈 건 노출 범위가 다르기 때문이다. `UserMeResponse`는 `email`·`isRecommendable`을 담고, `UserProfileResponse`는 절대 담지 않는다. 하나로 합치고 `null` 처리하면 실수로 새어나간다. `isActivityPublic`만은 양쪽에 둔다: 타인 프로필은 비공개면 `activities`를 `null`로 내리는데, 이 값이 없으면 프론트가 "비공개"와 "활동 없음"을 구분하지 못한다. 유출이 아니라 표시용 정보다(이슈 #90 P-3, 2026-11-02).
 
 `UserUpdateRequest`가 프로필과 설정을 같이 받는다. 설정 전용 DTO를 두지 않는 이유는 화면이 하나라서다.
 

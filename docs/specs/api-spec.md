@@ -14,12 +14,12 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | GET | `/v1/users/me` | 내&nbsp;프로필&nbsp;조회 | | `UserMeResponse` |
-| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | |
+| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | `UserMeResponse` |
 | DELETE | `/v1/users/me` | 탈퇴 | | `UserWithdrawResponse` * |
-| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | |
-| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | |
-| GET | `/v1/users/me/activities` | 내&nbsp;활동 | | `UserActivityResponse` |
-| GET | `/v1/users/{id}` | 타인&nbsp;프로필&nbsp;조회 | | `UserProfileResponse` |
+| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | `UserMeResponse` ‡ |
+| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | `UserInstrumentsResponse` |
+| GET | `/v1/users/me/activities` | 내&nbsp;활동 | | `UserActivityResponse` ◇ |
+| GET | `/v1/users/{id}` | 타인&nbsp;프로필&nbsp;조회 | | `UserProfileResponse` § |
 | GET | `/v1/users/search?nickname=&page=&size=` ¶ | 사용자&nbsp;검색 | | `PageResponse<UserSummaryResponse>` |
 | GET | `/v1/users/nickname/check?nickname=` | 닉네임&nbsp;중복&nbsp;확인 | | `NicknameCheckResponse` † |
 
@@ -27,6 +27,9 @@
 > † 원래 Notion `API 명세서 v0`에는 없던 엔드포인트였으나(`docs/conventions/dto-naming.md` §2가 먼저 정의), `API 초안`에 쿼리 파라미터까지 포함해 반영된 것을 2026-09-11 확인했다.
 > `/v1/users/search`는 원본에서 팀 섹션에 있었지만 user 도메인 소유다.
 > `PUT /v1/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/conventions/dto-naming.md` §2).
+> § 타인 프로필 조회는 로그인 필수다(이슈 #90 P-5). 탈퇴 회원과 없는 id는 404 `USER_NOT_FOUND`, 정지(SUSPENDED) 회원은 노출한다(P-7, 목록 조회 `getSummaries`와 맞춤). 본인 id로 불러도 같은 형태다(P-8). `activities`는 `isActivityPublic=false`면 `null`이고(P-3), 공개면 내 활동과 같은 조립이다(비공개 사용자는 활동 조회 자체를 하지 않는다). id가 숫자가 아니면 400 `VALIDATION_FAILED`.
+> ◇ 내 활동은 다른 `/me`와 같이 ACTIVE 사용자만 통과한다(아니면 404 `USER_NOT_FOUND`). 세 목록은 각 팀 Service가 ACTIVE 필터·정렬까지 맡고 user는 조립만 한다(이슈 #90). `teams`는 2팀 `TeamService.findMemberships`(최근 합류 순). `groups`·`performances`는 4팀 메서드(이슈 #95)가 들어오기 전까지 빈 목록이다(2026-11-02).
+> ‡ 온보딩 등록은 재호출이 멱등(값만 갱신)이라 201이 아니라 200이다. 명세 표에 응답 코드가 없어 서버가 정한 값이다. Notion 반영 필요. 프로필 수정·온보딩 응답은 갱신된 `UserMeResponse` 전체다(PR #57 Service 반환 그대로, Controller는 #89).
 
 ---
 

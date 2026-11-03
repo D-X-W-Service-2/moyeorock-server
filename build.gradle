@@ -29,6 +29,8 @@ dependencies {
     // 이 의존성이 있어도 AWS 자격증명 없이 부팅된다
     implementation 'software.amazon.awssdk:s3'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+    // 배포 헬스 체크(/actuator/health)용. 노출 범위는 application.yml management 절
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'

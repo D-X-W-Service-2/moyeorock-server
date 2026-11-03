@@ -7,7 +7,7 @@
 ```
 com.moyeorock
 ├── global/
-│   ├── config/          SwaggerConfig, CorsConfig, WebConfig, JpaAuditingConfig
+│   ├── config/          OpenApiConfig, SecurityConfig(CORS 포함), WebConfig, JpaAuditingConfig, TimezoneConfig
 │   ├── security/        JwtProvider, JwtAuthenticationFilter,
 │   │                    AuthUserArgumentResolver, @AuthUser
 │   ├── exception/       GlobalExceptionHandler, ErrorCode, BusinessException
@@ -65,6 +65,7 @@ Controller → Service → Repository → DB
 | `join` ↔ `team` `group` | 승인 시 멤버 추가는 `TeamService`·`GroupService` 호출 |
 | `performance` → `team` | 공연 종료 시 팀 해체는 `TeamService` 호출 |
 | `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
+| `user` → `team` `group` `performance` | 내 활동·타인 프로필 조립은 `UserActivityService`가 `TeamService`·`GroupService`·`PerformanceService`를 호출. 그 세 Service는 `UserService`를 주입받으므로 조립을 `UserService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #90) |
 
 ### 순환 참조가 생기면
 
