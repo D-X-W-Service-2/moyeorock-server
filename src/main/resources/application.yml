@@ -70,6 +70,17 @@ springdoc:
     tags-sorter: alpha
     display-request-duration: true
 
+# 배포 스크립트(.github/workflows/deploy-dev.yml)가 재시작 뒤 /actuator/health로 성공을 판단한다. DB 연결까지 보고
+# UP/DOWN만 답한다. health 말고는 열지 않고, 컴포넌트별 상세는 밖에 보이지 않게 둔다(둘 다 기본값이지만 명시).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 server:
   port: 8080
   servlet:
