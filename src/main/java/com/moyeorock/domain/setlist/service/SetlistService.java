@@ -68,7 +68,7 @@ public class SetlistService {
     /** 팀 선택곡 조회(팀원). 해체·없는 팀은 TEAM_NOT_FOUND, 팀원이 아니면 NO_PERMISSION(TeamMemberService). */
     public TeamSongsResponse getTeamSongs(Long userId, Long teamId) {
         teamMemberService.ensureActiveMember(teamId, userId);
-        return new TeamSongsResponse(teamId, getTeamSongs(teamId));
+        return new TeamSongsResponse(teamId, findTeamSongs(teamId));
     }
 
     // ---------- 공연 셋리스트 (PerformanceService가 공연·팀 확인 뒤 부른다) ----------
@@ -164,8 +164,11 @@ public class SetlistService {
         return setlistRepository.findTeamIdsByPerformanceId(performanceId);
     }
 
-    /** 팀 선택곡 목록(2팀 팀 상세의 songs). 권한은 묻지 않는다 — 부르는 쪽이 확인한다. 저장한 순서다. */
-    public List<TeamSongResponse> getTeamSongs(Long teamId) {
+    /**
+     * 팀 선택곡 목록(2팀 팀 상세의 songs). 권한은 묻지 않는다 — 부르는 쪽이 확인한다. 저장한 순서다.
+     * 팀원 확인까지 하는 API용 {@code getTeamSongs(userId, teamId)}와 헷갈리지 않게 이름을 나눴다(PR #111 리뷰).
+     */
+    public List<TeamSongResponse> findTeamSongs(Long teamId) {
         List<TeamSong> teamSongs = teamSongRepository.findAllByTeamIdOrderByIdAsc(teamId);
         Map<Long, SongSummaryResponse> songs = songService.getSummaries(
                 teamSongs.stream().map(TeamSong::getSongId).toList());
