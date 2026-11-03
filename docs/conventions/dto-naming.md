@@ -39,14 +39,11 @@ public record TeamCreateRequest(
 public record UserActivityResponse(
         List<TeamMembershipResponse> teams,      // 2팀: (TeamSummaryResponse team, TeamRole role, Instrument instrument)
         List<GroupSummaryResponse> groups,       // 4팀: (Long id, String name, GroupType type, GroupRole role, String coverImage)
-        List<PerformanceActivity> performances
-) {
-    public record PerformanceActivity(Long id, String title, String groupName,
-                                      LocalDateTime performedAt, PerformanceStatus status, String teamName) {}
-}
+        List<PerformanceActivityResponse> performances  // 4팀: (Long id, String title, String groupName, LocalDateTime performedAt, PerformanceStatus status, String teamName)
+) {}
 ```
 
-위 예시의 `teams`·`groups`는 원래 중첩 record(`TeamActivity`·`GroupActivity`)였으나, 2팀 `TeamMembershipResponse`(PR #86)와 4팀 `GroupSummaryResponse`(PR #67)가 같은 모양으로 들어와 규칙 3에 따라 그대로 담는다(2026-11-02, 이슈 #90). JSON 모양은 바뀌지 않았다. `performances`는 4팀 `PerformanceActivityResponse`(이슈 #95)가 들어오면 같은 방식으로 바꾼다.
+위 예시의 세 목록은 원래 중첩 record(`TeamActivity`·`GroupActivity`·`PerformanceActivity`)였으나, 2팀 `TeamMembershipResponse`(PR #86), 4팀 `GroupSummaryResponse`(PR #67)·`PerformanceActivityResponse`(PR #128)가 같은 모양으로 들어와 규칙 3에 따라 그대로 담는다(2026-11-02 · 2026-11-03, 이슈 #90 · #126). JSON 모양은 바뀌지 않았다.
 
 ### 패키지
 ```

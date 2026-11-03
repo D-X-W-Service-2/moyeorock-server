@@ -85,7 +85,7 @@ public class UserController {
         return ApiResponse.success(userService.search(nickname, pageable));
     }
 
-    /** 세 목록(teams·groups·performances)을 한 번에 돌려준다. groups·performances는 4팀 메서드(이슈 #95)가 붙기 전까지 빈 목록이다. */
+    /** 세 목록(teams·groups·performances)을 한 번에 돌려준다. performances는 진행 중인 공연만이다(이슈 #126). */
     @Operation(summary = "내 활동")
     @GetMapping("/me/activities")
     public ApiResponse<UserActivityResponse> getActivities(@AuthUser Long userId) {
