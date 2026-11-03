@@ -926,7 +926,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "targetType": "USER", "targetId": 30 }
 ```
 
-`targetType`은 `TEAM`·`USER`·`SONG`이지만 **지금은 `USER`만 저장된다**(임시, 나머지는 `400 VALIDATION_FAILED`). `api-spec.md` §10 참고.
+`targetType`은 `TEAM`·`USER`·`SONG`이지만 **지금은 `USER`·`TEAM`만 저장된다**(임시, `SONG`은 `400 VALIDATION_FAILED`). `api-spec.md` §10 참고.
 
 ### BookmarkResponse / PageResponse\<BookmarkResponse\>
 
@@ -945,7 +945,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-- `target`의 해당 없는 필드는 null이라 생략된다(곡은 `region`이 없다). 사용자 대상은 `name`=닉네임, `imageUrl`=프로필 이미지이고 온보딩 전이면 `region`·`genres`가 없다.
+- `target`의 해당 없는 필드는 `null`이다(곡은 `region`이 없다). 사용자 대상은 `name`=닉네임, `imageUrl`=프로필 이미지이고 온보딩 전이면 `region`·`genres`가 없다. 팀 대상은 `name`=팀 이름이고 `imageUrl`은 `null`이다(팀에는 이미지가 없다).
 - 대상이 삭제·탈퇴·해체돼 조회되지 않으면 **`target`이 `null`이다**. 항목은 목록에서 빠지지 않는다.
 
 삭제(`DELETE /v1/bookmarks/{id}`)의 응답은 `DeleteResponse`다.

@@ -14,6 +14,9 @@ import com.moyeorock.domain.bookmark.dto.response.BookmarkResponse;
 import com.moyeorock.domain.bookmark.entity.Bookmark;
 import com.moyeorock.domain.bookmark.enums.BookmarkTargetType;
 import com.moyeorock.domain.bookmark.repository.BookmarkRepository;
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.DeleteResponse;
@@ -54,11 +57,25 @@ class BookmarkServiceTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private TeamService teamService;
+
     @InjectMocks
     private BookmarkService bookmarkService;
 
     private static UserProfileSummaryResponse profile(Long id) {
         return new UserProfileSummaryResponse(id, "민서", Region.SEOUL, List.of(Genre.JAZZ), "https://img/c.jpg");
+    }
+
+    private static TeamSummaryResponse teamSummary(Long id) {
+        return new TeamSummaryResponse(id, "무명밴드", Region.SEOUL, List.of(Genre.ROCK), TeamStatus.ACTIVE, 3);
+    }
+
+    private static Bookmark teamBookmark(Long id, Long targetTeamId) {
+        Bookmark bookmark = Bookmark.create(ME, targetTeamId, null, null);
+        ReflectionTestUtils.setField(bookmark, "id", id);
+        ReflectionTestUtils.setField(bookmark, "createdAt", LocalDateTime.of(2026, 8, 10, 12, 0));
+        return bookmark;
     }
 
     private static Bookmark userBookmark(Long id, Long targetUserId) {
@@ -107,15 +124,78 @@ class BookmarkServiceTest {
     }
 
     @Test
-    @DisplayName("임시: TEAM·SONG 저장은 대상을 확인할 서비스가 없어 VALIDATION_FAILED이고 아무것도 호출하지 않는다")
-    void create_teamAndSongAreRejected() {
-        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.TEAM, 5L)))
-                .getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+    @DisplayName("임시: SONG 저장은 대상을 확인할 서비스가 없어 VALIDATION_FAILED이고 아무것도 호출하지 않는다")
+    void create_songIsRejected() {
         assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.SONG, 5L)))
                 .getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 
-        verifyNoInteractions(userService);
+        verifyNoInteractions(userService, teamService);
         verify(bookmarkRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("TEAM 대상을 저장하면 팀 요약(이름·지역·장르)과 함께 돌려주고 이미지는 null이다")
+    void create_teamTarget() {
+        given(teamService.getSummaries(List.of(TARGET))).willReturn(Map.of(TARGET, teamSummary(TARGET)));
+        given(bookmarkRepository.existsByUserIdAndTargetTeamId(ME, TARGET)).willReturn(false);
+        given(bookmarkRepository.saveAndFlush(any())).willReturn(teamBookmark(21L, TARGET));
+
+        BookmarkResponse response = bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.TEAM, TARGET));
+
+        assertThat(response.targetType()).isEqualTo(BookmarkTargetType.TEAM);
+        assertThat(response.targetId()).isEqualTo(TARGET);
+        assertThat(response.target().name()).isEqualTo("무명밴드");
+        assertThat(response.target().region()).isEqualTo(Region.SEOUL);
+        assertThat(response.target().genres()).containsExactly(Genre.ROCK);
+        assertThat(response.target().imageUrl()).isNull();
+        ArgumentCaptor<Bookmark> saved = ArgumentCaptor.forClass(Bookmark.class);
+        verify(bookmarkRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getTargetTeamId()).isEqualTo(TARGET);
+        assertThat(saved.getValue().getTargetUserId()).isNull();
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    @DisplayName("없거나 해체된 팀은 TEAM_NOT_FOUND이고 저장하지 않는다")
+    void create_teamMissing() {
+        given(teamService.getSummaries(List.of(TARGET))).willReturn(Map.of());
+
+        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.TEAM, TARGET)))
+                .getErrorCode()).isEqualTo(ErrorCode.TEAM_NOT_FOUND);
+        verify(bookmarkRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("이미 저장한 팀이면 BOOKMARK_DUPLICATED(409)이고 저장하지 않는다")
+    void create_teamDuplicated() {
+        given(teamService.getSummaries(List.of(TARGET))).willReturn(Map.of(TARGET, teamSummary(TARGET)));
+        given(bookmarkRepository.existsByUserIdAndTargetTeamId(ME, TARGET)).willReturn(true);
+
+        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.TEAM, TARGET)))
+                .getErrorCode()).isEqualTo(ErrorCode.BOOKMARK_DUPLICATED);
+        verify(bookmarkRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("목록은 USER와 TEAM 대상을 각각 한 번씩 일괄 조회하고, 해체된 팀은 target만 null이다")
+    void list_batchesTeamLookup() {
+        Page<Bookmark> page = new PageImpl<>(
+                List.of(teamBookmark(23L, 8L), teamBookmark(22L, 9L), userBookmark(21L, 5L)), PageRequest.of(0, 20), 3);
+        given(bookmarkRepository.findByUserId(eq(ME), any())).willReturn(page);
+        given(userService.getProfileSummaries(any())).willReturn(Map.of(5L, profile(5L)));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<Long>> teamIds = ArgumentCaptor.forClass(Collection.class);
+        given(teamService.getSummaries(teamIds.capture())).willReturn(Map.of(8L, teamSummary(8L)));
+
+        PageResponse<BookmarkResponse> response = bookmarkService.getBookmarks(ME, null, PageRequest.of(0, 20));
+
+        assertThat(teamIds.getValue()).containsExactlyInAnyOrder(8L, 9L);
+        assertThat(response.content().get(0).target().name()).isEqualTo("무명밴드");
+        assertThat(response.content().get(1).target()).isNull();
+        assertThat(response.content().get(1).targetId()).isEqualTo(9L);
+        assertThat(response.content().get(2).target().name()).isEqualTo("민서");
+        verify(teamService).getSummaries(any());
+        verify(userService).getProfileSummaries(any());
     }
 
     @Test
