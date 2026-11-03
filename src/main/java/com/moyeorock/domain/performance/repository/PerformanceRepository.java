@@ -15,15 +15,14 @@ import org.springframework.data.repository.query.Param;
 public interface PerformanceRepository extends JpaRepository<Performance, Long> {
 
     /**
-     * 셋리스트 넘기기용 조회. 강제 증가 낙관적 락이라 커밋 때 "버전이 읽을 때 그대로면 +1" UPDATE를 한다 —
-     * 그사이 모임장의 확정·해제가 먼저 커밋돼 버전이 올라가 있으면 0행이 바뀌어 넘기기가 실패한다(전역 처리에서 409).
-     * 일반 OPTIMISTIC은 커밋 때 버전을 SELECT로 다시 읽는데, MySQL 기본 격리 수준(REPEATABLE READ)에서는 그 SELECT가
-     * 트랜잭션 시작 시점의 스냅샷을 읽어 바뀐 버전을 못 본다(PerformanceSetlistConcurrencyTest로 확인, 이슈 #103).
-     * 대신 같은 공연에 두 팀이 동시에 넘기면 늦은 쪽도 409가 된다 — 다시 넘기면 된다.
+     * 공연 행을 잠그고 읽는다(SELECT ... FOR UPDATE). 셋리스트 넘기기와 모임장의 확정·해제가 같은 공연에서 겹치면
+     * 뒤에 온 요청이 앞 요청의 커밋까지 기다려 차례로 처리된다 — 확정된 셋리스트에 넘기거나, 넘겨진 곡을 못 본 채 확정되지 않는다.
+     * 잠금 조회는 REPEATABLE READ 스냅샷이 아니라 커밋된 최신 행을 읽는다(PerformanceSetlistConcurrencyTest, 이슈 #103·PR #111 리뷰).
+     * 트랜잭션의 첫 조회로 불러야 이후 조회가 잠금 뒤의 상태를 본다(GroupRepository.findByIdAndStatusForUpdate와 같은 방식).
      */
-    @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Performance p WHERE p.id = :id")
-    Optional<Performance> findByIdForSetlistSubmit(@Param("id") Long id);
+    Optional<Performance> findByIdForUpdate(@Param("id") Long id);
 
     // 모임 공연 목록 — 공연일 늦은 순. 공연일이 같은 공연이 페이지 경계에 걸려도 중복·누락이 없게 끝에 id를 붙인다.
     Page<Performance> findByGroupIdOrderByPerformedAtDescIdDesc(Long groupId, Pageable pageable);

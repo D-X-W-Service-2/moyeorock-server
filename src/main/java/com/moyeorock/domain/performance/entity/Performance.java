@@ -10,7 +10,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -55,11 +54,6 @@ public class Performance extends BaseEntity {
     // 셋리스트 확정 시각. null이면 미확정이다(이슈 #85) — 확정되면 팀이 곡을 더 넘길 수 없다.
     @Column(name = "setlist_confirmed_at")
     private LocalDateTime setlistConfirmedAt;
-
-    // 낙관적 락(이슈 #103) — 셋리스트 넘기기가 확정·해제와 겹치면 늦은 쪽을 막는다(PerformanceRepository.findByIdForSetlistSubmit).
-    // 공연을 고치는 쓰기와 셋리스트 넘기기가 버전을 올린다.
-    @Version
-    private Long version;
 
     public static Performance create(Long groupId, Long createdBy, String title, String description,
             LocalDateTime performedAt, String venue, String posterImage) {

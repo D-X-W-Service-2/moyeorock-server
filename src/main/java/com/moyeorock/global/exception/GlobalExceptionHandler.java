@@ -3,7 +3,6 @@ package com.moyeorock.global.exception;
 import com.moyeorock.global.common.dto.ApiResponse;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -85,13 +84,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException e) {
         return toResponse(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
-    }
-
-    // 낙관적 락 실패 — 읽은 뒤 다른 요청이 먼저 같은 행을 고쳤다(셋리스트 넘기기와 확정·해제가 겹친 경우 등, 이슈 #103).
-    // 커밋 시점에 나서 Service 안에서 BusinessException으로 바꿀 수 없어 여기서 409로 돌려준다
-    @ExceptionHandler(OptimisticLockingFailureException.class)
-    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(OptimisticLockingFailureException e) {
-        return toResponse(ErrorCode.INVALID_STATE);
     }
 
     @ExceptionHandler(Exception.class)

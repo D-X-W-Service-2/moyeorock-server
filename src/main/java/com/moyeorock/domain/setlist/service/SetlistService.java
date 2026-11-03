@@ -91,8 +91,8 @@ public class SetlistService {
     /**
      * 셋리스트로 넘기기 — 그 팀이 그 공연에 넘긴 곡 전체를 요청 목록으로 바꾼다. 공연·팀장·확정 여부는 부르는 쪽이 확인한다.
      * 같은 곡 중복 VALIDATION_FAILED, 없는 곡 SONG_NOT_FOUND, 팀 선택곡에 없는 곡 SONG_NOT_SELECTED_BY_TEAM,
-     * 같은 공연의 다른 팀이 이미 넘긴 곡 SONG_ALREADY_IN_SETLIST다. 두 팀이 같은 곡을 동시에 넘기면 사전 검사를 둘 다
-     * 통과할 수 있어서, DB 유니크 위반도 같은 에러로 바꾼다(잠그지 않는 낙관적 처리, 이슈 #103).
+     * 같은 공연의 다른 팀이 이미 넘긴 곡 SONG_ALREADY_IN_SETLIST다. PerformanceService가 공연 행을 잠그고 불러 같은 공연의 넘기기는
+     * 차례로 들어오므로 사전 검사가 앞 넘기기의 커밋을 본다. DB 유니크 위반도 같은 에러로 바꾸는 건 그 밖의 경우를 위한 안전망이다(이슈 #103).
      */
     @Transactional
     public void submit(Long performanceId, Long teamId, List<Long> songIds) {

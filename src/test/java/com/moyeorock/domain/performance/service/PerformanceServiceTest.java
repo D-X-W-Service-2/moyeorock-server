@@ -331,7 +331,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("공연 팀 팀장이 넘기면 행 처리를 SetlistService에 맡기고 넘긴 뒤의 셋리스트를 돌려준다")
     void submitSetlist_delegatesToSetlistService() {
-        givenPerformanceForSubmit();
+        givenPerformanceForUpdate();
         when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
         when(setlistService.getSetlist(PERFORMANCE_ID, false)).thenReturn(List.of());
 
@@ -346,7 +346,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("팀장이 아니면 넘길 수 없고 행을 건드리지 않는다")
     void submitSetlist_throws_whenNotLeader() {
-        givenPerformanceForSubmit();
+        givenPerformanceForUpdate();
         doThrow(new BusinessException(ErrorCode.NOT_TEAM_LEADER)).when(teamMemberService).ensureLeader(5L, MEMBER_ID);
 
         assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
@@ -360,7 +360,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("이 공연 소속이 아닌 팀(독립 팀 포함)이면 TEAM_NOT_FOUND다")
     void submitSetlist_throws_whenTeamNotInPerformance() {
-        givenPerformanceForSubmit();
+        givenPerformanceForUpdate();
         when(teamMemberService.getPerformanceId(5L)).thenReturn(999L);
 
         assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
@@ -374,7 +374,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("셋리스트가 확정됐으면 넘길 수 없다(INVALID_STATE)")
     void submitSetlist_throws_whenConfirmed() {
-        Performance performance = givenPerformanceForSubmit();
+        Performance performance = givenPerformanceForUpdate();
         ReflectionTestUtils.setField(performance, "setlistConfirmedAt", LocalDateTime.now());
         when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
 
@@ -389,7 +389,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("없는 공연에 넘기면 PERFORMANCE_NOT_FOUND이고 팀 확인도 하지 않는다")
     void submitSetlist_throws_whenPerformanceMissing() {
-        when(performanceRepository.findByIdForSetlistSubmit(PERFORMANCE_ID)).thenReturn(Optional.empty());
+        when(performanceRepository.findByIdForUpdate(PERFORMANCE_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> performanceService.submitSetlist(MEMBER_ID, PERFORMANCE_ID, 5L,
                 new SetlistSubmitRequest(List.of(88L))))
@@ -402,8 +402,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("모임장이 확정하면 항목을 SetlistService 값으로 바꿔 맡기고, 확정 시각을 찍어 확정곡을 돌려준다")
     void confirmSetlist_delegatesAndMarksConfirmed() {
-        Performance performance = givenPerformance();
-        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        Performance performance = givenPerformanceForUpdate();
         when(teamMemberService.getPerformanceId(9L)).thenReturn(PERFORMANCE_ID);
         when(teamMemberService.getPerformanceId(5L)).thenReturn(PERFORMANCE_ID);
         when(setlistService.getSetlist(PERFORMANCE_ID, true)).thenReturn(List.of());
@@ -420,7 +419,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("모임장이 아니면 확정도 확정 해제도 할 수 없고 셋리스트를 건드리지 않는다")
     void confirmAndUnconfirm_throw_whenNotOwner() {
-        Performance performance = givenPerformance();
+        Performance performance = givenPerformanceForUpdate();
         doThrow(new BusinessException(ErrorCode.NOT_GROUP_OWNER)).when(groupMemberService).ensureOwner(GROUP_ID, MEMBER_ID);
 
         assertThatThrownBy(() -> performanceService.confirmSetlist(MEMBER_ID, PERFORMANCE_ID, confirmRequest()))
@@ -438,7 +437,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("끝난 공연(DONE·CANCELED)은 확정할 수 없다(INVALID_STATE)")
     void confirmSetlist_throws_whenFinished() {
-        Performance performance = givenPerformance();
+        Performance performance = givenPerformanceForUpdate();
 
         for (PerformanceStatus finished : List.of(PerformanceStatus.DONE, PerformanceStatus.CANCELED)) {
             performance.changeStatus(finished);
@@ -454,7 +453,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("이 공연 소속이 아닌 팀(독립 팀 포함)이 섞이면 TEAM_NOT_FOUND이고 셋리스트를 건드리지 않는다")
     void confirmSetlist_throws_whenTeamNotInPerformance() {
-        givenPerformance();
+        givenPerformanceForUpdate();
         when(teamMemberService.getPerformanceId(9L)).thenReturn(null);
 
         assertThatThrownBy(() -> performanceService.confirmSetlist(OWNER_ID, PERFORMANCE_ID, confirmRequest()))
@@ -467,8 +466,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("모임장이 확정을 해제하면 순서를 비우게 맡기고 확정 시각을 지운다")
     void unconfirmSetlist_clearsConfirmation() {
-        Performance performance = givenPerformance();
-        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        Performance performance = givenPerformanceForUpdate();
         performance.confirmSetlist(LocalDateTime.now());
         when(setlistService.getSetlist(PERFORMANCE_ID, false)).thenReturn(List.of());
 
@@ -482,7 +480,7 @@ class PerformanceServiceTest {
     @Test
     @DisplayName("확정되지 않았거나 끝난 공연이면 확정 해제는 INVALID_STATE다")
     void unconfirmSetlist_throws_whenNotConfirmedOrFinished() {
-        Performance performance = givenPerformance();
+        Performance performance = givenPerformanceForUpdate();
 
         assertThatThrownBy(() -> performanceService.unconfirmSetlist(OWNER_ID, PERFORMANCE_ID))
                 .isInstanceOf(BusinessException.class)
@@ -523,12 +521,12 @@ class PerformanceServiceTest {
         return performance;
     }
 
-    // 넘기기는 낙관적 락 조회로 공연을 읽는다
-    private Performance givenPerformanceForSubmit() {
+    // 셋리스트를 바꾸는 넘기기·확정·해제는 공연 행 잠금 조회로 공연을 읽는다
+    private Performance givenPerformanceForUpdate() {
         Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", PERFORMED_AT,
                 "홍대 롤링홀", null);
         ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
-        when(performanceRepository.findByIdForSetlistSubmit(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
+        when(performanceRepository.findByIdForUpdate(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
         return performance;
     }
 

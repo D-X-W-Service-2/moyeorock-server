@@ -107,12 +107,11 @@ public class PerformanceService {
     /**
      * 셋리스트로 넘기기(공연 팀 팀장). 그 팀이 이 공연에 넘긴 곡 전체를 바꾼다. 팀장이 아니면 NOT_TEAM_LEADER, 해체·없는 팀이거나
      * 이 공연 소속이 아니면 TEAM_NOT_FOUND, 확정된 셋리스트면 INVALID_STATE다(확정 해제 뒤엔 다시 가능).
-     * 공연은 강제 증가 낙관적 락으로 읽는다 — 그사이 확정·해제가 먼저 커밋되면 커밋 때 버전이 달라 409가 된다(이슈 #103).
+     * 공연 행을 잠그고 시작한다 — 확정·해제나 다른 팀의 넘기기와 겹치면 앞 요청이 끝난 뒤의 상태로 판단한다(이슈 #103).
      */
     @Transactional
     public SetlistResponse submitSetlist(Long userId, Long performanceId, Long teamId, SetlistSubmitRequest request) {
-        Performance performance = performanceRepository.findByIdForSetlistSubmit(performanceId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PERFORMANCE_NOT_FOUND));
+        Performance performance = getPerformanceForUpdate(performanceId);
         teamMemberService.ensureLeader(teamId, userId);
         if (!performanceId.equals(teamMemberService.getPerformanceId(teamId))) {
             throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
@@ -128,11 +127,11 @@ public class PerformanceService {
     /**
      * 셋리스트 확정(모임장). 팀들이 넘긴 곡 중 요청한 곡만 순서대로 남기고 나머지는 지운다. 확정된 셋리스트도 다시 확정할 수 있다.
      * 끝난 공연은 INVALID_STATE(끝난 공연의 셋리스트는 기록), 이 공연 소속이 아닌 팀이 섞이면 TEAM_NOT_FOUND다.
-     * 공연 행을 고치므로 버전이 올라, 그사이 커밋된 넘기기나 겹친 넘기기 중 늦은 쪽이 409가 된다(이슈 #103).
+     * 넘기기와 같은 공연 행 잠금으로 시작해, 진행 중인 넘기기가 있으면 그 커밋을 기다렸다가 넘겨진 곡을 보고 확정한다(이슈 #103).
      */
     @Transactional
     public SetlistResponse confirmSetlist(Long userId, Long performanceId, SetlistConfirmRequest request) {
-        Performance performance = getPerformanceOrThrow(performanceId);
+        Performance performance = getPerformanceForUpdate(performanceId);
         groupMemberService.ensureOwner(performance.getGroupId(), userId);
         if (performance.isFinished()) {
             throw new BusinessException(ErrorCode.INVALID_STATE);
@@ -152,11 +151,11 @@ public class PerformanceService {
 
     /**
      * 셋리스트 확정 해제(모임장). 남아 있던 곡은 그대로 두고 순서·확정 시각만 비워, 팀이 다시 넘길 수 있게 한다.
-     * 확정되지 않았거나 끝난 공연이면 INVALID_STATE다.
+     * 확정되지 않았거나 끝난 공연이면 INVALID_STATE다. 넘기기·확정과 같은 공연 행 잠금으로 시작한다.
      */
     @Transactional
     public SetlistResponse unconfirmSetlist(Long userId, Long performanceId) {
-        Performance performance = getPerformanceOrThrow(performanceId);
+        Performance performance = getPerformanceForUpdate(performanceId);
         groupMemberService.ensureOwner(performance.getGroupId(), userId);
         if (performance.isFinished() || !performance.isSetlistConfirmed()) {
             throw new BusinessException(ErrorCode.INVALID_STATE);
@@ -207,6 +206,12 @@ public class PerformanceService {
 
     private Performance getPerformanceOrThrow(Long performanceId) {
         return performanceRepository.findById(performanceId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PERFORMANCE_NOT_FOUND));
+    }
+
+    // 셋리스트를 바꾸는 요청(넘기기·확정·해제)은 공연 행을 잠그고 시작해 같은 공연에서 차례로 처리된다
+    private Performance getPerformanceForUpdate(Long performanceId) {
+        return performanceRepository.findByIdForUpdate(performanceId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PERFORMANCE_NOT_FOUND));
     }
 }
