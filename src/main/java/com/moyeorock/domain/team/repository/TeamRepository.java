@@ -2,6 +2,7 @@ package com.moyeorock.domain.team.repository;
 
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.enums.MemberStatus;
+import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Region;
@@ -123,4 +124,79 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             @Param("userId") Long userId,
             @Param("memberStatus") MemberStatus memberStatus,
             @Param("teamStatus") TeamStatus teamStatus);
+
+    /**
+     * 내가 속한 공연 팀. 내가 ACTIVE 팀원인 경우만 세고, 팀 상태는 걸지 않는다 — 끝난 공연의 해체된 팀도 담는다.
+     * 규칙을 한 곳에 고정하려고 상태 값을 파라미터로 받는 쿼리를 감쌌다.
+     */
+    default List<Team> findMyPerformanceTeams(Long userId) {
+        return findPerformanceTeamsByMember(userId, MemberStatus.ACTIVE);
+    }
+
+    @Query("""
+            SELECT t FROM Team t
+            JOIN TeamMember m ON m.teamId = t.id
+            WHERE m.userId = :userId
+              AND m.status = :memberStatus
+              AND t.performanceId IS NOT NULL
+            ORDER BY t.id
+            """)
+    List<Team> findPerformanceTeamsByMember(@Param("userId") Long userId,
+            @Param("memberStatus") MemberStatus memberStatus);
+
+    /**
+     * 내가 팀장인 활동 중인 팀(회원 탈퇴 차단). 팀원 행이 ACTIVE·LEADER이고 팀도 ACTIVE인 경우만 센다.
+     * 해체해도 팀원 행은 남으므로 팀 상태로 한 번 걸러야 한다 — 규칙을 한 곳에 고정하려고 감쌌다.
+     */
+    default List<Team> findActiveTeamsLedBy(Long userId) {
+        return findTeamsByMemberRole(userId, MemberStatus.ACTIVE, TeamRole.LEADER, TeamStatus.ACTIVE);
+    }
+
+    @Query("""
+            SELECT t FROM Team t
+            JOIN TeamMember m ON m.teamId = t.id
+            WHERE m.userId = :userId
+              AND m.status = :memberStatus
+              AND m.role = :role
+              AND t.status = :teamStatus
+            ORDER BY t.id
+            """)
+    List<Team> findTeamsByMemberRole(@Param("userId") Long userId,
+            @Param("memberStatus") MemberStatus memberStatus,
+            @Param("role") TeamRole role,
+            @Param("teamStatus") TeamStatus teamStatus);
+
+    /**
+     * 모임 탈퇴·강퇴 시 빼낼 팀을 잠그고 읽는다. 여러 공연의 팀을 잠그므로 id 순으로 고정해서, 같은 팀들을 잠그려는
+     * 다른 요청과 서로 반대 순서로 기다리다 멈추는 일(교착)을 막는다. 해체된 팀은 빠진다.
+     */
+    default List<Team> findActiveByPerformanceIdInForUpdate(Collection<Long> performanceIds) {
+        return findByPerformanceIdInAndStatusForUpdate(performanceIds, TeamStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Team t
+            WHERE t.performanceId IN :performanceIds AND t.status = :status
+            ORDER BY t.id
+            """)
+    List<Team> findByPerformanceIdInAndStatusForUpdate(@Param("performanceIds") Collection<Long> performanceIds,
+            @Param("status") TeamStatus status);
+
+    /**
+     * 주어진 팀 중 활동 중인 팀을 잠그고 읽는다(회원 탈퇴 때 팀에서 빼기). id 순으로 고정해서 같은 팀들을 잠그려는
+     * 다른 요청과 서로 반대 순서로 기다리다 멈추는 일(교착)을 막는다. 해체된 팀은 빠진다.
+     */
+    default List<Team> findActiveByIdInForUpdate(Collection<Long> teamIds) {
+        return findByIdInAndStatusForUpdate(teamIds, TeamStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Team t
+            WHERE t.id IN :teamIds AND t.status = :status
+            ORDER BY t.id
+            """)
+    List<Team> findByIdInAndStatusForUpdate(@Param("teamIds") Collection<Long> teamIds,
+            @Param("status") TeamStatus status);
 }

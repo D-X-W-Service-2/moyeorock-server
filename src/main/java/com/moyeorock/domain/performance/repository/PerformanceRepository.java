@@ -4,6 +4,7 @@ import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,6 +31,10 @@ public interface PerformanceRepository extends JpaRepository<Performance, Long> 
     // 다가올 공연(period=UPCOMING) — 공연일 가까운 순. 공연일이 같으면 먼저 만든 공연이 먼저다.
     Page<Performance> findByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(Long groupId,
             Collection<PerformanceStatus> statuses, Pageable pageable);
+
+    // 동아리 홈의 다가오는 공연 — 위와 같은 기준·정렬로 앞의 3건(고정 공지 미리보기와 같은 개수). 개수 쿼리가 없게 Page를 쓰지 않는다
+    List<Performance> findTop3ByGroupIdAndStatusInOrderByPerformedAtAscIdAsc(Long groupId,
+            Collection<PerformanceStatus> statuses);
 
     // 지난 공연(period=PAST) — 공연일 최근 순. 공연일이 같으면 나중에 만든 공연이 먼저다.
     Page<Performance> findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(Long groupId,

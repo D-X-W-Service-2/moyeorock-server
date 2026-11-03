@@ -14,12 +14,12 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | GET | `/v1/users/me` | 내&nbsp;프로필&nbsp;조회 | | `UserMeResponse` |
-| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | |
+| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | `UserMeResponse` |
 | DELETE | `/v1/users/me` | 탈퇴 | | `UserWithdrawResponse` * |
-| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | |
-| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | |
-| GET | `/v1/users/me/activities` | 내&nbsp;활동 | | `UserActivityResponse` |
-| GET | `/v1/users/{id}` | 타인&nbsp;프로필&nbsp;조회 | | `UserProfileResponse` |
+| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | `UserMeResponse` ‡ |
+| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | `UserInstrumentsResponse` |
+| GET | `/v1/users/me/activities` | 내&nbsp;활동 | | `UserActivityResponse` ◇ |
+| GET | `/v1/users/{id}` | 타인&nbsp;프로필&nbsp;조회 | | `UserProfileResponse` § |
 | GET | `/v1/users/search?nickname=&page=&size=` ¶ | 사용자&nbsp;검색 | | `PageResponse<UserSummaryResponse>` |
 | GET | `/v1/users/nickname/check?nickname=` | 닉네임&nbsp;중복&nbsp;확인 | | `NicknameCheckResponse` † |
 
@@ -27,6 +27,9 @@
 > † 원래 Notion `API 명세서 v0`에는 없던 엔드포인트였으나(`docs/conventions/dto-naming.md` §2가 먼저 정의), `API 초안`에 쿼리 파라미터까지 포함해 반영된 것을 2026-09-11 확인했다.
 > `/v1/users/search`는 원본에서 팀 섹션에 있었지만 user 도메인 소유다.
 > `PUT /v1/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/conventions/dto-naming.md` §2).
+> § 타인 프로필 조회는 로그인 필수다(이슈 #90 P-5). 탈퇴 회원과 없는 id는 404 `USER_NOT_FOUND`, 정지(SUSPENDED) 회원은 노출한다(P-7, 목록 조회 `getSummaries`와 맞춤). 본인 id로 불러도 같은 형태다(P-8). `activities`는 `isActivityPublic=false`면 `null`이고(P-3), 공개면 내 활동과 같은 조립이다(비공개 사용자는 활동 조회 자체를 하지 않는다). id가 숫자가 아니면 400 `VALIDATION_FAILED`.
+> ◇ 내 활동은 다른 `/me`와 같이 ACTIVE 사용자만 통과한다(아니면 404 `USER_NOT_FOUND`). 세 목록은 각 팀 Service가 ACTIVE 필터·정렬까지 맡고 user는 조립만 한다(이슈 #90). `teams`는 2팀 `TeamService.findMemberships`(최근 합류 순). `groups`·`performances`는 4팀 메서드(이슈 #95)가 들어오기 전까지 빈 목록이다(2026-11-02).
+> ‡ 온보딩 등록은 재호출이 멱등(값만 갱신)이라 201이 아니라 200이다. 명세 표에 응답 코드가 없어 서버가 정한 값이다. Notion 반영 필요. 프로필 수정·온보딩 응답은 갱신된 `UserMeResponse` 전체다(PR #57 Service 반환 그대로, Controller는 #89).
 
 ---
 
@@ -48,8 +51,8 @@
 > ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` (선택). `status`는 받지 않는다 — 해체된 팀은 항상 목록에서 제외한다(2026-10-31 결정, 노션 팀 목록 페이지에도 "현재 사용하지 않음"으로 반영). 정렬은 최신순 고정(클라이언트 `sort` 무시), 페이지 크기는 기본 20·상한 20.
 > ‡ 내 팀 목록은 노션 `API 초안`에 `[추가 필요]`로 올라온 신규 엔드포인트이며, 2팀 소유로 확정했다(2026-10-31). 경로는 `/users/me` 아래지만 소유는 team이다. 내가 ACTIVE 팀원이고 팀도 ACTIVE인 팀만 최근 합류 순으로 돌려준다.
 > 팀 정보 수정은 응답 바디가 없다(`data: null`, 노션 기준).
-> 팀을 개별로 해체(`PATCH /v1/teams/{id}/status`)하면 그 팀이 고른 곡(선택곡)도 함께 삭제한다. 해체된 팀이 곡을 쥐고 있으면 다른 팀이 그 곡을 고를 수 없기 때문이다(4팀 결정, 2026-10-31). 공연 종료로 인한 일괄 해체에서는 삭제하지 않는다. 삭제는 4팀 `SetlistService.deleteByTeam`을 부르는 방식이며, 이 메서드가 생긴 뒤 연결한다.
-> 해체된 팀의 상세·팀원 목록은 `404 TEAM_NOT_FOUND`다(2026-10-31 결정). 해체된 팀은 요약 조회(`getSummaries`)에서도 빠진다.
+> 팀을 개별로 해체(`PATCH /v1/teams/{id}/status`)하면 그 팀이 공연 셋리스트로 넘긴 곡(`setlists` 행)과 그 팀의 선택곡(`team_songs` 행)을 함께 삭제한다. 셋리스트 행이 남으면 같은 공연의 다른 팀이 그 곡을 넘길 수 없고, 선택곡 행이 남으면 다른 팀에게 "이미 골랐어요"가 계속 뜨기 때문이다(4팀 결정, 이슈 #85·PR #87 리뷰). 공연 종료·취소로 인한 일괄 해체에서는 둘 다 삭제하지 않는다. 삭제는 4팀 `SetlistService.deleteByTeam`을 부르는 방식이며, 이 메서드가 생긴 뒤 연결한다.
+> 해체된 팀의 상세·팀원 목록은 읽기 전용으로 열려 있고, 상세의 `status`가 `DISBANDED`다(2026-11-02 결정, 4팀 요청 — 끝난 공연 페이지의 팀 카드가 연결된다). 수정·해체·팀원 변경·탈퇴는 해체된 팀에서 막힌다. 해체된 팀은 요약 조회(`getSummaries`)에서는 여전히 빠지고, 4팀용 `getSummariesIncludingDisbanded`로만 담긴다.
 > 팀원 역할 변경과 내보내기·탈퇴에서 경로의 `{userId}`가 그 팀의 활동 중인 팀원이 아니면(속한 적이 없거나 이미 탈퇴·강퇴된 경우) `404 TEAM_MEMBER_NOT_FOUND`다. 모임의 `GROUP_MEMBER_NOT_FOUND`와 같은 상황이라 맞췄다(PR #86 리뷰).
 > 팀원 내보내기·탈퇴는 `API 초안`에서도 `/status` 접미사가 붙은 완성형으로 확인됐다(2026-09-11) — 과거 DELETE→PATCH 전환 미완 문제는 해소됐다. 상태값은 `LEFT`(본인 탈퇴)·`REMOVED`(강퇴)이며, 노션 행 제목의 `KICKED`는 표기 오류다.
 ---
@@ -175,9 +178,9 @@
 | POST | `/v1/groups/{groupId}/performances` | 공연&nbsp;생성 | `PerformanceCreateRequest` | `PerformanceDetailResponse` ※ | 모임장 |
 | GET | `/v1/groups/{groupId}/performances?period=&page=&size=` ※ | 모임&nbsp;공연&nbsp;목록 | | `PageResponse<PerformanceSummaryResponse>` | 모임원 |
 | GET | `/v1/performances/{performanceId}` | 공연&nbsp;상세 | | `PerformanceDetailResponse` | 모임원 |
-| PUT | `/v1/performances/{performanceId}` | 공연&nbsp;정보&nbsp;수정 | `PerformanceUpdateRequest` | `PerformanceDetailResponse` | 모임장 · 7.4 공지 + 공연 포스터 |
-| PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE` 시 소속 팀 해체 → 2팀 `TeamService` 호출 |
-| POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 모임원 · 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 |
+| PUT | `/v1/performances/{performanceId}` | 공연&nbsp;정보&nbsp;수정 | `PerformanceUpdateRequest` | `PerformanceDetailResponse` | 모임장 · 7.4 공지 + 공연 포스터 · 끝난 공연(`DONE`·`CANCELED`)은 409 |
+| PATCH | `/v1/performances/{performanceId}/status` | 공연&nbsp;상태&nbsp;변경 | `PerformanceStatusUpdateRequest` | `PerformanceStatusResponse` * | 모임장 · `DONE`·`CANCELED` 시 소속 팀 해체 → 2팀 `TeamService` 호출 · 끝난 공연은 409 ⊕ |
+| POST | `/v1/performances/{performanceId}/teams` | 공연&nbsp;내&nbsp;팀&nbsp;생성 | `PerformanceTeamCreateRequest` | TeamDetailResponse 형태 * | 모임원 · 7.1 생성자 = OWNER · 2팀 `TeamService` 호출 · `PLANNED`·`RECRUITING` 공연만 ⊕ |
 | GET | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;조회 ◆ | | `SetlistResponse` | 모임원 · 확정 전엔 넘겨진 곡 전체, 확정 후엔 확정곡만 |
 | PUT | `/v1/performances/{performanceId}/setlist/teams/{teamId}` | 셋리스트로&nbsp;넘기기 ◆ | `SetlistSubmitRequest` | `SetlistResponse` | 공연 팀 팀장 · 확정 후 409(해제하면 다시 가능) ♪ |
 | PUT | `/v1/performances/{performanceId}/setlist` | 공연&nbsp;셋리스트&nbsp;확정 ◆ | `SetlistConfirmRequest` | `SetlistResponse` | 모임장 · 넘겨진 곡만, 요청에 없는 곡은 빠짐 · 끝난 공연은 409 ♪ |
@@ -195,8 +198,14 @@
 > - **`venue`는 필수** — 노션 생성·수정 요청의 Required가 O다. `erd.md`의 "7.1.1 필수 X" 설명을 정정했다(컬럼은 NULL 허용 그대로)
 > - **모임 공연 목록** — 다가올·지난 구분은 쿼리 `period`로 받는다(2026-11-02, PR #84 리뷰, 공백 #13). 기준은 공연일이 아니라 **공연 상태**다 — `performances.status`는 그대로 두고 목록에서만 `PLANNED`·`RECRUITING` → `UPCOMING`, `DONE`·`CANCELED` → `PAST`로 묶는다. `period`는 선택이고 없으면 전체, 없는 값은 `400 VALIDATION_FAILED`. 응답 항목의 `status`는 실제 공연 상태(`PLANNED` 등)다. 정렬은 고정이라 `sort`는 받지 않는다 — `UPCOMING`은 공연일 가까운 순, `PAST`와 전체는 공연일 최근 순, 공연일이 같으면 id 순(같은 방향). `page`·`size`는 기본·최대 20
 >   - 모임장이 `DONE`으로 바꾸기 전에는 날짜가 지난 공연도 `UPCOMING`에 남는다. 화면 안내로 푼다
-> - **이슈 #83 구현 범위** — 생성·목록·상세·수정 4개. 상세의 `teams`·`myTeamIds`·`setlist`는 명세에 있지만 아직 응답에 없다 — `teams`·`myTeamIds`는 상태 변경·공연 내 팀 생성과 함께 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다
-> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다. 상태 변경을 구현할 때 정한다(공백 #14)
+> - **이슈 #83 구현 범위** — 생성·목록·상세·수정 4개. 상세의 `teams`·`myTeamIds`는 이슈 #88에서 추가했고(아래 ⊕), `setlist`는 셋리스트 도메인 구현 때 추가한다
+> - **상태 변경** — 노션의 상태 값(`PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`), 응답의 `updatedAt`, 에러 코드 `NOT_GROUP_ADMIN`이 ERD·모임 코드(`NOT_GROUP_OWNER`)와 다르다 → 이슈 #88에서 정했다(아래 ⊕, 공백 #14)
+>
+> ⊕ **2026-11-01 상태 변경·공연 내 팀 생성(이슈 #88)** — 2팀 `TeamService`(#86)로 상태 변경·공연 내 팀 생성과 상세의 `teams`·`myTeamIds`를 구현하며 이렇게 정했다.
+> - **상태 값은 ERD enum 그대로**(`PLANNED|RECRUITING|DONE|CANCELED`). 노션 값(`ONGOING`·`ENDED`·`CANCELLED`)을 보내면 `400 VALIDATION_FAILED`다. 응답은 `{id, status}`(노션의 `updatedAt` 없음), 모임장이 아니면 `403 NOT_GROUP_OWNER`
+> - **끝난 공연(`DONE`·`CANCELED`)은 상태를 바꿀 수 없다** — `409 INVALID_STATE`. 소속 팀이 이미 해체돼서 되돌려도 팀이 돌아오지 않는다. `PLANNED`↔`RECRUITING`은 자유롭고, 같은 값으로 바꾸면 그대로 200
+> - **`DONE`뿐 아니라 `CANCELED`로 바꿔도 소속 팀을 모두 해체한다**(`TeamService.disbandAllByPerformance`, 같은 트랜잭션). 일괄 해체라 셋리스트·선택곡 행은 지우지 않는다(`docs/conventions/architecture.md` §6)
+> - **공연 내 팀 생성은 `PLANNED`·`RECRUITING` 공연에서만** — 끝난 공연은 `409 INVALID_STATE`. 모임원이 아니면 `403 NOT_GROUP_MEMBER`. 공연 존재·권한·상태는 performance가 확인하고 저장은 `TeamService.createForPerformance`가 한다. 응답 `201` + `TeamDetailResponse`인데, 2팀 DTO에 `performance` 필드가 아직 없어 그 필드는 빠져 있다
 
 ---
 
@@ -346,4 +355,4 @@
 | 11 | 공고 세션별 마감 | 공고 `status`는 공고 전체에 하나뿐이라 세션별(예: BASS만 마감) 마감이 불가능하고, `wanted_slots`(instrument + count)에도 세션별 마감·충원 상태를 담을 자리가 없다. 세션별 현황(`filledCount`)은 `join_requests`의 `recruit_post_id` + `instrument` + `status=APPROVED` 집계로 스키마 변경 없이 가능하나, 세션별 마감 상태는 `wanted_slots` JSON 구조 변경이라 ERD 변경 절차(절대 규칙 5)가 필요하다. 화면 기획 확인 후 join 도메인 착수 시 함께 결정. 같은 뿌리로 마감된 공고의 수정(`PUT`)은 `409 INVALID_STATE`로 막았다(2026-10-08 결정). 세션별 마감을 도입하면 세션 단위로 다시 정한다 |
 | 12 | 내 팀 목록 신규 | ✅ 확정(2026-10-31) — 노션 `API 초안`에 `[추가 필요]`로 올라온 `GET /v1/users/me/teams`(§2 ‡)를 2팀 소유로 확정하고 `docs/conventions/domains.md`·`docs/conventions/dto-naming.md` 총계(73 → 74)에 반영했다. 노션 쪽은 제목의 `[추가 필요]`와 담당자·진행 상태 정리가 남아 있다 |
 | 13 | 공연 목록 `status` 필터 | ✅ 결정(2026-11-02, PR #84 리뷰) — 쿼리 이름을 `period`로 바꾸고 공연 상태로 묶는다(`UPCOMING`=`PLANNED`·`RECRUITING`, `PAST`=`DONE`·`CANCELED`, §8 ※). 응답 `status`는 실제 상태. 노션 정정 완료(2026-11-02). 원래 내용: `API 초안` 모임 공연 목록의 쿼리 `status`와 응답 `status` 예시가 `UPCOMING`·`PAST`인데 `performances.status`(`PLANNED|RECRUITING|DONE|CANCELED`)에 없는 값이다. 다가올·지난 공연을 나누는 기준(공연일 vs 상태)부터 정해야 해서 필터는 반영하지 않았었다 |
-| 14 | 공연 상태 값 | `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이다. 상태 변경 구현 때 결정 |
+| 14 | 공연 상태 값 | ✅ 결정(2026-11-01, 이슈 #88) — ERD 값 그대로 받고 응답은 `{id, status}`, 403은 `NOT_GROUP_OWNER`(§8 ⊕). 노션 정정 필요. 원래 내용: `API 초안` 공연 상태 변경의 값 `PLANNED`·`ONGOING`·`ENDED`·`CANCELLED`가 ERD(`PLANNED|RECRUITING|DONE|CANCELED`)와 다르고, 응답에 `updatedAt`, 403 코드가 `NOT_GROUP_ADMIN`(모임 코드는 `NOT_GROUP_OWNER`)이었다 |

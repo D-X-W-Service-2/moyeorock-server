@@ -92,6 +92,25 @@ class GroupMemberRepositoryTest {
     }
 
     @Test
+    @DisplayName("회원 탈퇴용 모임 id는 내가 ACTIVE 모임원인 모임만 id 순이다 — 해체된 모임은 들어가고 탈퇴·강퇴한 모임은 빠진다")
+    void findActiveGroupIds_returnsMyActiveMemberships() {
+        Group disbanded = savedGroup();
+        Long first = savedGroup().getId();
+        Long leftGroup = savedGroup().getId();
+        GroupMember left = GroupMember.create(leftGroup, 10L, GroupRole.MEMBER);
+        left.leave();
+        groupMemberRepository.saveAll(List.of(
+                GroupMember.create(disbanded.getId(), 10L, GroupRole.OWNER),
+                GroupMember.create(first, 10L, GroupRole.MEMBER),
+                GroupMember.create(first, 20L, GroupRole.OWNER),
+                left));
+        disbanded.disband();
+        groupRepository.flush();
+
+        assertThat(groupMemberRepository.findActiveGroupIds(10L)).containsExactly(disbanded.getId(), first);
+    }
+
+    @Test
     @DisplayName("ACTIVE 모임원 수만 센다")
     void countActiveMembers_countsOnlyActive() {
         Long groupId = savedGroup().getId();

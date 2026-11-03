@@ -12,7 +12,7 @@
 | 원본 표기 | 정식 이름 | 소유 | 필드 | 상태 |
 |---|---|---|---|---|
 | `UserSummary` | `UserSummaryResponse` | user (1팀) | `(Long id, String nickname, String profileImage)` | **제안** — 재사용 1위라 최소로. 세션·지역이 필요한 곳(팀원·추천)은 감싸는 DTO가 이미 별도 필드로 가짐 |
-| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. 해체된 팀은 요약 조회에서 빠지므로 지금은 항상 `ACTIVE`다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
+| `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. `getSummaries` 등은 해체된 팀을 빼서 `ACTIVE`지만, 4팀용 `getSummariesIncludingDisbanded`는 `DISBANDED`도 담는다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
 | `MemberItem` | `TeamMemberResponse` | team (2팀) | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` | 확정 (`dto-naming.md` §3) |
 | `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
@@ -142,6 +142,9 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- `teams[]` 항목은 2팀 `TeamMembershipResponse`, `groups[]` 항목은 4팀 `GroupSummaryResponse`를 그대로 담는다(`docs/conventions/dto-naming.md` §0, 2026-11-02). 필터(ACTIVE)·정렬은 제공하는 팀 Service 책임이다.
+- `performances[]`는 4팀 `PerformanceService.findActivitiesByUserId`(이슈 #95: CANCELED 제외, 팀마다 한 줄이라 같은 공연이 여러 번 나올 수 있음)가 들어오면 채운다. 그 전까지 `groups`와 함께 빈 배열이다.
+
 ### UserProfileResponse
 
 ```json
@@ -163,6 +166,10 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- `instruments[]`는 `{instrument, level}`뿐이다. `UserInstrumentResponse`의 `id`는 타인에게 노출하지 않는다(이슈 #90 P-4).
+- `isActivityPublic`은 유지한다. 비공개면 `activities`가 `null`이라, 프론트가 "비공개"와 "활동 없음"(빈 목록 3개)을 구분하려면 이 값이 필요하다(P-3, 2026-11-02 1팀 결정). `email`·`isRecommendable`은 담지 않는다.
+- `activities`는 공개면 `GET /v1/users/me/activities`와 같은 조립이다. `groups`·`performances`는 4팀 메서드(이슈 #95) 전까지 빈 목록(2026-11-02).
+
 ## §2. 팀 (team)
 
 ### TeamCreateRequest
@@ -183,7 +190,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 외부(독립) 팀은 `performance`가 null.
 
-> 구현은 `performance`·`setlist`를 응답에서 **뺐다**(2026-10-31). 둘 다 4팀 소유 DTO(`PerformanceSummaryResponse` `TeamSongResponse`)가 필요한데 아직 없다. 4팀 DTO가 생기면 필드를 추가한다. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀은 상세 대신 `404`다.
+> 구현은 `setlist`(→ `songs`)를 응답에서 **뺐다**(2026-10-31). 4팀 `SetlistService.findTeamSongs`가 `main`에 들어오면 추가한다. `performance`는 4팀 `PerformanceMemberService.getBrief`(#105)로 채운다(2026-11-03) — 공연 팀이면 `(id, title, groupName, performedAt)`, 독립 팀이면 `null`, 모임이 해체됐으면 `groupName`만 `null`. `myRole`은 요청자가 팀원이 아니면 null이고, 해체된 팀도 상세를 읽을 수 있다(`status = DISBANDED`, 2026-11-02).
 
 ```json
 {
@@ -506,7 +513,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
       "performedAt": "2026-11-22T18:00:00",
       "venue": "홍대 롤링홀",
       "posterImage": "https://.../poster.jpg",
-      "status": "PLANNED"
+      "status": "PLANNED",
+      "createdAt": "2026-09-11T10:00:00"
     }
   ],
   "createdAt": "2026-07-10T12:00:00"
@@ -514,6 +522,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `pinnedNotices`는 **고정된 공지만** 최신순 최대 3건이다. 고정 공지가 없으면 빈 배열이고 일반 공지로 자리를 채우지 않는다(2026-10-07 확정). 전체 공지는 공지 목록 엔드포인트로 받는다
+- `upcomingPerformances`는 `PLANNED`·`RECRUITING` 공연을 공연일 가까운 순으로 **최대 3건**이다(모임 공연 목록 `period=UPCOMING`과 같은 기준). 없으면 빈 배열이고 필드는 항상 내린다(2026-11-03, #112 — PR #67 리뷰에서 빈 배열 권고). 항목은 공연 목록과 같은 `PerformanceSummaryResponse`라 노션 예시에 없는 `createdAt`도 들어간다. 전체는 공연 목록 엔드포인트로 받는다
 
 ### PageResponse\<GroupSummaryResponse\>
 
@@ -626,6 +635,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `title`·`performedAt`·`venue` 필수, `description`·`posterImage` 선택 — `API 초안`(2026-10-08) 기준. `venue`는 이전 `erd.md`에서 "필수 X"였으나 노션 기준으로 필수다(2026-10-30, 이슈 #83)
 - 길이: `title`·`venue` 100자, `description` 1,000자(모임 소개와 같은 기준 — 긴 안내는 공지로), `posterImage` 500자
 - `posterImage`는 파일 API(`POST /v1/files/presigned-url`, `domain=PERFORMANCE_POSTER`)로 받은 `fileUrl` 문자열을 그대로 보낸다. 공연 쪽은 URL만 저장한다(`erd.md` §17)
+- 끝난 공연(`DONE`·`CANCELED`)은 수정할 수 없다 — 409 `INVALID_STATE`(2026-11-03, PR #104 리뷰). 상태 변경·공연 내 팀 생성·셋리스트 확정과 같이 끝난 공연은 기록으로 둔다. 일시가 지났어도 아직 끝나지 않은 공연은 일시를 그대로 두면 고칠 수 있다
 
 ### PageResponse\<PerformanceSummaryResponse\>
 
@@ -675,11 +685,11 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `setlist`는 확정된 것만 담는다 (원본 메모)
-- `teams`는 끝난 공연(`DONE`)이면 빈 목록이다 — 끝난 공연은 참여 팀을 보여주지 않는다(2026-10-30 결정)
+- `teams`는 해체되지 않은 참여 팀이라 끝난 공연(`DONE`·`CANCELED`)이면 빈 목록이다 — 끝난 공연은 참여 팀을 보여주지 않는다(2026-10-30 결정, 2026-11-01 취소도 팀을 해체하기로 해서 함께)
 - `myTeamIds`는 요청자가 속한, 이 공연의 참여 팀 id 목록이다(없으면 빈 목록). 한 사용자가 같은 공연의 여러 팀에 속할 수 있어 **2026-10-30에 `myTeamId`(단일)에서 바꿨다**(노션도 수정, 이슈 #79 댓글)
 - `canEdit`은 요청자가 그 모임의 모임장인지다
 - `createdBy`는 공연을 만든 사람이 탈퇴했으면 `null`이다(노션은 Nullable X — 탈퇴 회원 표시 정책이 생기면 맞춘다)
-- **이슈 #83 구현 범위에서는 `teams`·`setlist`·`myTeamIds`가 응답에 없다.** `teams`·`myTeamIds`는 2팀 `TeamService`(#79) 이후, `setlist`는 셋리스트 도메인 구현 때 추가한다(`api-spec.md` §8 ※)
+- **`setlist`는 아직 응답에 없다** — 셋리스트 도메인 구현 때 추가한다. `teams`·`myTeamIds`는 이슈 #88에서 추가했다(`api-spec.md` §8 ⊕). 생성·수정 응답도 같은 DTO라 함께 채워지고, 막 만든 공연은 둘 다 빈 목록이다
 
 ### PerformanceStatusUpdateRequest / PerformanceStatusResponse
 
@@ -691,9 +701,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "id": 7, "status": "DONE" }
 ```
 
+- `status`는 `PerformanceStatus`(`PLANNED|RECRUITING|DONE|CANCELED`)이고 필수다. 노션 값(`ENDED` 등)은 `400 VALIDATION_FAILED`
+- 끝난 공연(`DONE`·`CANCELED`)은 바꿀 수 없다(`409 INVALID_STATE`). `DONE`·`CANCELED`로 바꾸면 소속 팀이 모두 해체된다(`api-spec.md` §8 ⊕)
+
 ### PerformanceTeamCreateRequest
 
 `instrument`는 생성자 본인의 세션. Response는 TeamDetailResponse와 같은 형태다 (원본 페이지에 함께 기재됨).
+
+- 제약은 `TeamCreateRequest`와 같다 — `name` 필수·50자, `description` 1,000자, `region` 선택, `genres` 5개까지, `instrument` 필수(2026-11-01, 이슈 #88)
+- 응답은 `201` + `TeamDetailResponse`다. 2팀 구현(#86)에 `performance` 필드가 아직 없어 이 응답에도 없다
+- `PLANNED`·`RECRUITING` 공연에서만 만들 수 있다 — 끝난 공연은 `409 INVALID_STATE`
 
 ```json
 {
