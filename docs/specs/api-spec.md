@@ -14,10 +14,10 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | GET | `/v1/users/me` | 내&nbsp;프로필&nbsp;조회 | | `UserMeResponse` |
-| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | |
+| PUT | `/v1/users/me` | 프로필&nbsp;설정&nbsp;/&nbsp;수정 | `UserUpdateRequest` | `UserMeResponse` |
 | DELETE | `/v1/users/me` | 탈퇴 | | `UserWithdrawResponse` * |
-| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | |
-| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | |
+| POST | `/v1/users/me/onboarding` | 온보딩&nbsp;등록 | `OnboardingCreateRequest` | `UserMeResponse` ‡ |
+| PUT | `/v1/users/me/instruments` | 세션/실력&nbsp;수정 | `UserInstrumentUpdateRequest` | `UserInstrumentsResponse` |
 | GET | `/v1/users/me/activities` | 내&nbsp;활동 | | `UserActivityResponse` |
 | GET | `/v1/users/{id}` | 타인&nbsp;프로필&nbsp;조회 | | `UserProfileResponse` |
 | GET | `/v1/users/search?nickname=&page=&size=` ¶ | 사용자&nbsp;검색 | | `PageResponse<UserSummaryResponse>` |
@@ -27,6 +27,7 @@
 > † 원래 Notion `API 명세서 v0`에는 없던 엔드포인트였으나(`docs/conventions/dto-naming.md` §2가 먼저 정의), `API 초안`에 쿼리 파라미터까지 포함해 반영된 것을 2026-09-11 확인했다.
 > `/v1/users/search`는 원본에서 팀 섹션에 있었지만 user 도메인 소유다.
 > `PUT /v1/users/me/instruments`의 응답이 `UserInstrumentsResponse`다 (`docs/conventions/dto-naming.md` §2).
+> ‡ 온보딩 등록은 재호출이 멱등(값만 갱신)이라 201이 아니라 200이다. 명세 표에 응답 코드가 없어 서버가 정한 값이다. Notion 반영 필요. 프로필 수정·온보딩 응답은 갱신된 `UserMeResponse` 전체다(PR #57 Service 반환 그대로, Controller는 #89).
 
 ---
 
