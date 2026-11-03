@@ -9,6 +9,7 @@ import com.moyeorock.domain.group.enums.GroupRole;
 import com.moyeorock.domain.group.enums.GroupStatus;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.service.NoticeService;
+import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
@@ -28,14 +29,15 @@ public class GroupService {
     private final GroupMemberService groupMemberService;
     private final NoticeService noticeService;
     private final RecruitPostService recruitPostService;
+    private final PerformanceService performanceService;
 
-    /** 모임 저장과 모임장 등록은 한 단위다 — 하나만 들어가면 주인 없는 모임이 생긴다. 새 모임이라 고정 공지는 없다. */
+    /** 모임 저장과 모임장 등록은 한 단위다 — 하나만 들어가면 주인 없는 모임이 생긴다. 새 모임이라 고정 공지·공연은 없다. */
     @Transactional
     public GroupDetailResponse create(Long userId, GroupCreateRequest request) {
         Group group = groupRepository.save(Group.create(
                 request.name(), request.description(), request.type(), request.region(), request.coverImage()));
         groupMemberService.addOwner(group.getId(), userId);
-        return GroupDetailResponse.of(group, userId, 1, GroupRole.OWNER, List.of());
+        return GroupDetailResponse.of(group, userId, 1, GroupRole.OWNER, List.of(), List.of());
     }
 
     /**
@@ -51,7 +53,7 @@ public class GroupService {
     }
 
     /**
-     * 동아리 홈. 모임·모임원 수·내 역할·고정 공지를 각각 조회해 한 화면으로 합치므로
+     * 동아리 홈. 모임·모임원 수·내 역할·고정 공지·다가오는 공연을 각각 조회해 한 화면으로 합치므로
      * 중간에 탈퇴가 커밋되면 {@code memberCount}와 목록이 어긋난다 — 단일 스냅샷이 필요하다.
      */
     @Transactional(readOnly = true)
@@ -93,7 +95,8 @@ public class GroupService {
                 ownerId,
                 groupMemberService.countActiveMembers(groupId),
                 myRole,
-                noticeService.getPinnedPreview(groupId));
+                noticeService.getPinnedPreview(groupId),
+                performanceService.findUpcoming(groupId));
     }
 
     // 앞뒤 공백은 검색어가 아니다. 비면 필터 없이 내 모임 전체.

@@ -108,6 +108,7 @@
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
 | 공연 팀원 확인 | 2팀 `TeamService.addMember` · 3팀 가입 신청·초대 → 4팀 `PerformanceMemberService.ensureGroupMember` | 공연 팀에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`(#96·#105). `PerformanceMemberService`는 `GroupMemberService`만 불러 순환이 없다 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
+| 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.

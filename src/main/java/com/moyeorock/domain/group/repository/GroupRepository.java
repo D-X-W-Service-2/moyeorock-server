@@ -51,4 +51,19 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
             ORDER BY m.joinedAt DESC, g.id DESC
             """)
     Page<Object[]> findMyGroups(@Param("userId") Long userId, @Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * 내가 모임장인, 해체되지 않은 모임(모임 id 순). 회원 탈퇴 차단에 쓴다(1팀 #100) — 해체는 soft delete라
+     * 모임원 행이 ACTIVE로 남아 있어 모임 상태까지 본다.
+     */
+    @Query("""
+            SELECT g FROM Group g, GroupMember m
+            WHERE m.groupId = g.id
+              AND m.userId = :userId
+              AND m.role = com.moyeorock.domain.group.enums.GroupRole.OWNER
+              AND m.status = com.moyeorock.domain.group.enums.GroupMemberStatus.ACTIVE
+              AND g.status = com.moyeorock.domain.group.enums.GroupStatus.ACTIVE
+            ORDER BY g.id
+            """)
+    List<Group> findOwnedGroups(@Param("userId") Long userId);
 }

@@ -513,7 +513,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
       "performedAt": "2026-11-22T18:00:00",
       "venue": "홍대 롤링홀",
       "posterImage": "https://.../poster.jpg",
-      "status": "PLANNED"
+      "status": "PLANNED",
+      "createdAt": "2026-09-11T10:00:00"
     }
   ],
   "createdAt": "2026-07-10T12:00:00"
@@ -521,6 +522,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `pinnedNotices`는 **고정된 공지만** 최신순 최대 3건이다. 고정 공지가 없으면 빈 배열이고 일반 공지로 자리를 채우지 않는다(2026-10-07 확정). 전체 공지는 공지 목록 엔드포인트로 받는다
+- `upcomingPerformances`는 `PLANNED`·`RECRUITING` 공연을 공연일 가까운 순으로 **최대 3건**이다(모임 공연 목록 `period=UPCOMING`과 같은 기준). 없으면 빈 배열이고 필드는 항상 내린다(2026-11-03, #112 — PR #67 리뷰에서 빈 배열 권고). 항목은 공연 목록과 같은 `PerformanceSummaryResponse`라 노션 예시에 없는 `createdAt`도 들어간다. 전체는 공연 목록 엔드포인트로 받는다
 
 ### PageResponse\<GroupSummaryResponse\>
 

@@ -13,6 +13,7 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -184,6 +185,42 @@ public class GroupMemberService {
         return groupMemberRepository.findActiveOwner(groupId)
                 .map(GroupMember::getUserId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
+    }
+
+    // ---------- 회원 탈퇴 (1팀 UserWithdrawService가 부른다, #100) ----------
+
+    /**
+     * 내가 모임장인, 해체되지 않은 모임(모임 id 순). 막지 않고 답만 한다 — 1팀은 비어 있지 않으면 탈퇴를 막고
+     * 모임 이름을 메시지에 쓴다. 해체된 모임의 모임장은 들어가지 않는다.
+     */
+    public List<GroupBriefResponse> findOwnedGroups(Long userId) {
+        return groupRepository.findOwnedGroups(userId).stream().map(GroupBriefResponse::from).toList();
+    }
+
+    /**
+     * 회원 탈퇴 때 내 ACTIVE 모임원 행을 모두 {@code LEFT}로 바꾼다 — 탈퇴한 회원이 모임원 목록에 빈 닉네임으로 남거나
+     * {@code memberCount}와 어긋나지 않게(PR #67 리뷰). 활동 중 모임의 모임장이면 {@code OWNER_CANNOT_LEAVE}다.
+     *
+     * <p>1팀이 {@link #findOwnedGroups}로 먼저 막지만, 그 뒤 탈퇴 직전에 모임장 위임이 커밋될 수 있다. 그래서 위임·탈퇴·
+     * 강퇴처럼 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 모임장인지 확인한다 — 모임장 없는 모임이 생기지 않게.
+     * 모임 행은 모임 id 순으로 잠근다. 해체된 모임은 잠글 행이 없고 모임장이어도 그대로 {@code LEFT}로 바꾼다.
+     * 처음 모임 id 목록은 일반 조회라, 탈퇴하는 바로 그 순간 승인된 가입은 빠질 수 있다 — 그 모임에만 {@code ACTIVE}로
+     * 남고 모임장이 내보내면 정리된다. 이 조회까지 잠그면 잠그는 순서가 위임(모임 → 모임원)과 반대가 돼 교착 위험이 생겨 두었다.
+     * 공연 팀에서 빼는 일은 여기서 하지 않는다 — 2팀 Service를 부르면 순환이 생길 수 있어 팀 쪽 처리는 1팀 탈퇴 흐름에서 정한다.
+     */
+    @Transactional
+    public void leaveAllGroups(Long userId) {
+        for (Long groupId : groupMemberRepository.findActiveGroupIds(userId)) {
+            boolean activeGroup = groupRepository.findByIdAndStatusForUpdate(groupId, GroupStatus.ACTIVE).isPresent();
+            groupMemberRepository.findByGroupIdAndUserIdForUpdate(groupId, userId)
+                    .filter(member -> member.getStatus() == GroupMemberStatus.ACTIVE)
+                    .ifPresent(member -> {
+                        if (activeGroup && member.isOwner()) {
+                            throw new BusinessException(ErrorCode.OWNER_CANNOT_LEAVE);
+                        }
+                        member.leave();
+                    });
+        }
     }
 
     // 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
