@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,6 +33,7 @@ import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
@@ -70,6 +72,8 @@ class TeamServiceTest {
     TeamMemberRepository teamMemberRepository;
     @Mock
     UserService userService;
+    @Mock
+    PerformanceMemberService performanceMemberService;
     @InjectMocks
     TeamService teamService;
 
@@ -742,6 +746,92 @@ class TeamServiceTest {
 
         givenNoTeam();
         assertErrorCode(() -> teamService.addMember(TEAM_ID, 3L, Instrument.BASS), ErrorCode.TEAM_NOT_FOUND);
+    }
+
+    private Team performanceTeam(Long id, Long performanceId) {
+        Team team = Team.createForPerformance(performanceId, "공연팀", null, Region.SEOUL);
+        ReflectionTestUtils.setField(team, "id", id);
+        return team;
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 공연 팀이면 공연을 연 모임의 모임원인지 확인하고 통과하면 저장한다")
+    void addMember_performanceTeam_checksGroupMember() {
+        givenTeam(performanceTeam(TEAM_ID, 7L));
+        givenMember(MEMBER_ID, null);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM);
+
+        verify(performanceMemberService).ensureGroupMember(7L, MEMBER_ID);
+        verify(teamMemberRepository).save(any(TeamMember.class));
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 공연을 연 모임의 모임원이 아니면 예외가 그대로 나가고 저장하지 않는다")
+    void addMember_performanceTeam_rejectsNonGroupMember() {
+        givenTeam(performanceTeam(TEAM_ID, 7L));
+        willThrow(new BusinessException(ErrorCode.NOT_PERFORMANCE_GROUP_MEMBER))
+                .given(performanceMemberService).ensureGroupMember(7L, MEMBER_ID);
+
+        assertErrorCode(() -> teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM),
+                ErrorCode.NOT_PERFORMANCE_GROUP_MEMBER);
+        verify(teamMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추가: 독립 팀은 모임원 확인을 하지 않는다")
+    void addMember_independentTeam_skipsGroupMemberCheck() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, null);
+
+        teamService.addMember(TEAM_ID, MEMBER_ID, Instrument.DRUM);
+
+        verify(performanceMemberService, never()).ensureGroupMember(any(), any());
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 그 공연 팀들의 내 활동 팀원 행이 LEFT가 된다")
+    void leavePerformanceTeams_marksMembershipsLeft() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L)))
+                .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
+        TeamMember first = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember second = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(MEMBER_ID, List.of(5L, 6L)))
+                .willReturn(List.of(first, second));
+
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L, 8L));
+
+        assertThat(first.getStatus()).isEqualTo(MemberStatus.LEFT);
+        assertThat(second.getStatus()).isEqualTo(MemberStatus.LEFT);
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 한 팀이라도 팀장이면 LEADER_MUST_DELEGATE_FIRST이고 아무 행도 바꾸지 않는다")
+    void leavePerformanceTeams_rejectsLeader_andChangesNothing() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L, 8L)))
+                .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
+        TeamMember asMember = member(LEADER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember asLeader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(LEADER_ID, List.of(5L, 6L)))
+                .willReturn(List.of(asMember, asLeader));
+
+        assertErrorCode(() -> teamService.leavePerformanceTeams(LEADER_ID, List.of(7L, 8L)),
+                ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+
+        assertThat(asMember.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(asLeader.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("공연 팀 나가기: 공연 id가 없거나 활동 중인 팀이 없으면 팀원 행을 조회하지 않는다")
+    void leavePerformanceTeams_withoutTeams_doesNothing() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of());
+
+        teamService.leavePerformanceTeams(MEMBER_ID, null);
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of());
+        teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L));
+
+        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdIn(any(), any());
     }
 
     @Test

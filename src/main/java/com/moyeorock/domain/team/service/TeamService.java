@@ -22,6 +22,7 @@ import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -52,6 +53,7 @@ public class TeamService {
     private final TeamGenreRepository teamGenreRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserService userService;
+    private final PerformanceMemberService performanceMemberService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -209,6 +211,7 @@ public class TeamService {
     /**
      * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
      * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
+     * 공연 팀이면 그 공연을 연 모임의 활동 모임원만 들어올 수 있다(아니면 NOT_PERFORMANCE_GROUP_MEMBER, #96).
      *
      * <p>이 메서드는 첫 조회로 팀 행을 잠그지만, 호출한 쪽의 트랜잭션에 참여하므로 호출한 쪽이 이 메서드를 부르기 전에
      * 다른 조회를 이미 했다면 그 조회 시점의 낡은 화면으로 팀원 정보를 읽을 수 있다(MySQL 기본 격리 수준 때문).
@@ -216,7 +219,11 @@ public class TeamService {
      */
     @Transactional
     public void addMember(Long teamId, Long userId, Instrument instrument) {
-        requireActiveTeam(getTeamForUpdate(teamId));
+        Team team = getTeamForUpdate(teamId);
+        requireActiveTeam(team);
+        if (team.getPerformanceId() != null) {
+            performanceMemberService.ensureGroupMember(team.getPerformanceId(), userId);
+        }
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId).ifPresentOrElse(
                 member -> {
                     if (member.getStatus() == MemberStatus.ACTIVE) {
@@ -247,6 +254,32 @@ public class TeamService {
     /** 내가 그 공연에서 속한 팀 id(4팀). 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록이다. */
     public List<Long> findMyTeamIds(Long performanceId, Long userId) {
         return teamRepository.findMyTeamIdsInPerformance(performanceId, userId);
+    }
+
+    /**
+     * 모임 탈퇴·강퇴 시 그 모임 공연들의 팀에서 이 사람을 뺀다(4팀 GroupService). 호출한 쪽의 트랜잭션에 참여한다.
+     * 활동 중인 팀의 ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀과 이미 나간 팀은 지나간다.
+     * 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던져 모임 탈퇴·강퇴 전체를 막는다.
+     *
+     * <p>팀 행을 id 순으로 잠그고 시작한다. 호출한 쪽이 이 메서드 전에 팀 조회를 했다면 그 시점의 낡은 화면을 볼 수 있으니
+     * 가능한 한 트랜잭션 앞쪽에서 불러 달라(addMember와 같다).
+     */
+    @Transactional
+    public void leavePerformanceTeams(Long userId, Collection<Long> performanceIds) {
+        if (performanceIds == null || performanceIds.isEmpty()) {
+            return;
+        }
+        List<Long> teamIds = teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds).stream()
+                .map(Team::getId)
+                .toList();
+        if (teamIds.isEmpty()) {
+            return;
+        }
+        List<TeamMember> memberships = teamMemberRepository.findActiveByUserIdAndTeamIdIn(userId, teamIds);
+        if (memberships.stream().anyMatch(m -> m.getRole() == TeamRole.LEADER)) {
+            throw new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+        }
+        memberships.forEach(m -> m.updateStatus(MemberStatus.LEFT));
     }
 
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
