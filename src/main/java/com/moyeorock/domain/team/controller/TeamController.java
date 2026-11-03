@@ -12,6 +12,7 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,7 @@ public class TeamController {
 
     private final TeamService teamService;
 
+    @Operation(summary = "팀 생성")
     @PostMapping("/teams")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<TeamDetailResponse> create(@AuthUser Long userId,
@@ -44,6 +46,7 @@ public class TeamController {
     }
 
     // status 파라미터는 받지 않는다 — 해체된 팀은 항상 목록에서 빠진다(결정 8)
+    @Operation(summary = "팀 목록")
     @GetMapping("/teams")
     public ApiResponse<PageResponse<TeamSummaryResponse>> search(
             @RequestParam(required = false) Region region,
@@ -52,17 +55,20 @@ public class TeamController {
         return ApiResponse.success(teamService.search(region, genre, pageable));
     }
 
+    @Operation(summary = "팀 상세")
     @GetMapping("/teams/{teamId}")
     public ApiResponse<TeamDetailResponse> getDetail(@AuthUser Long userId, @PathVariable Long teamId) {
         return ApiResponse.success(teamService.getDetail(userId, teamId));
     }
 
+    @Operation(summary = "내 팀 목록")
     @GetMapping("/users/me/teams")
     public ApiResponse<PageResponse<TeamSummaryResponse>> getMyTeams(@AuthUser Long userId,
             @PageableDefault(size = 20) Pageable pageable) {
         return ApiResponse.success(teamService.getMyTeams(userId, pageable));
     }
 
+    @Operation(summary = "팀 정보 수정")
     @PutMapping("/teams/{teamId}")
     public ApiResponse<Void> update(@AuthUser Long userId, @PathVariable Long teamId,
             @Valid @RequestBody TeamUpdateRequest request) {
@@ -70,6 +76,7 @@ public class TeamController {
         return ApiResponse.success();
     }
 
+    @Operation(summary = "팀 해체")
     @PatchMapping("/teams/{teamId}/status")
     public ApiResponse<TeamStatusResponse> disband(@AuthUser Long userId, @PathVariable Long teamId,
             @Valid @RequestBody TeamStatusUpdateRequest request) {

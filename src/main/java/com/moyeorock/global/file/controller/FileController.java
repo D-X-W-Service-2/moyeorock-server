@@ -7,6 +7,7 @@ import com.moyeorock.global.file.dto.request.PresignedUrlCreateRequest;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.service.FileService;
 import com.moyeorock.global.security.AuthUser;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -37,6 +38,7 @@ public class FileController {
 
     private final FileService fileService;
 
+    @Operation(summary = "업로드 URL 발급")
     @PostMapping("/presigned-url")
     public ApiResponse<PresignedUrlResponse> issuePresignedUrl(@AuthUser Long userId,
             @Valid @RequestBody PresignedUrlCreateRequest request) {
@@ -45,6 +47,7 @@ public class FileController {
         return ApiResponse.success(response);
     }
 
+    @Operation(summary = "파일 삭제")
     @DeleteMapping("/{fileId}")
     public ApiResponse<DeleteResponse> delete(@AuthUser Long userId, @PathVariable Long fileId) {
         fileService.delete(fileId, userId);
@@ -55,6 +58,7 @@ public class FileController {
      * S3 전환 전 임시 엔드포인트. 로컬 스토리지의 issuePresignedUrl이 내려준 uploadUrl이 이 경로를
      * 가리킨다. S3로 전환하면 이 메서드와 LocalFileStorageClient를 함께 제거한다.
      */
+    @Operation(summary = "업로드 수신 (로컬 저장 임시)")
     @PutMapping("/local-upload/**")
     public ApiResponse<Void> receiveLocalUpload(@AuthUser Long userId, HttpServletRequest request)
             throws IOException {
@@ -69,6 +73,7 @@ public class FileController {
      * (PublicEndpoints 등록). 원시 바이트를 그대로 내려줘야 해서 api-conventions.md §1의
      * "모든 응답은 ApiResponse로 감싼다" 규칙의 예외다 — Location 헤더 응답과 같은 성격의 예외.
      */
+    @Operation(summary = "파일 서빙 (로컬 저장 임시)")
     @GetMapping("/local/**")
     public ResponseEntity<InputStreamResource> serveLocal(HttpServletRequest request) {
         String fileKey = extractFileKey(request, LOCAL_SERVE_PATH);

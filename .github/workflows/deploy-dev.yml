@@ -1,0 +1,92 @@
+name: Deploy dev
+
+# git-convention §4 — main push → dev 서버(EC2) 배포. prod는 GitHub Release 발행으로 도는 deploy-prod.yml이 따로 맡는다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # Actions 탭에서 수동 재배포
+
+# 배포는 하나씩. 진행 중인 배포는 취소하지 않는다
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Check
+        run: ./gradlew check
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build jar
+        run: ./gradlew bootJar
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      # 릴리스마다 파일명을 달리 올려 두고 app.jar 링크만 바꾼다 — 실패하면 이전 jar로 되돌릴 수 있게
+      - name: Upload jar
+        run: |
+          JAR=$(ls build/libs/*.jar | grep -v plain)
+          RELEASE="$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}.jar"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          scp -i ~/.ssh/deploy_key "$JAR" "$EC2_USER@$EC2_HOST:/opt/moyeorock/releases/$RELEASE"
+
+      # 헬스 체크는 /actuator/health(DB 연결 포함)로 한다 — Swagger(SWAGGER_ENABLED) 켜짐 여부와 무관하다
+      - name: Switch and restart
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "RELEASE=$RELEASE bash -s" << 'EOF'
+          set -e
+          cd /opt/moyeorock
+          PREV=$(readlink -f app.jar || true)
+          ln -sfn "releases/$RELEASE" app.jar
+          sudo systemctl restart moyeorock
+
+          for i in $(seq 1 40); do
+            if curl -fs http://127.0.0.1:8080/actuator/health > /dev/null; then
+              echo "배포 성공: $RELEASE"
+              ls -1t releases/*.jar | tail -n +4 | xargs -r rm --   # 최근 3개만 남긴다
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "헬스 체크 실패 — 이전 버전으로 되돌린다"
+          sudo journalctl -u moyeorock -n 80 --no-pager
+          if [ -n "$PREV" ] && [ -f "$PREV" ]; then
+            ln -sfn "$PREV" app.jar
+            sudo systemctl restart moyeorock
+          fi
+          exit 1
+          EOF

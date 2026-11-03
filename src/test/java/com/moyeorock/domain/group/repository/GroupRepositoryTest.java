@@ -160,6 +160,20 @@ class GroupRepositoryTest {
     }
 
     @Test
+    @DisplayName("모임 id 일괄 조회를 ACTIVE로 하면 해체된 모임은 빠진다")
+    void findAllByIdInAndStatus_excludesDisbandedGroups() {
+        Group active = groupRepository.save(group("활동 중"));
+        Group disbanded = groupRepository.save(group("해체됨"));
+        disbanded.disband();
+        groupRepository.flush();
+
+        assertThat(groupRepository.findAllByIdInAndStatus(
+                List.of(active.getId(), disbanded.getId()), GroupStatus.ACTIVE))
+                .extracting(Group::getId)
+                .containsExactly(active.getId());
+    }
+
+    @Test
     @DisplayName("내가 모임장인 모임은 해체되지 않은 모임만 모임 id 순으로 나온다 — 모임원이거나 남의 모임이면 빠진다")
     void findOwnedGroups_returnsActiveGroupsIOwn() {
         Group owned = owned(ME, group("내 모임"));

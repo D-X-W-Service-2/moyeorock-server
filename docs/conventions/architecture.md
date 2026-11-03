@@ -7,7 +7,7 @@
 ```
 com.moyeorock
 ├── global/
-│   ├── config/          SwaggerConfig, CorsConfig, WebConfig, JpaAuditingConfig
+│   ├── config/          OpenApiConfig, SecurityConfig(CORS 포함), WebConfig, JpaAuditingConfig, TimezoneConfig
 │   ├── security/        JwtProvider, JwtAuthenticationFilter,
 │   │                    AuthUserArgumentResolver, @AuthUser
 │   ├── exception/       GlobalExceptionHandler, ErrorCode, BusinessException
@@ -64,6 +64,7 @@ Controller → Service → Repository → DB
 | `notification` | 어떤 도메인도 직접 참조하지 않는다. 이벤트(`global/event/NotificationEvent`)로만 받는다 — 발행은 트랜잭션 안에서, 수신은 커밋 후 별도 트랜잭션 |
 | `join` ↔ `team` `group` | 승인 시 멤버 추가는 `TeamService`·`GroupService` 호출 |
 | `performance` → `team` | 공연 종료 시 팀 해체는 `TeamService` 호출 |
+| `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
 | `group` → `performance` | 동아리 홈의 다가오는 공연은 `GroupService → PerformanceService.findUpcoming`. 그래서 `PerformanceService`는 `GroupService`를 부르지 않고 모임 권한·정보를 `GroupMemberService`로만 받는다(2026-11-03, #112) |
 
 ### 순환 참조가 생기면

@@ -3,6 +3,7 @@ package com.moyeorock.domain.group.repository;
 import com.moyeorock.domain.group.entity.Group;
 import com.moyeorock.domain.group.enums.GroupStatus;
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -18,6 +19,8 @@ public interface GroupRepository extends JpaRepository<Group, Long> {
     Optional<Group> findByIdAndStatus(Long id, GroupStatus status);
 
     boolean existsByIdAndStatus(Long id, GroupStatus status);
+
+    List<Group> findAllByIdInAndStatus(Collection<Long> ids, GroupStatus status);
 
     /**
      * 쓰기 전용 잠금 조회. 위임·탈퇴·강퇴·해체가 같은 모임에 동시에 오면 모임장이 0명·2명이 되거나

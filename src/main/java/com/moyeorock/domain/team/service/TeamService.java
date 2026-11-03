@@ -5,6 +5,7 @@ import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
+import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
@@ -22,6 +23,8 @@ import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
+import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -52,6 +55,7 @@ public class TeamService {
     private final TeamGenreRepository teamGenreRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserService userService;
+    private final PerformanceMemberService performanceMemberService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -155,17 +159,17 @@ public class TeamService {
     }
 
     /**
-     * 팀 상세. 해체된 팀은 없는 팀(TEAM_NOT_FOUND)으로 취급한다. 중간에 user 도메인 Service를 호출하므로
-     * 트랜잭션을 붙이지 않는다(conventions.md §3 — 호출된 Service가 자기 트랜잭션을 열어 바깥에서 감싸도
-     * 같은 시점이 보장되지 않는다).
+     * 팀 상세. 해체된 팀도 읽기 전용으로 돌려주고 status로 구분한다(끝난 공연 페이지의 팀 카드가 연결된다).
+     * 중간에 user 도메인 Service를 호출하므로 트랜잭션을 붙이지 않는다(conventions.md §3 — 호출된 Service가
+     * 자기 트랜잭션을 열어 바깥에서 감싸도 같은 시점이 보장되지 않는다).
      */
     public TeamDetailResponse getDetail(Long userId, Long teamId) {
-        return toDetail(getActiveTeam(teamId), userId);
+        return toDetail(getTeam(teamId), userId);
     }
 
-    /** 팀원 목록. ACTIVE 팀원만 합류 순으로 돌려주며, 해체된 팀은 TEAM_NOT_FOUND다. */
+    /** 팀원 목록. ACTIVE 팀원만 합류 순으로 돌려주며, 해체된 팀도 읽을 수 있다. */
     public TeamMembersResponse getMembers(Long teamId) {
-        getActiveTeam(teamId);
+        getTeam(teamId);
         List<TeamMember> members = teamMemberRepository.findActiveMembers(teamId);
         return new TeamMembersResponse(toMemberResponses(members, getUsers(members)));
     }
@@ -182,8 +186,19 @@ public class TeamService {
         if (teamIds == null || teamIds.isEmpty()) {
             return Map.of();
         }
-        return buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
-                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+        return toSummaryMap(teamRepository.findActiveByIdIn(teamIds));
+    }
+
+    /**
+     * 팀 요약 일괄 조회, 해체된 팀 포함(4팀 끝난 공연 상세). 없는 id만 결과 Map에서 빠진다.
+     * 팀원 행은 해체해도 그대로라서 memberCount는 해체 당시 인원이다.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, TeamSummaryResponse> getSummariesIncludingDisbanded(Collection<Long> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) {
+            return Map.of();
+        }
+        return toSummaryMap(teamRepository.findAllById(teamIds));
     }
 
     /**
@@ -197,8 +212,7 @@ public class TeamService {
             return List.of();
         }
         List<Long> teamIds = memberships.stream().map(TeamMember::getTeamId).toList();
-        Map<Long, TeamSummaryResponse> summaries = buildSummaries(teamRepository.findActiveByIdIn(teamIds)).stream()
-                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+        Map<Long, TeamSummaryResponse> summaries = toSummaryMap(teamRepository.findActiveByIdIn(teamIds));
         // 해체된 팀은 요약에 없으므로 그 팀의 팀원 행도 함께 빠진다
         return memberships.stream()
                 .filter(m -> summaries.containsKey(m.getTeamId()))
@@ -207,8 +221,19 @@ public class TeamService {
     }
 
     /**
+     * 내가 팀장인 활동 중인 팀 요약(1팀 회원 탈퇴 차단). 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에
+     * 막혔는지 안내하는 데 쓴다. 해체된 팀은 빠지고 팀 id 순이며 페이징은 없다.
+     * 팀, 장르, 인원 수 쿼리 결과가 서로 맞아야 해서 readOnly 트랜잭션으로 묶는다.
+     */
+    @Transactional(readOnly = true)
+    public List<TeamSummaryResponse> findLedTeams(Long userId) {
+        return buildSummaries(teamRepository.findActiveTeamsLedBy(userId));
+    }
+
+    /**
      * 팀원 추가(3팀 가입·초대 승인). 호출한 쪽의 트랜잭션에 참여한다.
      * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(결정 5). 이미 팀원이거나 해체된 팀이면 INVALID_STATE다.
+     * 공연 팀이면 그 공연을 연 모임의 활동 모임원만 들어올 수 있다(아니면 NOT_PERFORMANCE_GROUP_MEMBER, #96).
      *
      * <p>이 메서드는 첫 조회로 팀 행을 잠그지만, 호출한 쪽의 트랜잭션에 참여하므로 호출한 쪽이 이 메서드를 부르기 전에
      * 다른 조회를 이미 했다면 그 조회 시점의 낡은 화면으로 팀원 정보를 읽을 수 있다(MySQL 기본 격리 수준 때문).
@@ -216,7 +241,11 @@ public class TeamService {
      */
     @Transactional
     public void addMember(Long teamId, Long userId, Instrument instrument) {
-        requireActiveTeam(getTeamForUpdate(teamId));
+        Team team = getTeamForUpdate(teamId);
+        requireActiveTeam(team);
+        if (team.getPerformanceId() != null) {
+            performanceMemberService.ensureGroupMember(team.getPerformanceId(), userId);
+        }
         teamMemberRepository.findByTeamIdAndUserId(teamId, userId).ifPresentOrElse(
                 member -> {
                     if (member.getStatus() == MemberStatus.ACTIVE) {
@@ -247,6 +276,64 @@ public class TeamService {
     /** 내가 그 공연에서 속한 팀 id(4팀). 한 사람이 같은 공연의 여러 팀에 속할 수 있어 목록이고, 없으면 빈 목록이다. */
     public List<Long> findMyTeamIds(Long performanceId, Long userId) {
         return teamRepository.findMyTeamIdsInPerformance(performanceId, userId);
+    }
+
+    /**
+     * 내가 속한 공연 팀(4팀 끝난 공연 상세의 내 팀). 내가 ACTIVE 팀원이면 팀이 해체됐어도 담기고(status로 구분),
+     * 독립 팀은 빠진다. 팀 id 순이고 페이징은 없다.
+     */
+    @Transactional(readOnly = true)
+    public List<PerformanceTeamResponse> findMyPerformanceTeams(Long userId) {
+        return teamRepository.findMyPerformanceTeams(userId).stream().map(PerformanceTeamResponse::from).toList();
+    }
+
+    /**
+     * 모임 탈퇴·강퇴 시 그 모임 공연들의 팀에서 이 사람을 뺀다(4팀 GroupService). 호출한 쪽의 트랜잭션에 참여한다.
+     * 활동 중인 팀의 ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀과 이미 나간 팀은 지나간다.
+     * 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던져 모임 탈퇴·강퇴 전체를 막는다.
+     *
+     * <p>팀 행을 id 순으로 잠그고 시작한다. 호출한 쪽이 이 메서드 전에 팀 조회를 했다면 그 시점의 낡은 화면을 볼 수 있으니
+     * 가능한 한 트랜잭션 앞쪽에서 불러 달라(addMember와 같다).
+     */
+    @Transactional
+    public void leavePerformanceTeams(Long userId, Collection<Long> performanceIds) {
+        if (performanceIds == null || performanceIds.isEmpty()) {
+            return;
+        }
+        leaveLockedTeams(userId, teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds));
+    }
+
+    /**
+     * 회원 탈퇴 시 이 사람이 속한 모든 활동 중인 팀(공연 팀·독립 팀)에서 뺀다(1팀 UserService). 호출한 쪽의 트랜잭션에 참여한다.
+     * ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀은 지나간다 — 해체된 팀의 팀원 행은 해체 당시 인원 기록이라 그대로 둔다.
+     * 팀장 행이 남아 있으면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던진다. 1팀이 먼저 findLedTeams로 막으므로
+     * 보통은 일반 팀원만 남지만, 그 확인 뒤에 위임·합류가 겹친 경우를 막는 안전장치다.
+     *
+     * <p>팀원 행을 읽어 팀을 알아낸 다음 팀 행을 id 순으로 잠그고, 팀원 행은 잠금 읽기로 다시 읽는다. 그래서 그 사이에
+     * 바뀐 역할도 놓치지 않는다. 확인 이후에 새로 합류한 팀은 이번에 빠지지 않는다.
+     */
+    @Transactional
+    public void leaveAllTeams(Long userId) {
+        List<Long> teamIds = teamMemberRepository.findActiveMembershipsOf(userId).stream()
+                .map(TeamMember::getTeamId)
+                .toList();
+        if (teamIds.isEmpty()) {
+            return;
+        }
+        leaveLockedTeams(userId, teamRepository.findActiveByIdInForUpdate(teamIds));
+    }
+
+    // 이미 잠근 활동 중인 팀들에서 이 사람의 ACTIVE 팀원 행을 LEFT로 바꾼다. 팀장 행이 하나라도 있으면 아무것도 바꾸지 않는다.
+    private void leaveLockedTeams(Long userId, List<Team> lockedTeams) {
+        if (lockedTeams.isEmpty()) {
+            return;
+        }
+        List<Long> teamIds = lockedTeams.stream().map(Team::getId).toList();
+        List<TeamMember> memberships = teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(userId, teamIds);
+        if (memberships.stream().anyMatch(m -> m.getRole() == TeamRole.LEADER)) {
+            throw new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+        }
+        memberships.forEach(m -> m.updateStatus(MemberStatus.LEFT));
     }
 
     /** 공연 종료 시 소속 팀 전부 해체(4팀). teams.status만 바꾸고 이미 해체된 팀은 건드리지 않는다. */
@@ -280,15 +367,6 @@ public class TeamService {
     private Team getTeam(Long teamId) {
         return teamRepository.findById(teamId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.TEAM_NOT_FOUND));
-    }
-
-    // 조회 전용: 해체된 팀은 조회에서 걸러진다(architecture.md §6)
-    private Team getActiveTeam(Long teamId) {
-        Team team = getTeam(teamId);
-        if (team.getStatus() != TeamStatus.ACTIVE) {
-            throw new BusinessException(ErrorCode.TEAM_NOT_FOUND);
-        }
-        return team;
     }
 
     private void requireActiveTeam(Team team) {
@@ -342,7 +420,16 @@ public class TeamService {
                 .map(TeamMember::getRole)
                 .orElse(null);
 
-        return TeamDetailResponse.of(team, genres, leader, toMemberResponses(members, users), myRole);
+        // 독립 팀은 소속 공연이 없다. 해체된 모임의 공연이면 모임 이름만 null로 내려간다.
+        PerformanceBriefResponse performance = team.getPerformanceId() == null
+                ? null
+                : performanceMemberService.getBrief(team.getPerformanceId());
+
+        return TeamDetailResponse.of(team, genres, performance, leader, toMemberResponses(members, users), myRole);
+    }
+
+    private Map<Long, TeamSummaryResponse> toSummaryMap(List<Team> teams) {
+        return buildSummaries(teams).stream().collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
     }
 
     private Page<TeamSummaryResponse> toSummaries(Page<Team> teams) {
