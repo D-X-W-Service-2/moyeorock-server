@@ -104,6 +104,7 @@
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.getTeamSongs` · `PerformanceMemberService.getBrief` | 4팀이 만든 뒤 연결. 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
 | 공연 팀원 확인 | 2팀 `TeamService.addMember` · 3팀 가입 신청·초대 → 4팀 `PerformanceMemberService.ensureGroupMember` | 공연 팀에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`(#96·#105). `PerformanceMemberService`는 `GroupMemberService`만 불러 순환이 없다 |
+| 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#115). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
 
