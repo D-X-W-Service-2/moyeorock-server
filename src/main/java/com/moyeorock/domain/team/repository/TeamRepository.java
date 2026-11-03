@@ -182,4 +182,21 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             """)
     List<Team> findByPerformanceIdInAndStatusForUpdate(@Param("performanceIds") Collection<Long> performanceIds,
             @Param("status") TeamStatus status);
+
+    /**
+     * 주어진 팀 중 활동 중인 팀을 잠그고 읽는다(회원 탈퇴 때 팀에서 빼기). id 순으로 고정해서 같은 팀들을 잠그려는
+     * 다른 요청과 서로 반대 순서로 기다리다 멈추는 일(교착)을 막는다. 해체된 팀은 빠진다.
+     */
+    default List<Team> findActiveByIdInForUpdate(Collection<Long> teamIds) {
+        return findByIdInAndStatusForUpdate(teamIds, TeamStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT t FROM Team t
+            WHERE t.id IN :teamIds AND t.status = :status
+            ORDER BY t.id
+            """)
+    List<Team> findByIdInAndStatusForUpdate(@Param("teamIds") Collection<Long> teamIds,
+            @Param("status") TeamStatus status);
 }

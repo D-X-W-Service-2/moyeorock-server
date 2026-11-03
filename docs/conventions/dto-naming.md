@@ -166,6 +166,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
 | `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
 | `leavePerformanceTeams(Long userId, Collection<Long> performanceIds)` | 4팀 group(모임 탈퇴·강퇴) | 호출한 쪽 트랜잭션에 참여. 그 공연들의 활동 중인 팀에서 이 사람의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀·이미 나간 팀은 지나간다. 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 모임 탈퇴·강퇴 전체가 막히고 위임 안내 |
+| `leaveAllTeams(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람이 속한 활동 중인 모든 팀(공연 팀·독립 팀)의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀은 지나간다(해체 당시 인원 기록을 남기려고). 팀장 행이 남아 있으면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 1팀이 먼저 `findLedTeams`로 막으므로 안전장치다 |
 | `findLedTeams(Long userId)` → `List<TeamSummaryResponse>` | 1팀 user(회원 탈퇴) | 내가 팀장인 활동 중인 팀. 팀원 행 `ACTIVE`·`LEADER`이고 팀도 `ACTIVE`인 경우만, 해체된 팀은 빠진다. 팀 id 순, 페이징 없음. 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에 막혔는지 안내한다 |
 | `getSummariesIncludingDisbanded(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 4팀 performance | 끝난 공연 상세의 팀 요약. **해체된 팀도 포함**하고 없는 id만 빠진다. `memberCount`는 `ACTIVE` 팀원 수인데 해체해도 팀원 행은 그대로라서 해체 당시 인원이다 |
 | `findMyPerformanceTeams(Long userId)` → `List<PerformanceTeamResponse>` | 4팀 performance | 내가 `ACTIVE` 팀원인 공연 팀을 해체된 팀까지 `(Long teamId, String teamName, Long performanceId, TeamStatus status)`로. 독립 팀은 빠지고 팀 id 순, 페이징 없음 |

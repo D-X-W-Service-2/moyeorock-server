@@ -49,15 +49,15 @@ class TeamMemberRepositoryTest {
     }
 
     @Test
-    @DisplayName("findActiveByUserIdAndTeamIdIn은 그 사람의 ACTIVE 행만, 주어진 팀들 안에서 돌려준다")
-    void findActiveByUserIdAndTeamIdIn_returnsOnlyActiveRowsOfThatUserInGivenTeams() {
+    @DisplayName("findActiveByUserIdAndTeamIdInForUpdate은 그 사람의 ACTIVE 행만, 주어진 팀들 안에서 돌려준다")
+    void findActiveByUserIdAndTeamIdInForUpdate_returnsOnlyActiveRowsOfThatUserInGivenTeams() {
         save(1L, 10L, TeamRole.MEMBER, MemberStatus.ACTIVE);
         save(2L, 10L, TeamRole.LEADER, MemberStatus.ACTIVE);
         save(3L, 10L, TeamRole.MEMBER, MemberStatus.LEFT);
         save(4L, 10L, TeamRole.MEMBER, MemberStatus.ACTIVE);
         save(1L, 11L, TeamRole.MEMBER, MemberStatus.ACTIVE);
 
-        List<TeamMember> result = teamMemberRepository.findActiveByUserIdAndTeamIdIn(10L, List.of(1L, 2L, 3L));
+        List<TeamMember> result = teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(10L, List.of(1L, 2L, 3L));
 
         assertThat(result).extracting(TeamMember::getTeamId).containsExactlyInAnyOrder(1L, 2L);
     }

@@ -689,7 +689,7 @@ class TeamServiceTest {
                 .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
         TeamMember first = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
         TeamMember second = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
-        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(MEMBER_ID, List.of(5L, 6L)))
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(MEMBER_ID, List.of(5L, 6L)))
                 .willReturn(List.of(first, second));
 
         teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L, 8L));
@@ -705,7 +705,7 @@ class TeamServiceTest {
                 .willReturn(List.of(performanceTeam(5L, 7L), performanceTeam(6L, 8L)));
         TeamMember asMember = member(LEADER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
         TeamMember asLeader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
-        given(teamMemberRepository.findActiveByUserIdAndTeamIdIn(LEADER_ID, List.of(5L, 6L)))
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(LEADER_ID, List.of(5L, 6L)))
                 .willReturn(List.of(asMember, asLeader));
 
         assertErrorCode(() -> teamService.leavePerformanceTeams(LEADER_ID, List.of(7L, 8L)),
@@ -724,7 +724,67 @@ class TeamServiceTest {
         teamService.leavePerformanceTeams(MEMBER_ID, List.of());
         teamService.leavePerformanceTeams(MEMBER_ID, List.of(7L));
 
-        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdIn(any(), any());
+        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdInForUpdate(any(), any());
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 나가기: 속한 활동 팀(공연 팀·독립 팀)의 내 팀원 행이 모두 LEFT가 된다")
+    void leaveAllTeams_marksAllMembershipsLeft() {
+        TeamMember inIndependent = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember inPerformance = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        ReflectionTestUtils.setField(inIndependent, "teamId", 5L);
+        ReflectionTestUtils.setField(inPerformance, "teamId", 6L);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inIndependent, inPerformance));
+        given(teamRepository.findActiveByIdInForUpdate(List.of(5L, 6L)))
+                .willReturn(List.of(team(), performanceTeam(6L, 7L)));
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(MEMBER_ID, List.of(5L, 6L)))
+                .willReturn(List.of(inIndependent, inPerformance));
+
+        teamService.leaveAllTeams(MEMBER_ID);
+
+        assertThat(inIndependent.getStatus()).isEqualTo(MemberStatus.LEFT);
+        assertThat(inPerformance.getStatus()).isEqualTo(MemberStatus.LEFT);
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 나가기: 해체된 팀은 잠금 조회 결과에 없으므로 그 팀의 팀원 행은 그대로다")
+    void leaveAllTeams_skipsDisbandedTeams() {
+        TeamMember inDisbanded = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of(inDisbanded));
+        given(teamRepository.findActiveByIdInForUpdate(List.of(TEAM_ID))).willReturn(List.of());
+
+        teamService.leaveAllTeams(MEMBER_ID);
+
+        assertThat(inDisbanded.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdInForUpdate(any(), any());
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 나가기: 팀장 행이 남아 있으면 LEADER_MUST_DELEGATE_FIRST이고 아무 행도 바꾸지 않는다")
+    void leaveAllTeams_rejectsLeader_andChangesNothing() {
+        TeamMember asMember = member(LEADER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember asLeader = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        ReflectionTestUtils.setField(asMember, "teamId", 6L);
+        given(teamMemberRepository.findActiveMembershipsOf(LEADER_ID)).willReturn(List.of(asLeader, asMember));
+        given(teamRepository.findActiveByIdInForUpdate(List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(team(), performanceTeam(6L, 7L)));
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(LEADER_ID, List.of(TEAM_ID, 6L)))
+                .willReturn(List.of(asLeader, asMember));
+
+        assertErrorCode(() -> teamService.leaveAllTeams(LEADER_ID), ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+
+        assertThat(asLeader.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(asMember.getStatus()).isEqualTo(MemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 나가기: 속한 팀이 없으면 팀을 조회하지 않는다")
+    void leaveAllTeams_withoutMemberships_doesNothing() {
+        given(teamMemberRepository.findActiveMembershipsOf(MEMBER_ID)).willReturn(List.of());
+
+        teamService.leaveAllTeams(MEMBER_ID);
+
+        verify(teamRepository, never()).findActiveByIdInForUpdate(any());
     }
 
     @Test

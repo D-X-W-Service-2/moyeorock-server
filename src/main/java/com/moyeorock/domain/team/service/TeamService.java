@@ -299,13 +299,36 @@ public class TeamService {
         if (performanceIds == null || performanceIds.isEmpty()) {
             return;
         }
-        List<Long> teamIds = teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds).stream()
-                .map(Team::getId)
+        leaveLockedTeams(userId, teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds));
+    }
+
+    /**
+     * 회원 탈퇴 시 이 사람이 속한 모든 활동 중인 팀(공연 팀·독립 팀)에서 뺀다(1팀 UserService). 호출한 쪽의 트랜잭션에 참여한다.
+     * ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀은 지나간다 — 해체된 팀의 팀원 행은 해체 당시 인원 기록이라 그대로 둔다.
+     * 팀장 행이 남아 있으면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던진다. 1팀이 먼저 findLedTeams로 막으므로
+     * 보통은 일반 팀원만 남지만, 그 확인 뒤에 위임·합류가 겹친 경우를 막는 안전장치다.
+     *
+     * <p>팀원 행을 읽어 팀을 알아낸 다음 팀 행을 id 순으로 잠그고, 팀원 행은 잠금 읽기로 다시 읽는다. 그래서 그 사이에
+     * 바뀐 역할도 놓치지 않는다. 확인 이후에 새로 합류한 팀은 이번에 빠지지 않는다.
+     */
+    @Transactional
+    public void leaveAllTeams(Long userId) {
+        List<Long> teamIds = teamMemberRepository.findActiveMembershipsOf(userId).stream()
+                .map(TeamMember::getTeamId)
                 .toList();
         if (teamIds.isEmpty()) {
             return;
         }
-        List<TeamMember> memberships = teamMemberRepository.findActiveByUserIdAndTeamIdIn(userId, teamIds);
+        leaveLockedTeams(userId, teamRepository.findActiveByIdInForUpdate(teamIds));
+    }
+
+    // 이미 잠근 활동 중인 팀들에서 이 사람의 ACTIVE 팀원 행을 LEFT로 바꾼다. 팀장 행이 하나라도 있으면 아무것도 바꾸지 않는다.
+    private void leaveLockedTeams(Long userId, List<Team> lockedTeams) {
+        if (lockedTeams.isEmpty()) {
+            return;
+        }
+        List<Long> teamIds = lockedTeams.stream().map(Team::getId).toList();
+        List<TeamMember> memberships = teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(userId, teamIds);
         if (memberships.stream().anyMatch(m -> m.getRole() == TeamRole.LEADER)) {
             throw new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
         }
