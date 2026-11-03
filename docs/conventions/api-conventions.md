@@ -32,7 +32,7 @@ JSON 키는 `camelCase`로 쓴다 (`totalElements`, `totalPages`). Jackson 기�
 | 409 | 중복 · 상태 충돌 |
 | 415 | `UNSUPPORTED_MEDIA_TYPE`(요청 Content-Type 미지원) |
 
-**204를 쓰지 않는다.** 봉투를 항상 내려주려면 바디가 있어야 한다. 삭제도 200 + `DeleteResponse`.
+**204를 쓰지 않는다.** 봉투를 항상 내려주려면 바디가 있어야 한다. 삭제도 200 + `DeleteResponse`. 단, 공지 삭제는 노션 `API 초안`(2026-09-30)이 `data: null`로 정해 `DeleteResponse`를 쓰지 않는다(`docs/conventions/dto-naming.md` §8).
 
 ## 3. 예외 · ErrorCode
 
@@ -161,6 +161,8 @@ public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 ## 8. 날짜
 
 ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 하지 않는다.
+
+서버 기본 타임존은 Asia/Seoul로 고정한다(`global/config/TimezoneConfig`).
 
 ## 9. Swagger
 

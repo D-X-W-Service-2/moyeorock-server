@@ -1,5 +1,5 @@
 # moyeorock DB 테이블 명세 — ERD v3
-대상: MySQL 8.0 · 17 테이블 · PK `BIGINT AUTO_INCREMENT`
+대상: MySQL 8.0 · 18 테이블 · PK `BIGINT AUTO_INCREMENT`
 기준: `band_erd_v3_mysql.drawio` 에서 자동 생성
 표기: 타입 칸에 `NOT NULL`만 명시한다. 표기 없으면 NULL 허용.
 
@@ -101,8 +101,11 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `type` | `VARCHAR(10)` | REGULAR\|PROJECT |
 |  | `region` | `VARCHAR(50)` |  |
 |  | `cover_image` | `VARCHAR(500)` |  |
+|  | `status` | `VARCHAR(10) NOT NULL` | ACTIVE\|DISBANDED (기본값 ACTIVE) |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
+
+> 2026-10-29 `status` 추가(이슈 #80) — 모임 해체(`PATCH /v1/groups/{groupId}/status`)는 행을 지우지 않는 soft delete다(`architecture.md` §6). 해체 시 `group_members`·`group_notices`는 그대로 두며, 모임을 거쳐 들어오는 조회가 `DISBANDED`를 걸러 "없는 모임"(404)으로 본다. 모임을 거치지 않는 `recruit_posts`는 대상이 이 모임인 `OPEN` 공고를 같은 트랜잭션에서 `CLOSED`로 바꾼다(행은 지우지 않는다).
 
 ### 5. `group_members`
 
@@ -113,11 +116,13 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `group_id` | `BIGINT` | → groups_ |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `role` | `VARCHAR(10)` | OWNER\|MEMBER |
+|  | `role` | `VARCHAR(10)` | OWNER\|MANAGER\|MEMBER |
 |  | `status` | `VARCHAR(10)` | ACTIVE\|LEFT\|BANNED |
 |  | `joined_at` | `DATETIME(6)` |  |
 
 - **유니크** `(group_id, user_id)`
+- **인덱스** `(user_id)` — 2026-10-29 추가(이슈 #80). 내 모임 목록이 `user_id`로 좁히는데 위 유니크는 `group_id`가 앞이라 탈 수 없다
+- `MANAGER`는 2026-10-05에 값만 추가했다. **지금은 권한이 없고 `MEMBER`와 동일하게 취급한다** — 임원진 전용 동작이 필요해지는 시점에 권한을 붙인다. 컬럼 타입(`VARCHAR(10)`)이 그대로라 마이그레이션은 필요 없다
 
 ### 6. `group_notices`
 
@@ -134,6 +139,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
+- **인덱스** `(group_id, is_pinned, created_at)` ← 공지 목록·고정 필터·홈 미리보기가 모두 "모임으로 좁히고 → 고정 여부로 필터·정렬 → 최신순 → LIMIT" 모양이라 정렬까지 인덱스로 처리한다. V2에서 빠져 있어 2026-10-07 `V6__add_index_to_group_notices.sql`로 추가했다(처음엔 V4였으나 main의 V4·V5와 겹쳐 머지 때 옮겼다)
 
 ---
 
@@ -147,9 +153,9 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 | FK | `user_id` | `BIGINT` | → users |
-|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|... |
+|  | `type` | `VARCHAR(30)` | TEAM_APPLY\|TEAM_INVITE\|GROUP_INVITE\|JOIN_REQUEST_APPROVED\|JOIN_REQUEST_REJECTED\|INVITATION_ACCEPTED\|INVITATION_DECLINED\|TEAM_MEMBER_REMOVED\|GROUP_MEMBER_REMOVED\|NOTICE_CREATED\|PERFORMANCE_CREATED\|RECRUIT_POST_APPLIED (`NotificationType`) |
 |  | `message` | `VARCHAR(255)` |  |
-| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 |
+| ＋ | `target_type` | `VARCHAR(20)` | 이동 대상 — TEAM\|GROUP\|PERFORMANCE\|NOTICE\|JOIN_REQUEST\|INVITATION (`NotificationTargetType`) |
 | ＋ | `target_id` | `BIGINT` |  |
 |  | `is_read` | `TINYINT(1) DEFAULT 0` |  |
 |  | `created_at` | `DATETIME(6)` |  |
@@ -188,12 +194,15 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `title` | `VARCHAR(100)` |  |
 |  | `description` | `TEXT` |  |
 |  | `performed_at` | `DATETIME(6)` |  |
-|  | `venue` | `VARCHAR(100)` | 7.1.1 필수 X |
+|  | `venue` | `VARCHAR(100)` | 필수 — 애플리케이션에서 검증, 컬럼은 NULL 허용 유지. 7.1.1의 "필수 X"는 `API 초안`(2026-10-08)에서 필수로 바뀌었다 |
 |  | `poster_image` | `VARCHAR(500)` | 7.4 |
 |  | `status` | `VARCHAR(20)` | PLANNED\|RECRUITING\|DONE\|CANCELED |
 | FK | `created_by` | `BIGINT` | → users |
+| ＋ | `setlist_confirmed_at` | `DATETIME(6)` | 셋리스트 확정 시각. NULL이면 미확정 — 확정되면 팀이 곡을 더 넘길 수 없다(2026-10-30, 이슈 #85). 모임장이 확정을 해제하면 다시 NULL(2026-11-02) |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
+
+- **인덱스** `(group_id, performed_at)` ← 모임 공연 목록(`performed_at` 내림차순) 조회용 (2026-10-30, V12)
 
 
 ---
@@ -301,19 +310,40 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 ### 15. `team_songs`
 
-연습곡 + 셋리스트
+팀 선택곡 — 독립 팀·공연 팀이 고른 곡. 팀 쪽에서는 "셋리스트"라고 부르지 않는다
 
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
-| FK | `team_id` | `BIGINT` | → teams |
-| FK | `song_id` | `BIGINT` | → songs |
-|  | `sort_order` | `INT` | 7.1.3 순서 |
-|  | `progress` | `VARCHAR(20)` | CANDIDATE\|SELECTED\|PRACTICING\|DONE |
+| FK | `team_id` | `BIGINT NOT NULL` | → teams |
+| FK? | `performance_id` | `BIGINT` | → performances. `teams.performance_id` 복사본, 독립 팀이면 NULL |
+| FK | `song_id` | `BIGINT NOT NULL` | → songs |
 |  | `created_at` | `DATETIME(6)` |  |
 | ＋ | `updated_at` | `DATETIME(6)` |  |
 
-> 2026-09-16 변경: `performance_id`(→ performances, `teams.performance_id`와 중복)와 `selected_song_id`(GENERATED) + `UNIQUE(performance_id, selected_song_id)` 삭제. 어느 공연 소속인지는 `team_id → teams.performance_id`로 파생한다(팀은 생성된 공연에서 옮겨가지 않으므로 값이 어긋날 일이 없다). **대신 "공연 내 곡 중복 방지"(7.1.3)를 DB가 더 이상 강제하지 않는다** — `setlist` 도메인(4팀) `SetlistService`가 `progress='SELECTED'`로 바꾸는 시점에 같은 공연 소속 팀들의 `team_songs`를 조회해 중복을 애플리케이션에서 검증해야 한다. 근거: `docs/plans/schema-cleanup-adoption-review.md` "`team_songs.performance_id` — 삭제 확정" 절.
+- **유니크** `(team_id, song_id)` — 같은 팀이 같은 곡을 두 번 고를 수 없다
+- **인덱스** `(performance_id)` ← 같은 공연의 다른 팀이 고른 곡 조회용 ("다른 팀이 이미 골랐어요" 표시)
+
+> **2026-10-30 변경(이슈 #85, V9)**: 공연 셋리스트를 `setlists`(§18)로 분리하면서 `sort_order`·`progress` 삭제, `performance_id` 재추가, 위 유니크 추가. 이전에는 한 행이 팀 연습곡이면서 `progress = SELECTED`이면 셋리스트 항목이기도 해서 `sort_order`·`progress`가 뜻을 두 개씩 가졌다. `performance_id`는 2026-09-16에 `teams.performance_id`와 중복이라 지웠던 컬럼인데, `setlist` 도메인이 `teams`를 직접 조회할 수 없어(CLAUDE.md 절대 규칙 2) 되살렸다 — 팀은 생성된 공연에서 옮겨가지 않으므로 값이 어긋나지 않는다. 계획: `docs/plans/team-songs-setlists-redesign.md`.
+
+### 18. `setlists`
+
+공연 셋리스트 — 공연 팀이 팀 선택곡(`team_songs`) 중에서 넘긴 곡. 모임장이 순서를 정해 확정한다 (2026-10-30 신규, 이슈 #85, V10. 번호는 기존 절 번호를 지키려고 끝 번호를 붙였다)
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+| FK | `performance_id` | `BIGINT NOT NULL` | → performances |
+| FK | `team_id` | `BIGINT NOT NULL` | → teams · 곡을 넘긴 팀 |
+| FK | `song_id` | `BIGINT NOT NULL` | → songs |
+|  | `sort_order` | `INT` | 공연 셋리스트 순서. 모임장이 확정할 때 정한다(확정 전 NULL) |
+|  | `created_at` | `DATETIME(6)` |  |
+|  | `updated_at` | `DATETIME(6)` |  |
+
+- **유니크** `(performance_id, song_id)` — 한 공연에 같은 곡을 두 번 넣을 수 없다(7.1.3). DB가 강제한다
+- **인덱스** `(team_id)` ← 팀 페이지의 확정곡 조회, 팀 개별 해체 시 삭제용
+
+> 행은 팀이 넘길 때 `team_songs`에서 복사한다 — 넘긴 뒤 팀이 선택곡을 고쳐도 모임장이 보는 셋리스트가 바뀌지 않게. 확정 여부는 `performances.setlist_confirmed_at`에 둔다. 팀이 **개별** 해체되면 그 팀 행을 하드 삭제해 유니크를 푼다(다른 팀이 그 곡을 넘길 수 있게). 그 팀의 `team_songs` 행도 같이 지운다. 공연 종료(`DONE`)로 인한 일괄 해체에서는 둘 다 남긴다 — `architecture.md` §6의 예외. 확정을 해제하면(`PATCH .../setlist/unconfirm`) `sort_order`를 NULL로 되돌린다.
 
 ### 16. `rehearsals`
 
@@ -385,8 +415,12 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | `teams` | `team_members` | 1:N |  |
 | `teams` | `team_genres` | 1:N |  |
 | `teams` | `rehearsals` | 1:N |  |
-| `teams` | `team_songs` | 1:N |  |
+| `teams` | `team_songs` | 1:N | 팀 선택곡 |
 | `songs` | `team_songs` | 1:N |  |
+| `performances` | `team_songs` | 0..1:N | `teams.performance_id` 복사본, 독립 팀이면 NULL |
+| `performances` | `setlists` | 1:N | 공연 셋리스트 |
+| `teams` | `setlists` | 1:N | 곡을 넘긴 팀 |
+| `songs` | `setlists` | 1:N |  |
 
 `created_by` · `author_id` · `decided_by` · `user_id`(join_requests) · `inviter_id` 는 모두 `users` 를 참조하지만 선이 얽혀 도면에서는 컬럼 주석으로만 표기했다.
 

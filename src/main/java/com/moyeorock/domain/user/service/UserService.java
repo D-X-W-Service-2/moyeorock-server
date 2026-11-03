@@ -8,6 +8,7 @@ import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
+import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
 import com.moyeorock.domain.user.entity.User;
@@ -154,6 +155,18 @@ public class UserService {
         return users.stream()
                 .map(User::getId)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * {@link #getSummaries}와 같은 기준(탈퇴 회원 제외, IN 쿼리 1번)으로 활동 지역·장르까지 돌려준다.
+     * 북마크 대상 요약처럼 사용자를 카드로 보여주는 다른 도메인이 쓴다.
+     */
+    public Map<Long, UserProfileSummaryResponse> getProfileSummaries(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllByIdInAndStatusNot(new HashSet<>(userIds), UserStatus.WITHDRAWN).stream()
+                .collect(Collectors.toMap(User::getId, UserProfileSummaryResponse::from));
     }
 
     private User getActiveUser(Long userId) {

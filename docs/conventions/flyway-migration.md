@@ -89,22 +89,22 @@ ALTER TABLE groups_
 ### 3-4. 인덱스
 
 - 조회 빈도가 높은 컬럼, WHERE/ORDER BY에 자주 쓰이는 컬럼에 인덱스를 추가한다. 인덱스명은 `idx_{table}_{column...}`, 유니크는 `uk_{table}_{column...}`.
-- `erd.md`에 이미 명시된 인덱스·유니크 제약(예: `team_songs.selected_song_id`의 생성 컬럼 유니크, `recruit_posts`의 `(status, region, created_at)` 복합 인덱스)은 그대로 옮긴다.
+- `erd.md`에 이미 명시된 인덱스·유니크 제약(예: `setlists`의 `(performance_id, song_id)` 유니크, `recruit_posts`의 `(status, region, created_at)` 복합 인덱스)은 그대로 옮긴다.
 
 ### 3-5. 소프트 삭제 컬럼
 
 moyeorock은 `deleted_at`이 아니라 **`status` enum 컬럼 기반 소프트 삭제**를 쓴다(`architecture.md` §6). 대부분은 일반 인덱스로 충분하다 — `deleted_at` NULL 기반 부분 유니크 같은 특수 처리가 필요 없다.
 
-단, `team_songs`처럼 "특정 상태일 때만 유일해야" 하는 경우는 `erd.md`에 이미 정의된 MySQL 생성 컬럼 패턴을 그대로 따른다:
+"특정 상태일 때만 유일해야" 하는 경우가 생기면 MySQL 생성 컬럼으로 상태가 아닐 때 NULL을 만들고 그 컬럼에 유니크를 건다(유니크는 NULL끼리 겹쳐도 통과한다). 예전 `team_songs.selected_song_id`가 이 패턴이었다. 지금은 쓰는 곳이 없다 — 2026-09-16에 지웠고, 공연 내 곡 중복은 2026-10-30부터 별도 테이블 `setlists`의 일반 유니크로 막는다(이슈 #85).
 
 ```sql
--- erd.md §15 team_songs 기준
-ALTER TABLE team_songs
-    ADD COLUMN selected_song_id BIGINT
-        GENERATED ALWAYS AS (IF(progress = 'SELECTED', song_id, NULL)) STORED;
+-- 패턴 예시 (현재 스키마에는 없음)
+ALTER TABLE some_table
+    ADD COLUMN active_song_id BIGINT
+        GENERATED ALWAYS AS (IF(status = 'ACTIVE', song_id, NULL)) STORED;
 
-CREATE UNIQUE INDEX uk_team_songs_performance_id_selected_song_id
-    ON team_songs (performance_id, selected_song_id);
+CREATE UNIQUE INDEX uk_some_table_parent_id_active_song_id
+    ON some_table (parent_id, active_song_id);
 ```
 
 ### 3-6. 데이터 마이그레이션

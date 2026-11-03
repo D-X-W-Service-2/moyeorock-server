@@ -1,5 +1,6 @@
-package com.moyeorock.domain.notification.enums;
+package com.moyeorock.global.common.enums;
 
+// 알림 발생 이벤트(global/event)의 페이로드라 2·3·4팀 도메인이 모두 쓰므로 global/common/enums에 둔다(절대 규칙 4).
 // erd.md §7은 "TEAM_APPLY|TEAM_INVITE|..."로 전체 목록을 확정하지 않았다. 아래 값은 명세에
 // 직접 적힌 두 개(TEAM_APPLY, TEAM_INVITE) 외에는 domains.md "팀 간 의존 — 알림 발생" 표와
 // NotificationTargetType(JOIN_REQUEST·INVITATION·NOTICE·PERFORMANCE)에 근거해 추정한 것이다
