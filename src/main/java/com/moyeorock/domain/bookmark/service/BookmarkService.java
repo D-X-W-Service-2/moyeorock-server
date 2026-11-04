@@ -7,6 +7,8 @@ import com.moyeorock.domain.bookmark.entity.Bookmark;
 import com.moyeorock.domain.bookmark.enums.BookmarkTargetType;
 import com.moyeorock.domain.bookmark.repository.BookmarkRepository;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.service.SongService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
@@ -26,11 +28,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * <b>임시 구현 — USER·TEAM 대상만 지원한다.</b> SONG은 4팀 {@code SongService}가 아직 없어서 대상 확인과 요약
- * 조회를 할 수 없다. 서비스가 머지되면 {@link #create}의 대상 확인과 {@link #getBookmarks}의 대상 요약 조회에
- * SONG 분기를 추가한다(후속 이슈).
- */
+/** 저장 추가·목록·삭제. 대상은 사용자·팀·곡이고, 대상 확인과 요약은 각 도메인 Service에서 받는다. */
 @Service
 @RequiredArgsConstructor
 public class BookmarkService {
@@ -45,6 +43,7 @@ public class BookmarkService {
     private final BookmarkRepository bookmarkRepository;
     private final UserService userService;
     private final TeamService teamService;
+    private final SongService songService;
 
     /**
      * 저장 추가. 이미 저장한 대상이면 409다. 더블 탭·재전송·다른 기기에서 먼저 저장한 경우처럼 정상 흐름에서도
@@ -55,9 +54,20 @@ public class BookmarkService {
         return switch (request.targetType()) {
             case USER -> createUserBookmark(userId, request.targetId());
             case TEAM -> createTeamBookmark(userId, request.targetId());
-            // 임시: SONG은 대상을 확인할 서비스가 없다
-            case SONG -> throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            case SONG -> createSongBookmark(userId, request.targetId());
         };
+    }
+
+    private BookmarkResponse createSongBookmark(Long userId, Long songId) {
+        SongSummaryResponse target = songService.getSummaries(List.of(songId)).get(songId);
+        if (target == null) {
+            throw new BusinessException(ErrorCode.SONG_NOT_FOUND);
+        }
+        if (bookmarkRepository.existsByUserIdAndTargetSongId(userId, songId)) {
+            throw new BusinessException(ErrorCode.BOOKMARK_DUPLICATED);
+        }
+        Bookmark saved = saveOrThrowDuplicated(Bookmark.create(userId, null, null, songId));
+        return BookmarkResponse.of(saved, BookmarkTarget.fromSong(target));
     }
 
     // 자기 팀도 저장할 수 있다 — 사용자와 달리 "저장한 팀 N명" 같은 집계에 본인이 섞여 문제될 일이 없다.
@@ -94,16 +104,19 @@ public class BookmarkService {
         Pageable latestFirst = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), LATEST_FIRST);
         Page<Bookmark> page = findPage(userId, targetType, latestFirst);
 
-        // 대상 타입별로 id를 모아 한 번씩만 조회한다(N+1 방지). 임시: USER·TEAM만 해석한다.
+        // 대상 타입별로 id를 모아 한 번씩만 조회한다(N+1 방지).
         List<Long> userIds = page.getContent().stream()
                 .map(Bookmark::getTargetUserId).filter(Objects::nonNull).toList();
         List<Long> teamIds = page.getContent().stream()
                 .map(Bookmark::getTargetTeamId).filter(Objects::nonNull).toList();
         Map<Long, UserProfileSummaryResponse> users = userService.getProfileSummaries(userIds);
+        List<Long> songIds = page.getContent().stream()
+                .map(Bookmark::getTargetSongId).filter(Objects::nonNull).toList();
         Map<Long, TeamSummaryResponse> teams = teamService.getSummaries(teamIds);
+        Map<Long, SongSummaryResponse> songs = songService.getSummaries(songIds);
 
         return PageResponse.from(page.map(bookmark ->
-                BookmarkResponse.of(bookmark, resolveTarget(bookmark, users, teams))));
+                BookmarkResponse.of(bookmark, resolveTarget(bookmark, users, teams, songs))));
     }
 
     /** 저장은 실제로 행이 사라지는 hard delete다(합주·공지와 함께 3곳). */
@@ -126,9 +139,9 @@ public class BookmarkService {
         };
     }
 
-    /** 요약을 못 찾은 대상(삭제·탈퇴·해체)과 아직 해석하지 못하는 타입(SONG)은 null이다. */
+    /** 요약을 못 찾은 대상(삭제·탈퇴·해체)은 null이다. */
     private BookmarkTarget resolveTarget(Bookmark bookmark, Map<Long, UserProfileSummaryResponse> users,
-            Map<Long, TeamSummaryResponse> teams) {
+            Map<Long, TeamSummaryResponse> teams, Map<Long, SongSummaryResponse> songs) {
         return switch (bookmark.getTargetType()) {
             case USER -> {
                 UserProfileSummaryResponse user = users.get(bookmark.getTargetUserId());
@@ -138,7 +151,10 @@ public class BookmarkService {
                 TeamSummaryResponse team = teams.get(bookmark.getTargetTeamId());
                 yield team == null ? null : BookmarkTarget.fromTeam(team);
             }
-            case SONG -> null;
+            case SONG -> {
+                SongSummaryResponse song = songs.get(bookmark.getTargetSongId());
+                yield song == null ? null : BookmarkTarget.fromSong(song);
+            }
         };
     }
 

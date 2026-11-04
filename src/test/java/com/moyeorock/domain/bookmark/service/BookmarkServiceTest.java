@@ -19,6 +19,8 @@ import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.service.SongService;
 import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
@@ -60,6 +62,9 @@ class BookmarkServiceTest {
     @Mock
     private TeamService teamService;
 
+    @Mock
+    private SongService songService;
+
     @InjectMocks
     private BookmarkService bookmarkService;
 
@@ -80,6 +85,13 @@ class BookmarkServiceTest {
 
     private static Bookmark userBookmark(Long id, Long targetUserId) {
         Bookmark bookmark = Bookmark.create(ME, null, targetUserId, null);
+        ReflectionTestUtils.setField(bookmark, "id", id);
+        ReflectionTestUtils.setField(bookmark, "createdAt", LocalDateTime.of(2026, 8, 10, 12, 0));
+        return bookmark;
+    }
+
+    private static Bookmark songBookmark(Long id, Long targetSongId) {
+        Bookmark bookmark = Bookmark.create(ME, null, null, targetSongId);
         ReflectionTestUtils.setField(bookmark, "id", id);
         ReflectionTestUtils.setField(bookmark, "createdAt", LocalDateTime.of(2026, 8, 10, 12, 0));
         return bookmark;
@@ -124,12 +136,37 @@ class BookmarkServiceTest {
     }
 
     @Test
-    @DisplayName("임시: SONG 저장은 대상을 확인할 서비스가 없어 VALIDATION_FAILED이고 아무것도 호출하지 않는다")
-    void create_songIsRejected() {
-        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.SONG, 5L)))
-                .getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+    @DisplayName("SONG 대상을 저장하면 곡 제목을 name으로 돌려주고 지역·장르·이미지는 null이다")
+    void create_songTarget() {
+        given(songService.getSummaries(List.of(TARGET)))
+                .willReturn(Map.of(TARGET, new SongSummaryResponse(TARGET, "Creep", "Radiohead")));
+        given(bookmarkRepository.existsByUserIdAndTargetSongId(ME, TARGET)).willReturn(false);
+        given(bookmarkRepository.saveAndFlush(any())).willReturn(songBookmark(21L, TARGET));
 
+        BookmarkResponse response = bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.SONG, TARGET));
+
+        assertThat(response.targetType()).isEqualTo(BookmarkTargetType.SONG);
+        assertThat(response.target().name()).isEqualTo("Creep");
+        assertThat(response.target().region()).isNull();
+        assertThat(response.target().genres()).isNull();
+        ArgumentCaptor<Bookmark> saved = ArgumentCaptor.forClass(Bookmark.class);
+        verify(bookmarkRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getTargetSongId()).isEqualTo(TARGET);
         verifyNoInteractions(userService, teamService);
+    }
+
+    @Test
+    @DisplayName("없는 곡은 SONG_NOT_FOUND이고, 이미 저장한 곡은 BOOKMARK_DUPLICATED이며 저장하지 않는다")
+    void create_songMissingOrDuplicated() {
+        given(songService.getSummaries(List.of(TARGET))).willReturn(Map.of());
+        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.SONG, TARGET)))
+                .getErrorCode()).isEqualTo(ErrorCode.SONG_NOT_FOUND);
+
+        given(songService.getSummaries(List.of(TARGET)))
+                .willReturn(Map.of(TARGET, new SongSummaryResponse(TARGET, "Creep", "Radiohead")));
+        given(bookmarkRepository.existsByUserIdAndTargetSongId(ME, TARGET)).willReturn(true);
+        assertThat(thrownBy(() -> bookmarkService.create(ME, new BookmarkCreateRequest(BookmarkTargetType.SONG, TARGET)))
+                .getErrorCode()).isEqualTo(ErrorCode.BOOKMARK_DUPLICATED);
         verify(bookmarkRepository, never()).saveAndFlush(any());
     }
 
@@ -318,5 +355,22 @@ class BookmarkServiceTest {
         assertThat(thrownBy(() -> bookmarkService.delete(ME, 21L)).getErrorCode())
                 .isEqualTo(ErrorCode.BOOKMARK_NOT_FOUND);
         verify(bookmarkRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("목록의 SONG 대상은 한 번에 일괄 조회하고, 삭제된 곡은 target만 null이다")
+    void list_batchesSongLookup() {
+        Page<Bookmark> page = new PageImpl<>(
+                List.of(songBookmark(23L, 8L), songBookmark(22L, 9L)), PageRequest.of(0, 20), 2);
+        given(bookmarkRepository.findByUserId(eq(ME), any())).willReturn(page);
+        given(songService.getSummaries(any()))
+                .willReturn(Map.of(8L, new SongSummaryResponse(8L, "Creep", "Radiohead")));
+
+        PageResponse<BookmarkResponse> response = bookmarkService.getBookmarks(ME, null, PageRequest.of(0, 20));
+
+        assertThat(response.content().get(0).target().name()).isEqualTo("Creep");
+        assertThat(response.content().get(1).target()).isNull();
+        assertThat(response.content().get(1).targetId()).isEqualTo(9L);
+        verify(songService).getSummaries(any());
     }
 }
