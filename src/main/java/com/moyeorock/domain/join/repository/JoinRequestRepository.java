@@ -23,7 +23,7 @@ public interface JoinRequestRepository extends JpaRepository<JoinRequest, Long> 
 
     /** 회원 탈퇴 정리용. 이 사람이 신청자이거나 초대받은 사람인 대기 건을 id 순으로 잠그고 읽는다(승인·취소와 겹쳐도 한 번만 처리). */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM JoinRequest r WHERE r.userId = :userId AND r.status = com.moyeorock.domain.join.enums.JoinStatus.PENDING ORDER BY r.id")
+    @Query("SELECT r FROM JoinRequest r WHERE r.userId = :userId AND r.status = com.moyeorock.global.common.enums.JoinStatus.PENDING ORDER BY r.id")
     List<JoinRequest> findPendingByUserIdForUpdate(@Param("userId") Long userId);
 
     /**
