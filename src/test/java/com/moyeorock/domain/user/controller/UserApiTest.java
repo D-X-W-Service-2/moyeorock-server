@@ -15,6 +15,8 @@ import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
 import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.service.GroupService;
+import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
+import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -41,7 +43,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * user Phase 1 7개 + Phase 2 내 활동·타인 프로필을 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
  * 사용자는 Repository로 바로 만들고 토큰은 {@code JwtProvider}로 발급한다(RecruitPostApiTest 선례).
- * 팀 활동 재료는 2팀 {@code TeamService.create}로 만든다. 남의 Repository·Entity는 테스트에서도 만지지 않는다.
+ * 활동 재료는 2팀 {@code TeamService}·4팀 {@code GroupService}·{@code PerformanceService}로 만든다. 남의 Repository·Entity는
+ * 테스트에서도 만지지 않는다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
 @SpringBootTest
@@ -70,6 +73,9 @@ class UserApiTest {
 
     @Autowired
     private GroupService groupService;
+
+    @Autowired
+    private PerformanceService performanceService;
 
     private long saveUser(String email, String nickname) {
         return userRepository.saveAndFlush(
@@ -120,7 +126,7 @@ class UserApiTest {
     }
 
     @Test
-    @DisplayName("내 활동: 내가 만든 팀이 팀 요약 + 내 역할(LEADER)·악기로 담긴다. groups·performances는 4팀 메서드 전이라 빈 배열이다")
+    @DisplayName("내 활동: 내가 만든 팀이 팀 요약 + 내 역할(LEADER)·악기로 담긴다. 모임·공연이 없으면 groups·performances는 빈 배열이다")
     void getActivities_withTeam_returnsMembership() throws Exception {
         long me = saveUser("me@example.com", "조회자");
         long teamId = createTeam(me, "무명밴드");
@@ -136,6 +142,33 @@ class UserApiTest {
                 .andExpect(jsonPath("$.data.teams[0].instrument").value("BASS"))
                 .andExpect(jsonPath("$.data.groups", hasSize(0)))
                 .andExpect(jsonPath("$.data.performances", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 만든 모임이 내 역할(OWNER)과 함께, 그 모임 공연에서 만든 팀이 나가는 진행 중 공연이 모임 이름·팀 이름과 함께 담긴다")
+    void getActivities_withGroupAndPerformance_returnsBoth() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long groupId = groupService.create(me,
+                new GroupCreateRequest("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+        long performanceId = performanceService.create(me, groupId,
+                new PerformanceCreateRequest("겨울 정기공연", null, LocalDateTime.now().plusDays(30), null, null)).id();
+        teamService.createForPerformance(me, performanceId, "공연팀", null, Region.SEOUL, List.of(Genre.ROCK),
+                Instrument.DRUM);
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.groups", hasSize(1)))
+                .andExpect(jsonPath("$.data.groups[0].id").value(groupId))
+                .andExpect(jsonPath("$.data.groups[0].name").value("홍대 밴드부"))
+                .andExpect(jsonPath("$.data.groups[0].type").value("REGULAR"))
+                .andExpect(jsonPath("$.data.groups[0].role").value("OWNER"))
+                .andExpect(jsonPath("$.data.performances", hasSize(1)))
+                .andExpect(jsonPath("$.data.performances[0].id").value(performanceId))
+                .andExpect(jsonPath("$.data.performances[0].title").value("겨울 정기공연"))
+                .andExpect(jsonPath("$.data.performances[0].groupName").value("홍대 밴드부"))
+                .andExpect(jsonPath("$.data.performances[0].status").value("PLANNED"))
+                .andExpect(jsonPath("$.data.performances[0].teamName").value("공연팀"))
+                .andExpect(jsonPath("$.data.performances[0].performedAt").exists());
     }
 
     @Test

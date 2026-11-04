@@ -1,5 +1,7 @@
 package com.moyeorock.domain.user.service;
 
+import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserActivityResponse;
 import com.moyeorock.domain.user.dto.response.UserProfileResponse;
@@ -17,13 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 내 활동·타인 프로필(api-spec §1의 Phase 2 2개, 이슈 #90). UserService에 두지 않는 이유: 2팀 TeamService와
- * 4팀 GroupService·PerformanceService를 주입받는데 그쪽이 이미 UserService를 주입받고 있어, UserService에 넣으면 생성자 순환 참조로
+ * 4팀 PerformanceService를 주입받는데 그쪽이 이미 UserService를 주입받고 있어, UserService에 넣으면 생성자 순환 참조로
  * 컨텍스트가 뜨지 않는다(architecture.md §3). GroupMemberService·TeamMemberService처럼 도메인 안에서 나눈 Service이며,
  * 다른 도메인은 이 클래스를 주입받지 않는다. 다른 도메인의 Repository·Entity는 만지지 않고 Service만 부른다.
  *
- * <p>2단계 진행 중: teams는 2팀 {@code TeamService.findMemberships}로 조립한다. groups·performances는 4팀 메서드(이슈 #95,
- * {@code GroupService.findMyGroupSummaries}·{@code PerformanceService.findActivitiesByUserId})가 main에 들어오면 호출 한 줄씩 잇는다.
- * 그 전까지는 빈 목록이다.
+ * <p>세 목록은 2팀 {@code TeamService.findMemberships}, 4팀 {@code GroupMemberService.findMyGroupSummaries}·
+ * {@code PerformanceService.findActivitiesByUserId}(이슈 #95, PR #128)가 준다. 모임 조회는 다른 도메인용 조회를 모아 둔
+ * GroupMemberService에 있다(GroupService가 아님, #128 리뷰 요구).
  */
 @Service
 @RequiredArgsConstructor
@@ -32,6 +34,8 @@ public class UserActivityService {
     private final UserRepository userRepository;
     private final UserInstrumentRepository userInstrumentRepository;
     private final TeamService teamService;
+    private final GroupMemberService groupMemberService;
+    private final PerformanceService performanceService;
 
     /**
      * 내 활동. 다른 /me 엔드포인트와 같이 ACTIVE 사용자만 통과하고 아니면 404 USER_NOT_FOUND(UserService.getActiveUser와 같은 기준).
@@ -58,8 +62,15 @@ public class UserActivityService {
         return UserProfileResponse.of(user, instruments, activities);
     }
 
-    /** ACTIVE 필터·정렬은 제공하는 쪽 책임이다(팀: 활동 중인 팀의 활동 중인 팀원만, 최근 합류 순). user는 옮겨 담기만 한다. */
+    /**
+     * ACTIVE 필터·정렬은 제공하는 쪽 책임이고 user는 옮겨 담기만 한다. 팀: 활동 중인 팀의 활동 중인 팀원, 최근 합류 순.
+     * 모임: 활동 중인 모임의 활동 중인 모임원, 가입 최신순. 공연: 활동 중인 내 공연 팀이 나가는 진행 중(PLANNED·RECRUITING) 공연,
+     * 공연일 가까운 순이고 한 공연에 내 팀이 여럿이면 팀마다 한 줄이다(PR #84 범위 축소).
+     */
     private UserActivityResponse assembleActivities(Long userId) {
-        return new UserActivityResponse(teamService.findMemberships(userId), List.of(), List.of());
+        return new UserActivityResponse(
+                teamService.findMemberships(userId),
+                groupMemberService.findMyGroupSummaries(userId),
+                performanceService.findActivitiesByUserId(userId));
     }
 }

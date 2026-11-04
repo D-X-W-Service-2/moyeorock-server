@@ -149,7 +149,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `teams[]` 항목은 2팀 `TeamMembershipResponse`, `groups[]` 항목은 4팀 `GroupSummaryResponse`를 그대로 담는다(`docs/conventions/dto-naming.md` §0, 2026-11-02). 필터(ACTIVE)·정렬은 제공하는 팀 Service 책임이다.
-- `performances[]`는 4팀 `PerformanceService.findActivitiesByUserId`가 준다 — **진행 중인 공연(`PLANNED`·`RECRUITING`)만** 공연일 가까운 순이고, 한 공연에 내 팀이 여럿이면 팀마다 한 줄이라 같은 공연이 `teamName`만 달리 여러 번 나올 수 있다. 해체된 모임의 공연은 빠진다. 내 활동 화면의 공연 타일이 "참여 중인 공연"이고 지난 공연 섹션이 없어 1팀 요청으로 범위를 줄였다(2026-11-02, PR #84 댓글 — 이전 안은 `CANCELED`만 빼고 끝난 공연을 뒤에 붙이는 것). `groups[]`는 4팀 `GroupMemberService.findMyGroupSummaries`(가입 최신순, 페이징 없음)가 준다(이슈 #95). 1팀이 두 메서드를 연결하기 전까지는 둘 다 빈 배열이다
+- `performances[]`는 4팀 `PerformanceService.findActivitiesByUserId`가 준다 — **진행 중인 공연(`PLANNED`·`RECRUITING`)만** 공연일 가까운 순이고, 한 공연에 내 팀이 여럿이면 팀마다 한 줄이라 같은 공연이 `teamName`만 달리 여러 번 나올 수 있다. 해체된 모임의 공연은 빠진다. 내 활동 화면의 공연 타일이 "참여 중인 공연"이고 지난 공연 섹션이 없어 1팀 요청으로 범위를 줄였다(2026-11-02, PR #84 댓글 — 이전 안은 `CANCELED`만 빼고 끝난 공연을 뒤에 붙이는 것). `groups[]`는 4팀 `GroupMemberService.findMyGroupSummaries`(가입 최신순, 페이징 없음)가 준다(이슈 #95). 1팀 `UserActivityService`가 두 메서드를 연결했다(이슈 #126, 2026-11-03).
 
 ### UserProfileResponse
 
@@ -174,7 +174,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - `instruments[]`는 `{instrument, level}`뿐이다. `UserInstrumentResponse`의 `id`는 타인에게 노출하지 않는다(이슈 #90 P-4).
 - `isActivityPublic`은 유지한다. 비공개면 `activities`가 `null`이라, 프론트가 "비공개"와 "활동 없음"(빈 목록 3개)을 구분하려면 이 값이 필요하다(P-3, 2026-11-02 1팀 결정). `email`·`isRecommendable`은 담지 않는다.
-- `activities`는 공개면 `GET /v1/users/me/activities`와 같은 조립이다. `groups`·`performances`는 4팀 메서드(이슈 #95) 전까지 빈 목록(2026-11-02).
+- `activities`는 공개면 `GET /v1/users/me/activities`와 같은 조립이다. 세 목록 모두 내 활동과 같은 Service가 채운다(이슈 #126, 2026-11-03).
 
 ## §2. 팀 (team)
 

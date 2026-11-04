@@ -6,6 +6,13 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.moyeorock.domain.group.dto.response.GroupSummaryResponse;
+import com.moyeorock.domain.group.enums.GroupRole;
+import com.moyeorock.domain.group.enums.GroupType;
+import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.performance.dto.response.PerformanceActivityResponse;
+import com.moyeorock.domain.performance.enums.PerformanceStatus;
+import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamRole;
@@ -47,6 +54,10 @@ class UserActivityServiceTest {
     UserInstrumentRepository userInstrumentRepository;
     @Mock
     TeamService teamService;
+    @Mock
+    GroupMemberService groupMemberService;
+    @Mock
+    PerformanceService performanceService;
     @InjectMocks
     UserActivityService userActivityService;
 
@@ -70,6 +81,15 @@ class UserActivityServiceTest {
                 role, instrument);
     }
 
+    private GroupSummaryResponse group(Long groupId, String name, GroupRole role) {
+        return new GroupSummaryResponse(groupId, name, GroupType.REGULAR, role, null);
+    }
+
+    private PerformanceActivityResponse performance(Long performanceId, String title, String teamName) {
+        return new PerformanceActivityResponse(performanceId, title, "홍대 밴드부", LocalDateTime.of(2026, 12, 20, 19, 0),
+                PerformanceStatus.PLANNED, teamName);
+    }
+
     private void givenNotWithdrawn(User user) {
         given(userRepository.findByIdAndStatusNot(TARGET_ID, UserStatus.WITHDRAWN)).willReturn(Optional.of(user));
     }
@@ -79,13 +99,17 @@ class UserActivityServiceTest {
     class GetProfile {
 
         @Test
-        @DisplayName("프로필과 세션(id 없이 instrument·level만)을 돌려주고, 본인 전용 필드는 없으며 공개 사용자는 activities에 팀 활동이 담긴다")
+        @DisplayName("프로필과 세션(id 없이 instrument·level만)을 돌려주고, 본인 전용 필드는 없으며 공개 사용자는 activities에 팀·모임·공연 활동이 담긴다")
         void returns_profile_without_private_fields() {
             givenNotWithdrawn(user("민서", true));
             given(userInstrumentRepository.findAllByUserIdOrderByIdAsc(TARGET_ID))
                     .willReturn(List.of(instrument(8L, Instrument.DRUM, Level.ADVANCED)));
             TeamMembershipResponse membership = membership(3L, "무명밴드", TeamRole.MEMBER, Instrument.DRUM);
             given(teamService.findMemberships(TARGET_ID)).willReturn(List.of(membership));
+            GroupSummaryResponse group = group(7L, "홍대 밴드부", GroupRole.MEMBER);
+            given(groupMemberService.findMyGroupSummaries(TARGET_ID)).willReturn(List.of(group));
+            PerformanceActivityResponse performance = performance(11L, "겨울 정기공연", "무명밴드");
+            given(performanceService.findActivitiesByUserId(TARGET_ID)).willReturn(List.of(performance));
 
             UserProfileResponse response = userActivityService.getProfile(TARGET_ID);
 
@@ -99,8 +123,8 @@ class UserActivityServiceTest {
                     .containsExactly(new UserProfileResponse.ProfileInstrument(Instrument.DRUM, Level.ADVANCED));
             assertThat(response.isActivityPublic()).isTrue();
             assertThat(response.activities().teams()).containsExactly(membership);
-            assertThat(response.activities().groups()).isEmpty();
-            assertThat(response.activities().performances()).isEmpty();
+            assertThat(response.activities().groups()).containsExactly(group);
+            assertThat(response.activities().performances()).containsExactly(performance);
         }
 
         @Test
@@ -114,7 +138,7 @@ class UserActivityServiceTest {
             assertThat(response.isActivityPublic()).isFalse();
             assertThat(response.activities()).isNull();
             assertThat(response.instruments()).isEmpty();
-            verifyNoInteractions(teamService);
+            verifyNoInteractions(teamService, groupMemberService, performanceService);
         }
 
         @Test
@@ -150,19 +174,28 @@ class UserActivityServiceTest {
     class GetActivities {
 
         @Test
-        @DisplayName("ACTIVE 사용자면 2팀이 준 팀 활동을 그대로 담고, groups·performances는 4팀 메서드 전이라 빈 목록이다")
-        void returns_team_memberships_as_is() {
+        @DisplayName("ACTIVE 사용자면 2팀이 준 팀 활동, 4팀이 준 모임·공연 활동을 순서 그대로 담는다")
+        void returns_provided_lists_as_is() {
             given(userRepository.findByIdAndStatus(TARGET_ID, UserStatus.ACTIVE)).willReturn(Optional.of(user("민서", true)));
             List<TeamMembershipResponse> memberships = List.of(
                     membership(3L, "무명밴드", TeamRole.LEADER, Instrument.BASS),
                     membership(5L, "두번째", TeamRole.MEMBER, Instrument.DRUM));
             given(teamService.findMemberships(TARGET_ID)).willReturn(memberships);
+            List<GroupSummaryResponse> groups = List.of(
+                    group(7L, "홍대 밴드부", GroupRole.OWNER),
+                    group(9L, "주말 합주", GroupRole.MEMBER));
+            given(groupMemberService.findMyGroupSummaries(TARGET_ID)).willReturn(groups);
+            // 한 공연에 내 팀이 둘이면 팀마다 한 줄(4팀 규칙). user는 묶지 않고 그대로 내린다
+            List<PerformanceActivityResponse> performances = List.of(
+                    performance(11L, "겨울 정기공연", "무명밴드"),
+                    performance(11L, "겨울 정기공연", "두번째"));
+            given(performanceService.findActivitiesByUserId(TARGET_ID)).willReturn(performances);
 
             UserActivityResponse response = userActivityService.getActivities(TARGET_ID);
 
             assertThat(response.teams()).containsExactlyElementsOf(memberships);
-            assertThat(response.groups()).isEmpty();
-            assertThat(response.performances()).isEmpty();
+            assertThat(response.groups()).containsExactlyElementsOf(groups);
+            assertThat(response.performances()).containsExactlyElementsOf(performances);
         }
 
         @Test
@@ -185,7 +218,7 @@ class UserActivityServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.USER_NOT_FOUND);
-            verifyNoInteractions(teamService);
+            verifyNoInteractions(teamService, groupMemberService, performanceService);
         }
     }
 }
