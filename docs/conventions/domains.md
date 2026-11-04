@@ -107,6 +107,7 @@
 | 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#96). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |
 | 회원 탈퇴 시 팀에서 빼기 | 1팀 `UserWithdrawService` → 2팀 `TeamService.leaveAllTeams` | 속한 활동 중인 모든 팀의 팀원 행을 `LEFT`로 뺀다. 팀장 차단(`findLedTeams`)을 통과한 뒤에 부른다(#96, #115 댓글) |
 | 회원 탈퇴 차단 | 1팀 `UserWithdrawService` → 2팀 `TeamService` | `TeamService.findLedTeams` — 내가 팀장인 활동 중인 팀 요약. 비어 있어야 탈퇴할 수 있다 |
+| 회원 탈퇴 시 신청·초대 닫기 | 1팀 `UserWithdrawService` → 3팀 `JoinRequestService` | `cancelPendingOf` — 탈퇴자의 대기 중 신청은 `CANCELED`, 받은 초대는 `REJECTED`로 닫는다(알림 없음). 차단 통과 뒤 팀·모임 LEFT 처리 앞에서 부른다(이슈 #136) |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) · `getSummariesIncludingDisbanded`(해체된 팀 포함 요약) · `findMyPerformanceTeams`(내 공연 팀, 해체된 팀 포함) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 연결 완료(2026-11-04, 이슈 #130, `docs/conventions/architecture.md` §6) |
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.findTeamSongs` · `PerformanceMemberService.getBrief` | 연결 완료(2026-11-04, 이슈 #130). 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |

@@ -206,6 +206,22 @@ public class JoinRequestService {
         return decide(userId, getForUpdateOrThrow(invitationId, JoinDirection.INVITE), outcome);
     }
 
+    /**
+     * 회원 탈퇴 정리(1팀 {@code UserWithdrawService}가 부른다). 탈퇴자의 대기 중 건을 닫는다: 낸 신청은 {@code CANCELED},
+     * 받은 초대는 {@code REJECTED}다. 알림은 보내지 않는다 — 탈퇴를 거절로 오해하지 않게 하려는 것이다.
+     * 호출한 쪽의 트랜잭션에 참여한다. 이 사람이 보낸 초대는 건드리지 않는다(팀장·모임장이 직접 처리한다).
+     */
+    @Transactional
+    public void cancelPendingOf(Long userId) {
+        for (JoinRequest request : joinRequestRepository.findPendingByUserIdForUpdate(userId)) {
+            if (request.getDirection() == JoinDirection.APPLY) {
+                request.cancel(userId);
+            } else {
+                request.reject(userId);
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- 상태 전이 (신청·초대 공통)
 
     private JoinResultResponse decide(Long userId, JoinRequest request, JoinStatus outcome) {
