@@ -36,6 +36,9 @@ public enum ErrorCode {
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "가입 요청이 만료되었습니다. 다시 시도해 주세요."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "이미 가입된 카카오 계정입니다."),
 
+    // 합주 (rehearsal)
+    REHEARSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 합주 일정입니다."),
+
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
 

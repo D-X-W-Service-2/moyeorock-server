@@ -14,7 +14,7 @@
 | `UserSummary` | `UserSummaryResponse` | user (1팀) | `(Long id, String nickname, String profileImage)` | **제안** — 재사용 1위라 최소로. 세션·지역이 필요한 곳(팀원·추천)은 감싸는 DTO가 이미 별도 필드로 가짐 |
 | `TeamSummary` | `TeamSummaryResponse` | team (2팀) | `(Long id, String name, Region region, List<Genre> genres, TeamStatus status, int memberCount)` | **확정** (2026-10-31) — 4팀 요청으로 제안 필드 그대로 `status`를 포함한다. `getSummaries` 등은 해체된 팀을 빼서 `ACTIVE`지만, 4팀용 `getSummariesIncludingDisbanded`는 `DISBANDED`도 담는다. 노션 팀 목록·내 팀 목록 응답에도 `status`를 반영해야 한다 |
 | `MemberItem` | `TeamMemberResponse` | team (2팀) | `(UserSummaryResponse user, TeamRole role, Instrument instrument, MemberStatus status, LocalDateTime joinedAt)` | 확정 (`dto-naming.md` §3) |
-| `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **제안** — `dto-naming.md` §4 "캘린더 항목, teamId·teamName 포함"을 구체화 |
+| `RehearsalItem` · `RehearsalSummary` | `RehearsalSummaryResponse` | rehearsal (2팀) | `(Long id, Long teamId, String teamName, String title, LocalDateTime startsAt, LocalDateTime endsAt, String place)` | **구현 완료** (2026-11-02) — 필드는 제안 그대로이고 3팀 dashboard의 `upcomingRehearsals`도 같은 필드를 쓴다. 바꿀 때는 3팀과 공유 |
 | `RecruitPostSummary` | `RecruitPostSummaryResponse` | recruit (3팀) | 본문 §4 JSON 예시 그대로 (`target`은 자체 축약형) | 확정 (`dto-naming.md` §5) |
 
 `PageResponse<T>` 래퍼 필드도 `docs/conventions/dto-naming.md` §0에 이미 확정되어 있다: `{content, page, size, totalElements, totalPages, last}` + `PageResponse.from(Page<T>)` 변환. 이 파일 상단의 "래퍼는 공통 정의를 따른다" 문구가 가리키는 정의가 이것이다.
@@ -31,7 +31,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ## 빈 DTO (Notion 페이지는 있으나 내용 미작성)
 
-`JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>` · `RehearsalUpdateRequest`
+`JoinRequestResponse` · `PageResponse<JoinRequestResponse>` · `PageResponse<InvitationResponse>` · `PageResponse<TeamSummaryResponse>` · `PageResponse<UserSummaryResponse>`
 
 ---
 
@@ -288,6 +288,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### RehearsalCreateRequest
 
+제목(필수, 100자 이하)·시작·종료 시각(필수, 종료가 시작보다 늦어야 함)·장소(선택, 100자 이하)·메모(선택, 20,000자 이하)다. 메모 상한은 공지 본문과 같이 `TEXT` 컬럼 크기를 고려해 정했다(2026-11-03).
+
 ```json
 {
   "title": "1차 합주",
@@ -299,6 +301,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 ### RehearsalDetailResponse
+
+생성·수정·상세가 함께 쓴다. `canEdit`은 요청자가 작성자이거나 팀장일 때 true다. 작성자가 탈퇴했으면 `createdBy`는 null이다.
 
 ```json
 {
@@ -323,7 +327,17 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 ### RehearsalUpdateRequest
 
-**미작성** — RehearsalCreateRequest와 동일 구성으로 추정.
+전체 교체(PUT)다. 노션 DTO 페이지는 비어 있고 API 초안의 "합주 일정 수정" 표(생성 요청과 같은 5개 필드, 추정)를 따라 구현했다(2026-11-02). 제목(필수, 100자 이하)·시작·종료 시각(필수, 종료가 시작보다 늦어야 함)·장소(선택, 100자 이하)·메모(선택, 20,000자 이하)이고, 보내지 않은 장소·메모는 비워진다. 종료·시작 비교는 DTO가 아니라 Service가 검사한다.
+
+```json
+{
+  "title": "1차 합주 (변경)",
+  "startsAt": "2026-09-14T20:00:00",
+  "endsAt": "2026-09-14T22:00:00",
+  "place": "홍대 사운드홀 3번방",
+  "memo": "장소 변경됨"
+}
+```
 
 ## §4. 모집 공고 (recruit)
 
