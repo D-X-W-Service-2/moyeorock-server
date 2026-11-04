@@ -1,6 +1,7 @@
 package com.moyeorock.domain.team.dto.response;
 
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
+import com.moyeorock.domain.setlist.dto.response.TeamSongResponse;
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -11,7 +12,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * 팀 상세. 명세(dto-spec §2)의 선택곡(songs)은 4팀 메서드가 main에 들어온 뒤에 추가한다(결정 2).
+ * 팀 상세. songs는 팀이 고른 선택곡이고 없으면 빈 목록이다.
  * performance는 공연 팀이면 소속 공연 요약, 독립 팀이면 null이다. myRole은 요청자가 팀원이 아니면 null이다.
  */
 public record TeamDetailResponse(
@@ -25,14 +26,17 @@ public record TeamDetailResponse(
         UserSummaryResponse leader,
         int memberCount,
         List<TeamMemberResponse> members,
+        List<TeamSongResponse> songs,
         TeamRole myRole,
         LocalDateTime createdAt
 ) {
 
-    // 팀·장르·소속 공연·팀장·팀원·내 역할을 합쳐 만든다. memberCount는 ACTIVE 팀원 목록의 크기다 → of
+    // 팀·장르·소속 공연·팀장·팀원·선택곡·내 역할을 합쳐 만든다. memberCount는 ACTIVE 팀원 목록의 크기다 → of
     public static TeamDetailResponse of(Team team, List<Genre> genres, PerformanceBriefResponse performance,
-            UserSummaryResponse leader, List<TeamMemberResponse> members, TeamRole myRole) {
+            UserSummaryResponse leader, List<TeamMemberResponse> members, List<TeamSongResponse> songs,
+            TeamRole myRole) {
         return new TeamDetailResponse(team.getId(), team.getName(), team.getDescription(), team.getRegion(),
-                genres, team.getStatus(), performance, leader, members.size(), members, myRole, team.getCreatedAt());
+                genres, team.getStatus(), performance, leader, members.size(), members, songs, myRole,
+                team.getCreatedAt());
     }
 }
