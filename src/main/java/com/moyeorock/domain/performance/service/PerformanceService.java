@@ -7,6 +7,7 @@ import com.moyeorock.domain.performance.dto.request.PerformanceTeamCreateRequest
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistConfirmRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
+import com.moyeorock.domain.performance.dto.response.PerformanceActivityResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
@@ -15,7 +16,9 @@ import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.setlist.service.SetlistService;
+import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
+import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
@@ -25,6 +28,8 @@ import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -49,6 +54,7 @@ public class PerformanceService {
     private final PerformanceRepository performanceRepository;
     private final GroupMemberService groupMemberService;
     private final UserService userService;
+    // TeamService는 공연 쪽을 PerformanceMemberService로만 불러서 PerformanceService와 순환하지 않는다
     private final TeamService teamService;
     private final SetlistService setlistService;
     private final TeamMemberService teamMemberService;
@@ -221,6 +227,33 @@ public class PerformanceService {
         setlistService.unconfirm(performanceId);
         performance.unconfirmSetlist();
         return SetlistResponse.of(performance, setlistService.getSetlist(performanceId, false));
+    }
+
+    /**
+     * 내 활동의 참여 중인 공연(1팀 내 활동 #90, PR #84 답글 2026-11-02). 내가 ACTIVE 팀원인 해체되지 않은 공연 팀이 나가는
+     * {@code PLANNED}·{@code RECRUITING} 공연을 공연일 가까운 순으로 주고, 한 공연에 내 팀이 여럿이면 팀마다 한 줄이다.
+     * 해체된 모임의 공연은 getNames가 그 모임을 빼므로 함께 빠진다.
+     * 다른 도메인 Service 호출이 섞인 조회라 트랜잭션을 걸지 않는다(conventions.md §3).
+     */
+    public List<PerformanceActivityResponse> findActivitiesByUserId(Long userId) {
+        // findMyPerformanceTeams는 해체된 팀도 담아 주므로(끝난 공연용) 진행 중 공연에서는 활동 중인 팀만 남긴다
+        Map<Long, List<PerformanceTeamResponse>> myTeamsByPerformance = teamService.findMyPerformanceTeams(userId)
+                .stream()
+                .filter(team -> team.status() == TeamStatus.ACTIVE)
+                .collect(Collectors.groupingBy(PerformanceTeamResponse::performanceId));
+        if (myTeamsByPerformance.isEmpty()) {
+            return List.of();
+        }
+        List<Performance> performances = performanceRepository.findByIdInAndStatusInOrderByPerformedAtAscIdAsc(
+                myTeamsByPerformance.keySet(), PerformancePeriod.UPCOMING.getStatuses());
+        Map<Long, String> groupNames = groupMemberService.getNames(
+                performances.stream().map(Performance::getGroupId).distinct().toList());
+        return performances.stream()
+                .filter(performance -> groupNames.containsKey(performance.getGroupId()))
+                .flatMap(performance -> myTeamsByPerformance.get(performance.getId()).stream()
+                        .map(team -> PerformanceActivityResponse.of(
+                                performance, groupNames.get(performance.getGroupId()), team.teamName())))
+                .toList();
     }
 
     // 생성·상세·수정이 같은 응답이라 참여 팀도 한 곳에서 채운다 — 막 만든 공연이면 둘 다 빈 목록이다.

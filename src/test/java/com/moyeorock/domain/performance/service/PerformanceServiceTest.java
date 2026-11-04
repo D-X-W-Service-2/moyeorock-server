@@ -2,6 +2,7 @@ package com.moyeorock.domain.performance.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -17,6 +18,7 @@ import com.moyeorock.domain.performance.dto.request.PerformanceTeamCreateRequest
 import com.moyeorock.domain.performance.dto.request.PerformanceUpdateRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistConfirmRequest;
 import com.moyeorock.domain.performance.dto.request.SetlistSubmitRequest;
+import com.moyeorock.domain.performance.dto.response.PerformanceActivityResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceDetailResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceStatusResponse;
 import com.moyeorock.domain.performance.dto.response.SetlistResponse;
@@ -27,6 +29,7 @@ import com.moyeorock.domain.performance.repository.PerformanceRepository;
 import com.moyeorock.domain.setlist.dto.response.SetlistItemResponse;
 import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamRole;
@@ -45,6 +48,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -362,6 +366,54 @@ class PerformanceServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.PERFORMANCE_NOT_FOUND);
         verifyNoInteractions(groupMemberService);
+    }
+
+    @Test
+    @DisplayName("내 활동 공연은 활동 중인 내 팀이 나가는 다가올 공연을 저장소 순서대로, 한 공연에 내 팀이 여럿이면 팀마다 한 줄로 준다")
+    void findActivitiesByUserId_listsUpcomingPerformancesPerMyTeam() {
+        when(teamService.findMyPerformanceTeams(MEMBER_ID)).thenReturn(List.of(
+                new PerformanceTeamResponse(1L, "무명밴드", 100L, TeamStatus.ACTIVE),
+                new PerformanceTeamResponse(2L, "두 번째 밴드", 100L, TeamStatus.ACTIVE),
+                new PerformanceTeamResponse(3L, "스스로 해체한 팀", 101L, TeamStatus.DISBANDED),
+                new PerformanceTeamResponse(4L, "가을 팀", 102L, TeamStatus.ACTIVE)));
+        // 해체된 팀만 있는 101번 공연은 조회 대상에서 빠진다. 정렬은 저장소 메서드 이름(공연일 가까운 순)에 맡긴다
+        when(performanceRepository.findByIdInAndStatusInOrderByPerformedAtAscIdAsc(
+                Set.of(100L, 102L), PerformancePeriod.UPCOMING.getStatuses()))
+                .thenReturn(List.of(performanceWithId(102L, "가을 공연"), performanceWithId(100L, "겨울 공연")));
+        when(groupMemberService.getNames(List.of(GROUP_ID))).thenReturn(Map.of(GROUP_ID, "홍대 밴드부"));
+
+        List<PerformanceActivityResponse> activities = performanceService.findActivitiesByUserId(MEMBER_ID);
+
+        assertThat(activities)
+                .extracting(PerformanceActivityResponse::id, PerformanceActivityResponse::title,
+                        PerformanceActivityResponse::groupName, PerformanceActivityResponse::teamName)
+                .containsExactly(
+                        tuple(102L, "가을 공연", "홍대 밴드부", "가을 팀"),
+                        tuple(100L, "겨울 공연", "홍대 밴드부", "무명밴드"),
+                        tuple(100L, "겨울 공연", "홍대 밴드부", "두 번째 밴드"));
+    }
+
+    @Test
+    @DisplayName("해체된 모임의 공연은 모임 이름이 오지 않으므로 내 활동 공연에서 빠진다")
+    void findActivitiesByUserId_skipsPerformancesOfDisbandedGroups() {
+        when(teamService.findMyPerformanceTeams(MEMBER_ID)).thenReturn(List.of(
+                new PerformanceTeamResponse(1L, "무명밴드", 100L, TeamStatus.ACTIVE)));
+        when(performanceRepository.findByIdInAndStatusInOrderByPerformedAtAscIdAsc(
+                Set.of(100L), PerformancePeriod.UPCOMING.getStatuses()))
+                .thenReturn(List.of(performanceWithId(100L, "겨울 공연")));
+        when(groupMemberService.getNames(List.of(GROUP_ID))).thenReturn(Map.of());
+
+        assertThat(performanceService.findActivitiesByUserId(MEMBER_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("활동 중인 내 공연 팀이 없으면 공연·모임을 조회하지 않고 빈 목록을 준다")
+    void findActivitiesByUserId_returnsEmpty_whenNoActivePerformanceTeam() {
+        when(teamService.findMyPerformanceTeams(MEMBER_ID)).thenReturn(List.of(
+                new PerformanceTeamResponse(3L, "스스로 해체한 팀", 101L, TeamStatus.DISBANDED)));
+
+        assertThat(performanceService.findActivitiesByUserId(MEMBER_ID)).isEmpty();
+        verifyNoInteractions(performanceRepository, groupMemberService);
     }
 
     @Test
@@ -723,6 +775,13 @@ class PerformanceServiceTest {
         Performance performance = Performance.create(GROUP_ID, OWNER_ID, "2026 정기공연", "설명", performedAt,
                 "홍대 롤링홀", "poster.jpg");
         when(performanceRepository.findById(PERFORMANCE_ID)).thenReturn(Optional.of(performance));
+        return performance;
+    }
+
+    // id는 GeneratedValue라 create()로는 못 채운다 — 저장된 공연처럼 리플렉션으로 넣는다
+    private Performance performanceWithId(Long id, String title) {
+        Performance performance = Performance.create(GROUP_ID, OWNER_ID, title, null, PERFORMED_AT, "홍대 롤링홀", null);
+        ReflectionTestUtils.setField(performance, "id", id);
         return performance;
     }
 

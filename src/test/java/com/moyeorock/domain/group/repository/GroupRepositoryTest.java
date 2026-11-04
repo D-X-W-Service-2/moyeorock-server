@@ -160,6 +160,26 @@ class GroupRepositoryTest {
     }
 
     @Test
+    @DisplayName("내 모임 전체는 페이징 없이 내 ACTIVE 모임원 자리만 가입 최신순으로 내 역할과 함께 준다 — 남의·탈퇴한·해체된 모임은 빠진다")
+    void findAllMyGroups_returnsMyActiveMemberships_latestFirst() {
+        Group first = joined(ME, group("먼저 가입"), 1);
+        Group latest = joined(ME, group("나중에 가입"), 2);
+        joined(OTHER, group("남의 모임"), 3);
+        GroupMember left = groupMemberRepository.save(GroupMember.create(
+                groupRepository.save(group("탈퇴한 모임")).getId(), ME, GroupRole.MEMBER));
+        left.leave();
+        Group disbanded = joined(ME, group("해체됨"), 4);
+        disbanded.disband();
+        groupRepository.flush();
+        groupMemberRepository.flush();
+
+        List<Object[]> rows = groupRepository.findAllMyGroups(ME);
+
+        assertThat(rows).extracting(row -> ((Group) row[0]).getId(), row -> row[1])
+                .containsExactly(tuple(latest.getId(), GroupRole.MEMBER), tuple(first.getId(), GroupRole.MEMBER));
+    }
+
+    @Test
     @DisplayName("모임 id 일괄 조회를 ACTIVE로 하면 해체된 모임은 빠진다")
     void findAllByIdInAndStatus_excludesDisbandedGroups() {
         Group active = groupRepository.save(group("활동 중"));

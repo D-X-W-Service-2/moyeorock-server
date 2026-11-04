@@ -39,4 +39,8 @@ public interface PerformanceRepository extends JpaRepository<Performance, Long> 
     // 지난 공연(period=PAST) — 공연일 최근 순. 공연일이 같으면 나중에 만든 공연이 먼저다.
     Page<Performance> findByGroupIdAndStatusInOrderByPerformedAtDescIdDesc(Long groupId,
             Collection<PerformanceStatus> statuses, Pageable pageable);
+
+    // 내 활동의 참여 중인 공연 — 내 팀이 나가는 공연 중 주어진 상태만, 공연일 가까운 순. 공연일이 같으면 먼저 만든 공연이 먼저다.
+    List<Performance> findByIdInAndStatusInOrderByPerformedAtAscIdAsc(Collection<Long> ids,
+            Collection<PerformanceStatus> statuses);
 }

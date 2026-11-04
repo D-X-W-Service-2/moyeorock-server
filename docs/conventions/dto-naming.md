@@ -320,7 +320,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 클래스 | 설명 |
 |---|---|
-| `GroupSummaryResponse` | `(Long id, String name, GroupType type, GroupRole role, String coverImage)` — `role`은 내 역할. 내 모임 목록 항목이고 `UserActivityResponse`에서 재사용 |
+| `GroupSummaryResponse` | `(Long id, String name, GroupType type, GroupRole role, String coverImage)` — `role`은 내 역할. 내 모임 목록 항목이고 `UserActivityResponse`에서 재사용(`GroupMemberService.findMyGroupSummaries`가 페이징 없이 준다, 이슈 #95) |
 | `GroupBriefResponse` | `(Long id, String name, String coverImage)` — 다른 도메인이 모임을 표시할 때 쓰는 최소 정보(공연 상세의 `group`). 역할은 담지 않는다. `GroupMemberService.getGroupBrief`가 돌려준다(2026-10-30, 이슈 #83) |
 | `GroupMemberResponse` | `(Long userId, String nickname, String profileImage, List<UserInstrumentResponse> instruments, GroupRole role, LocalDateTime joinedAt)` — 평탄화 구조. 모임은 인원 상한이 없어 `PageResponse`로 감싼다 |
 | `NoticeSummaryResponse` | 목록 항목. `body` 제외 |
@@ -370,6 +370,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `PerformanceSummaryResponse` | `TeamDetailResponse`·`GroupDetailResponse`·`UserActivityResponse`에서 재사용 |
 | `PerformanceStatusResponse` | `(Long id, PerformanceStatus status)` |
 | `PerformanceBriefResponse` | `(Long id, String title, String groupName, LocalDateTime performedAt)` — 다른 도메인이 공연을 표시할 때 쓰는 요약(팀 상세의 `performance`). `PerformanceMemberService.getBrief`가 준다. 모임이 해체됐으면 `groupName`은 null (2026-11-02, 이슈 #105) |
+| `PerformanceActivityResponse` | `(Long id, String title, String groupName, LocalDateTime performedAt, PerformanceStatus status, String teamName)` — 1팀 내 활동의 참여 중인 공연 한 줄. `PerformanceService.findActivitiesByUserId`가 준다. 한 공연에 내 팀이 여럿이면 팀마다 한 줄이라 `teamName`만 다른 같은 공연이 여러 번 나온다 (2026-11-03, 이슈 #95) |
 | `SetlistResponse` | `(Long performanceId, boolean confirmed, List<SetlistItemResponse> setlist)` — 공연 셋리스트 조회·넘기기·확정 공통. 확정 전에는 넘겨진 곡 전체(`sortOrder` null), 확정 후에는 확정곡만 |
 | `SetlistSubmitRequest` | `(List<Long> songIds)` — 그 팀의 선택곡 안에서 고른다. 그 팀이 넘긴 곡 전체를 바꾼다 |
 | `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다. `SetlistService`에는 같은 모양의 값 `SetlistService.ConfirmItem`으로 바꿔 넘긴다 |

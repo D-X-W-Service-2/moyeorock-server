@@ -101,6 +101,8 @@
 | 공연 종료·취소 | 4팀 → 2팀 `TeamService` | 상태가 `DONE`·`CANCELED`면 소속 팀 해체(`TeamService.disbandAllByPerformance`). 셋리스트·선택곡은 남긴다 |
 | 팀 요약 조회 | 3팀 bookmark · 1팀 activity → 2팀 `TeamService` | `TeamService.getSummaries` — 해체된 팀은 결과에서 빠진다 |
 | 내 활동의 팀 | 1팀 activity → 2팀 `TeamService` | `TeamService.findMemberships` — 내가 속한 활동 중인 팀의 요약과 내 역할·악기 |
+| 내 활동의 모임 | 1팀 activity → 4팀 `GroupMemberService` | `findMyGroupSummaries` → `List<GroupSummaryResponse>` — 내가 ACTIVE 모임원인 해체되지 않은 모임 전체와 내 역할. 가입 최신순, 페이징 없음. 화면용 `GroupService.getMyGroups`와 달리 다른 도메인이 부르는 조회라 `GroupMemberService`에 둔다(#95) |
+| 내 활동의 공연 | 1팀 activity → 4팀 `PerformanceService` | `findActivitiesByUserId` → `List<PerformanceActivityResponse>` — 활동 중인 내 공연 팀이 나가는 `PLANNED`·`RECRUITING` 공연을 공연일 가까운 순으로, 한 공연에 내 팀이 여럿이면 팀마다 한 줄. 해체된 모임의 공연은 빠진다. 2팀 `findMyPerformanceTeams`와 `GroupMemberService.getNames`로 만든다(#95, PR #84 답글) |
 | 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#96). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |
 | 회원 탈퇴 시 팀에서 빼기 | 1팀 `UserWithdrawService` → 2팀 `TeamService.leaveAllTeams` | 속한 활동 중인 모든 팀의 팀원 행을 `LEFT`로 뺀다. 팀장 차단(`findLedTeams`)을 통과한 뒤에 부른다(#96, #115 댓글) |
 | 회원 탈퇴 차단 | 1팀 `UserWithdrawService` → 2팀 `TeamService` | `TeamService.findLedTeams` — 내가 팀장인 활동 중인 팀 요약. 비어 있어야 탈퇴할 수 있다 |

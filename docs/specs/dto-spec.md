@@ -149,7 +149,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - `teams[]` 항목은 2팀 `TeamMembershipResponse`, `groups[]` 항목은 4팀 `GroupSummaryResponse`를 그대로 담는다(`docs/conventions/dto-naming.md` §0, 2026-11-02). 필터(ACTIVE)·정렬은 제공하는 팀 Service 책임이다.
-- `performances[]`는 4팀 `PerformanceService.findActivitiesByUserId`(이슈 #95: CANCELED 제외, 팀마다 한 줄이라 같은 공연이 여러 번 나올 수 있음)가 들어오면 채운다. 그 전까지 `groups`와 함께 빈 배열이다.
+- `performances[]`는 4팀 `PerformanceService.findActivitiesByUserId`가 준다 — **진행 중인 공연(`PLANNED`·`RECRUITING`)만** 공연일 가까운 순이고, 한 공연에 내 팀이 여럿이면 팀마다 한 줄이라 같은 공연이 `teamName`만 달리 여러 번 나올 수 있다. 해체된 모임의 공연은 빠진다. 내 활동 화면의 공연 타일이 "참여 중인 공연"이고 지난 공연 섹션이 없어 1팀 요청으로 범위를 줄였다(2026-11-02, PR #84 댓글 — 이전 안은 `CANCELED`만 빼고 끝난 공연을 뒤에 붙이는 것). `groups[]`는 4팀 `GroupMemberService.findMyGroupSummaries`(가입 최신순, 페이징 없음)가 준다(이슈 #95). 1팀이 두 메서드를 연결하기 전까지는 둘 다 빈 배열이다
 
 ### UserProfileResponse
 
