@@ -170,7 +170,7 @@ ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 
 
 ## 9. Swagger
 
-컨트롤러 메서드에는 `@Operation(summary = ...)` 정도만 붙인다. 요청·응답 스키마는 DTO에서 자동 생성되므로 `@ApiResponses`를 장황하게 달지 않는다.
+컨트롤러 메서드에는 `@Operation(summary = ...)` 정도만 붙인다. 이 요약이 없으면 `OperationSummaryTest`가 실패해 CI가 막는다. 요청·응답 스키마는 DTO에서 자동 생성되므로 `@ApiResponses`를 장황하게 달지 않는다.
 
 나머지는 `global/config/OpenApiConfig`가 문서 전체에 한 번에 처리한다 — 컨트롤러에 따로 붙이지 않는다.
 
