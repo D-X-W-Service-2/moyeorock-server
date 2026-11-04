@@ -1,9 +1,9 @@
 package com.moyeorock.domain.join.dto.response;
 
 import com.moyeorock.domain.join.entity.JoinRequest;
-import com.moyeorock.domain.join.enums.JoinStatus;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.JoinStatus;
 import com.moyeorock.global.common.enums.TargetType;
 import java.time.LocalDateTime;
 

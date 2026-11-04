@@ -1,7 +1,7 @@
 package com.moyeorock.domain.join.dto.response;
 
 import com.moyeorock.domain.join.entity.JoinRequest;
-import com.moyeorock.domain.join.enums.JoinStatus;
+import com.moyeorock.global.common.enums.JoinStatus;
 import java.time.LocalDateTime;
 
 /** 신청·초대의 거절·취소 공용 응답. */

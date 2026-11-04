@@ -1,7 +1,7 @@
 package com.moyeorock.domain.join.dto.response;
 
 import com.moyeorock.domain.join.entity.JoinRequest;
-import com.moyeorock.domain.join.enums.JoinStatus;
+import com.moyeorock.global.common.enums.JoinStatus;
 import java.time.LocalDateTime;
 
 /** 신청 승인·초대 수락 공용 응답. 수락해도 status는 APPROVED다(Notion 초안). */

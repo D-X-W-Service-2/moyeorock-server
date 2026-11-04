@@ -1,9 +1,9 @@
 package com.moyeorock.domain.join.entity;
 
 import com.moyeorock.domain.join.enums.JoinDirection;
-import com.moyeorock.domain.join.enums.JoinStatus;
 import com.moyeorock.global.common.entity.BaseTimeEntity;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.JoinStatus;
 import com.moyeorock.global.common.enums.TargetType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
