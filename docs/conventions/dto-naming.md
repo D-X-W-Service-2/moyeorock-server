@@ -161,6 +161,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 |---|---|---|
 | `getSummaries(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
 | `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE`. 공연 팀이면 `PerformanceMemberService.ensureGroupMember`로 그 공연을 연 모임의 활동 모임원인지 확인해 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER` |
+| `lockTeam(Long teamId)` | 3팀 join(신청·초대 생성, 승인·수락) | 호출한 쪽 트랜잭션에 참여. 팀 행만 `FOR UPDATE`로 잠그고 상태는 보지 않는다(없는 팀이면 `404 TEAM_NOT_FOUND`). 같은 팀의 신청·초대가 한 줄로 서서 같은 사람의 대기 건이 둘 생기지 않고, 승인이 최신 화면으로 팀원 여부를 본다. 트랜잭션의 첫 일반 조회보다 먼저 부른다(이슈 #107 PR #134) |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
 | `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료·취소(`DONE`·`CANCELED`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 기록을 남기려고 셋리스트·선택곡(`setlists`·`team_songs`)은 지우지 않는다 |
 | `leavePerformanceTeams(Long userId, Collection<Long> performanceIds)` | 4팀 group(모임 탈퇴·강퇴) | 호출한 쪽 트랜잭션에 참여. 그 공연들의 활동 중인 팀에서 이 사람의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀·이미 나간 팀은 지나간다. 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 모임 탈퇴·강퇴 전체가 막히고 위임 안내 |
@@ -245,16 +246,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 패키지 `domain/join` — 컨트롤러는 `JoinRequestController`
 
-경로가 단수형 `join-request`다 — `API 초안`을 신뢰해 반영(2026-09-11, `docs/specs/api-spec.md` §5 참고). `join_requests` 테이블명은 그대로다.
+경로는 복수형 `join-requests`다 — `API 초안`이 복수형으로 바뀌어 맞췄다(2026-11-03, `docs/specs/api-spec.md` §5 참고). `join_requests` 테이블명은 그대로다.
 
 | 기능 | 메서드 | 경로 | Request | Response |
 |---|---|---|---|---|
-| 가입 신청 | POST | `/v1/join-request` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
-| 받은 신청 목록 | GET | `/v1/join-request` | — | `PageResponse<JoinRequestResponse>` |
-| 내 신청 목록 | GET | `/v1/users/me/join-request` | — | `PageResponse<JoinRequestResponse>` |
-| 신청 승인 | PATCH | `/v1/join-request/{id}/approve` | — | `JoinApprovedResponse` |
-| 신청 거절 | PATCH | `/v1/join-request/{id}/reject` | — | `JoinDecisionResponse` |
-| 신청 취소 | PATCH | `/v1/join-request/{id}/cancel` | — | `JoinDecisionResponse` |
+| 가입 신청 | POST | `/v1/join-requests` | `JoinRequestCreateRequest` | `JoinRequestResponse` |
+| 받은 신청 목록 | GET | `/v1/join-requests` | — | `PageResponse<JoinRequestResponse>` |
+| 내 신청 목록 | GET | `/v1/users/me/join-requests` | — | `PageResponse<JoinRequestResponse>` |
+| 신청 승인·거절·취소 | PATCH | `/v1/join-requests/{id}/status` | `JoinRequestStatusUpdateRequest` | `JoinApprovedResponse`(승인) / `JoinDecisionResponse`(거절·취소) |
 
 ---
 
@@ -267,9 +266,9 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 초대 보내기 | POST | `/v1/invitations` | `InvitationCreateRequest` | `InvitationResponse` |
 | 보낸 초대 목록 | GET | `/v1/invitations` | — | `PageResponse<InvitationResponse>` |
 | 받은 초대 목록 | GET | `/v1/users/me/invitations` | — | `PageResponse<InvitationResponse>` |
-| 초대 수락 | PATCH | `/v1/invitations/{id}/accept` | — | `JoinApprovedResponse` |
-| 초대 거절 | PATCH | `/v1/invitations/{id}/decline` | — | `JoinDecisionResponse` |
-| 초대 취소 | PATCH | `/v1/invitations/{id}/cancel` | — | `JoinDecisionResponse` |
+| 초대 수락·거절·취소 | PATCH | `/v1/invitations/{id}/status` | `InvitationStatusUpdateRequest` | `JoinApprovedResponse`(수락) / `JoinDecisionResponse`(거절·취소) |
+
+> 상태 변경은 2026-11-03에 Notion `API 초안`을 따라 `PATCH /{id}/status` 하나로 합쳤다(승인·거절·취소가 각각 `/approve` `/reject` `/cancel`이던 것). 요청 바디는 신청 `{status: APPROVED|REJECTED|CANCELED}`, 초대 `{status: ACCEPTED|DECLINED|CANCELED}`이고 바디 값은 초안에 없어 서버가 정했다. 반환 타입이 하나라 `JoinResultResponse`(sealed interface)로 두 응답을 묶었다 — JSON은 각 record 모양 그대로 나간다. 수락해도 응답 `status`는 `APPROVED`다(`JoinStatus`를 공유).
 
 **§6·§7 공용 DTO** — 엔티티가 `JoinRequest` 하나이므로 결과 응답도 공유한다.
 

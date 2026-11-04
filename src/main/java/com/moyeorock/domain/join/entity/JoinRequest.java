@@ -1,9 +1,10 @@
 package com.moyeorock.domain.join.entity;
 
 import com.moyeorock.domain.join.enums.JoinDirection;
-import com.moyeorock.domain.join.enums.JoinStatus;
 import com.moyeorock.global.common.entity.BaseTimeEntity;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.JoinStatus;
+import com.moyeorock.global.common.enums.TargetType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -109,6 +110,14 @@ public class JoinRequest extends BaseTimeEntity {
         request.message = message;
         request.status = JoinStatus.PENDING;
         return request;
+    }
+
+    public TargetType getTargetType() {
+        return targetTeamId != null ? TargetType.TEAM : TargetType.GROUP;
+    }
+
+    public Long getTargetId() {
+        return targetTeamId != null ? targetTeamId : targetGroupId;
     }
 
     public boolean isPending() {

@@ -133,8 +133,8 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 ## 5. URL
 
 - 접두사 `/v1/` — **전 도메인 예외 없음.** 합주(rehearsal)만 `API 초안` 정리 전까지 `/v0/`를 유지하던 예외가 있었으나, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 해소했다. `/v0/`는 더 이상 쓰지 않는다
-- `join-request` · `recruit-post`는 예외적으로 단수형이다(`API 초안` 기준, 2026-09-11 확인). 그 외 리소스는 아래 규칙대로 복수형을 쓴다
-- 리소스는 복수형 (`/teams` `/invitations`). 예외: `join-request` · `recruit-post` (단수형, `API 초안` 기준)
+- `recruit-post`는 예외적으로 단수형이다(2026-09-11 `API 초안` 기준으로 정했고, 2026-11-03에도 현행 유지로 확인). 그 외 리소스는 아래 규칙대로 복수형을 쓴다. `join-requests`는 `API 초안`이 복수형으로 바뀌어 2026-11-03에 복수형으로 맞췄다
+- 리소스는 복수형 (`/teams` `/invitations` `/join-requests`). 예외: `recruit-post` (단수형)
 - 상태 전이는 `PATCH /{id}/status` 또는 `PATCH /{id}/{action}`
 - 하위 리소스는 부모 경로 아래 (`/teams/{teamId}/rehearsals`), 단건 조회·수정·삭제는 단독 경로 (`/rehearsals/{id}`)
 

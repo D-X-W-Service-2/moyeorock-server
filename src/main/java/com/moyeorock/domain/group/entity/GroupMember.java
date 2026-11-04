@@ -59,6 +59,14 @@ public class GroupMember {
         return member;
     }
 
+    // 탈퇴(LEFT)·강퇴(BANNED)했던 사람이 다시 들어올 때 새 행 대신 기존 행을 되살린다 — (group_id, user_id) 유니크 때문.
+    // 모임장은 위임 없이 나갈 수 없어서 기존 행의 역할은 대개 MEMBER지만, 안전하게 MEMBER로 맞추고 합류 시각도 새로 잡는다.
+    public void rejoin() {
+        this.status = GroupMemberStatus.ACTIVE;
+        this.role = GroupRole.MEMBER;
+        this.joinedAt = LocalDateTime.now();
+    }
+
     public boolean isOwner() {
         return this.role == GroupRole.OWNER;
     }

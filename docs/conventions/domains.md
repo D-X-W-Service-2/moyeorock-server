@@ -31,7 +31,7 @@
 
 ## 헷갈리는 경계
 
-**`join`은 컨트롤러가 2개다.** `JoinRequestController`(`/v1/join-request`)와 `InvitationController`(`/v1/invitations`). URI와 컨트롤러는 나뉘지만 **엔티티는 `JoinRequest` 하나, 테이블도 `join_requests` 하나**다. `direction`(`APPLY` / `INVITE`)으로 구분한다.
+**`join`은 컨트롤러가 2개다.** `JoinRequestController`(`/v1/join-requests`)와 `InvitationController`(`/v1/invitations`). URI와 컨트롤러는 나뉘지만 **엔티티는 `JoinRequest` 하나, 테이블도 `join_requests` 하나**다. `direction`(`APPLY` / `INVITE`)으로 구분한다.
 
 - 별도 `Invitation` 엔티티나 `invitations` 테이블을 **만들지 않는다**
 - 조회 시 `direction` 조건을 항상 포함한다. id 시퀀스를 공유하므로 빠뜨리면 신청 id로 초대 API를 호출하는 게 통과한다
@@ -48,7 +48,7 @@
 - **공연 내 같은 곡 중복은 `setlists`의 `UNIQUE(performance_id, song_id)`가 막는다.** 팀 선택곡 단계에서는 막지 않고 "다른 팀이 이미 골랐어요" 표시만 한다
 - DTO 이름은 `SetlistResponse`·`SetlistSubmitRequest`·`SetlistConfirmRequest`(공연 쪽), `TeamSongsSaveRequest`·`TeamSongsResponse`(팀 쪽)다(`dto-naming.md` §10)
 
-**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-request`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team` 소유다.
+**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-requests`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team` 소유다.
 
 **공연 참가 단위는 팀이다.** 공연자 개별 관리 API는 없다. 공연에서 팀을 빼는 것 = 팀 해체.
 
@@ -63,6 +63,7 @@
 | `Genre` | `users` `teams` `songs` |
 | `Region` | `users` `teams` `groups_` `recruit_posts` |
 | `TargetType` | `recruit_posts` `join_requests` (`TEAM` `GROUP`) |
+| `JoinStatus` | `join_requests.status` — join이 소유하고 recruit 공고 상세(`myJoinRequest.status`)도 내보낸다(PR #134) |
 | `NotificationType` `NotificationTargetType` | `notifications`와 알림 발생 이벤트(`global/event/NotificationEvent`) — 2·3·4팀이 이벤트에 담아 발행한다 |
 
 **값이 다르면 공유하지 않는다.**
@@ -110,6 +111,9 @@
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 연결 완료(2026-11-04, 이슈 #130, `docs/conventions/architecture.md` §6) |
 | 팀 상세의 선택곡·공연 정보 | 2팀 `TeamService` → 4팀 `SetlistService.findTeamSongs` · `PerformanceMemberService.getBrief` | 연결 완료(2026-11-04, 이슈 #130). 응답은 `setlist` 대신 `songs`와 `performance`를 채운다 |
 | 셋리스트의 팀 확인 | 4팀 setlist → 2팀 `TeamMemberService` | `ensureLeader` · `ensureActiveMember` · `getPerformanceId` · `getNames`(해체된 팀 포함). 다른 Service를 부르지 않는 조회 전용이라 순환이 없다(`docs/conventions/dto-naming.md` §3) |
+| 가입·초대 승인 | 3팀 join → 2팀 `TeamService.addMember` · 4팀 `GroupMemberService.addMember` | 승인·수락하면 팀원/모임원으로 넣는다. 이미 소속이면 join이 먼저 `ALREADY_MEMBER`로 막고, 팀장/모임장 판별·소속 확인·알림 수신자는 `TeamMemberService`(`ensureLeader` `isLeader` `isActiveMember` `getLeaderId`)·`GroupMemberService`(`ensureOwner` `isOwner` `isActiveMember` `getOwnerId`)로 묻는다 |
+| 가입 신청·초대 직렬화 | 3팀 join → 2팀 `TeamService.lockTeam` · 4팀 `GroupMemberService.lockActiveGroup` | 신청·초대를 만들 때와 승인·수락할 때 트랜잭션의 첫 일반 조회 전에 대상 팀·모임 행을 잠근다. 대기 건 중복 확인과 저장 사이, 소속 확인과 `addMember` 사이에 다른 요청이 끼어들지 못하게 한다(유니크 제약 없이 같은 사람의 대기 건이 둘 생기는 것을 막는다). 승인 쪽 잠금 순서는 신청 행 → 대상 행(PR #134) |
+| 공고 ↔ 신청 | 3팀 join → 3팀 recruit → 3팀 join | `JoinRequestService`가 신청을 받을 때 `RecruitPostService.getOpenPostForApply`로 공고를 확인하고, `RecruitPostService`가 공고 상세의 `appliedCount`·`myJoinRequest`를 채울 때 **조회 전용 `JoinRequestStatService`**를 부른다. `JoinRequestService`와 `RecruitPostService`가 서로 부르면 순환이라 신청 현황 조회만 다른 Service를 부르지 않는 말단 클래스로 떼었다(`architecture.md` §3). 여기에 다른 Service 호출을 넣지 않는다 |
 | 공연 팀원 확인 | 2팀 `TeamService.addMember` · 3팀 가입 신청·초대 → 4팀 `PerformanceMemberService.ensureGroupMember` | 공연 팀에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`(#96·#105). `PerformanceMemberService`는 `GroupMemberService`만 불러 순환이 없다 |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |

@@ -44,6 +44,11 @@ public enum ErrorCode {
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
 
+    // 가입 신청·초대 (join) — api-conventions.md §3 예시 코드
+    JOIN_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 신청입니다."),
+    JOIN_REQUEST_DUPLICATED(HttpStatus.CONFLICT, "이미 신청한 대상입니다."),
+    ALREADY_MEMBER(HttpStatus.CONFLICT, "이미 소속된 멤버입니다."),
+
     // 파일
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 파일입니다."),
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),

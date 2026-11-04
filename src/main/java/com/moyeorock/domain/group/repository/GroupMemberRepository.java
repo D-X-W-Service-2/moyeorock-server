@@ -46,6 +46,8 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> 
             """)
     int countActiveMembers(@Param("groupId") Long groupId);
 
+    Optional<GroupMember> findByGroupIdAndUserId(Long groupId, Long userId);
+
     boolean existsByGroupIdAndUserIdAndStatus(Long groupId, Long userId, GroupMemberStatus status);
 
     // 회원 탈퇴 — 내가 ACTIVE 모임원인 모임 id(해체된 모임 포함). 모임 행을 이 순서로 잠근다

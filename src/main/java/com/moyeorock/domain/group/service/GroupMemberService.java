@@ -106,6 +106,26 @@ public class GroupMemberService {
         groupMemberRepository.save(GroupMember.create(groupId, userId, GroupRole.OWNER));
     }
 
+    /**
+     * 모임원 추가(3팀 가입·초대 승인). 일반 모임원(MEMBER)으로 들어온다. 호출한 쪽의 트랜잭션에 참여한다.
+     * 탈퇴·강퇴했던 사람은 새 행을 만들지 않고 기존 행을 되살린다(팀의 {@code addMember}와 같다).
+     * 이미 모임원이면 ALREADY_MEMBER, 없거나 해체된 모임이면 GROUP_NOT_FOUND다.
+     *
+     * <p>모임 행을 먼저 잠그므로 호출하는 쪽은 이 메서드를 트랜잭션 앞쪽에서 불러 달라(팀의 {@code addMember}와 같은 이유).
+     */
+    @Transactional
+    public void addMember(Long groupId, Long userId) {
+        lockActiveGroup(groupId);
+        groupMemberRepository.findByGroupIdAndUserId(groupId, userId).ifPresentOrElse(
+                member -> {
+                    if (member.getStatus() == GroupMemberStatus.ACTIVE) {
+                        throw new BusinessException(ErrorCode.ALREADY_MEMBER);
+                    }
+                    member.rejoin();
+                },
+                () -> groupMemberRepository.save(GroupMember.create(groupId, userId, GroupRole.MEMBER)));
+    }
+
     public void ensureOwner(Long groupId, Long userId) {
         ensureGroupExists(groupId);
         getOwnerOrThrow(groupId, userId);
@@ -234,9 +254,13 @@ public class GroupMemberService {
         }
     }
 
-    // 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
-    // 트랜잭션의 첫 조회여야 한다(GroupRepository.findByIdAndStatusForUpdate).
-    private void lockActiveGroup(Long groupId) {
+    /**
+     * 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
+     * 트랜잭션의 첫 조회여야 한다(GroupRepository.findByIdAndStatusForUpdate).
+     * 3팀 가입 신청·초대 생성과 승인·수락도 부른다 — 같은 사람의 대기 건이 둘 생기지 않게 한다.
+     */
+    @Transactional
+    public void lockActiveGroup(Long groupId) {
         groupRepository.findByIdAndStatusForUpdate(groupId, GroupStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
     }

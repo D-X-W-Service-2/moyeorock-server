@@ -29,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -457,6 +458,72 @@ class GroupMemberServiceTest {
     }
 
     // 위임·탈퇴·강퇴는 존재 확인 대신 모임 행 잠금 조회로 모임을 확인한다
+    @Test
+    @DisplayName("모임원 추가: 처음 들어오면 일반 모임원(MEMBER) 행을 새로 만든다")
+    void addMember_createsMember_whenNew() {
+        givenGroupLocked();
+        when(groupMemberRepository.findByGroupIdAndUserId(GROUP_ID, MEMBER_ID)).thenReturn(Optional.empty());
+
+        groupMemberService.addMember(GROUP_ID, MEMBER_ID);
+
+        ArgumentCaptor<GroupMember> saved = ArgumentCaptor.forClass(GroupMember.class);
+        verify(groupMemberRepository).save(saved.capture());
+        assertThat(saved.getValue().getUserId()).isEqualTo(MEMBER_ID);
+        assertThat(saved.getValue().getRole()).isEqualTo(GroupRole.MEMBER);
+        assertThat(saved.getValue().getStatus()).isEqualTo(GroupMemberStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("모임원 추가: 탈퇴·강퇴했던 사람은 새 행 없이 기존 행을 MEMBER·ACTIVE로 되살린다")
+    void addMember_revivesFormerMember() {
+        givenGroupLocked();
+        GroupMember banned = member(MEMBER_ID, GroupRole.MEMBER);
+        banned.ban();
+        when(groupMemberRepository.findByGroupIdAndUserId(GROUP_ID, MEMBER_ID)).thenReturn(Optional.of(banned));
+
+        groupMemberService.addMember(GROUP_ID, MEMBER_ID);
+
+        assertThat(banned.getStatus()).isEqualTo(GroupMemberStatus.ACTIVE);
+        assertThat(banned.getRole()).isEqualTo(GroupRole.MEMBER);
+        verify(groupMemberRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("모임원 추가: 이미 모임원이면 ALREADY_MEMBER다")
+    void addMember_throws_whenAlreadyActive() {
+        givenGroupLocked();
+        when(groupMemberRepository.findByGroupIdAndUserId(GROUP_ID, MEMBER_ID))
+                .thenReturn(Optional.of(member(MEMBER_ID, GroupRole.MEMBER)));
+
+        assertThatThrownBy(() -> groupMemberService.addMember(GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ALREADY_MEMBER);
+    }
+
+    @Test
+    @DisplayName("모임원 추가: 없거나 해체된 모임이면 GROUP_NOT_FOUND이고 모임원 행은 건드리지 않는다")
+    void addMember_throws_whenGroupDisbanded() {
+        when(groupRepository.findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> groupMemberService.addMember(GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
+        verifyNoInteractions(groupMemberRepository);
+    }
+
+    @Test
+    @DisplayName("활동 중인 모임원 여부는 모임원 조회 결과로만 답한다 — 해체된 모임이면 false")
+    void isActiveMember_answersFromActiveMemberLookup() {
+        when(groupMemberRepository.findActiveMember(GROUP_ID, MEMBER_ID))
+                .thenReturn(Optional.of(member(MEMBER_ID, GroupRole.MEMBER)));
+        when(groupMemberRepository.findActiveMember(GROUP_ID, OWNER_ID)).thenReturn(Optional.empty());
+
+        assertThat(groupMemberService.isActiveMember(GROUP_ID, MEMBER_ID)).isTrue();
+        assertThat(groupMemberService.isActiveMember(GROUP_ID, OWNER_ID)).isFalse();
+    }
+
     private void givenGroupLocked() {
         when(groupRepository.findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE))
                 .thenReturn(Optional.of(Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)));
