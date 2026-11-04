@@ -1013,6 +1013,9 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 구현(2026-11-04, 이슈 #135): `upcomingRehearsals`는 내 팀 합주 중 오늘부터 14일 안에 끝나지 않은 것을 가까운 순 5개, `openRecruitPosts`는 모집 중(`OPEN`) 공고를 최신순 5개(개인화하지 않는다)다. 둘 다 항목은 각 도메인 응답(`RehearsalSummaryResponse`·`RecruitPostSummaryResponse`) 그대로다. 개수·기간은 서버 기본값이며 명세에 없어 정한 값이다 — Notion 반영 필요
+- `recommendedSongs`는 AI 추천이 연결되기 전까지 **`null`**이다(빈 배열이 아님). 항목은 `SongSummaryResponse(id, title, artist)`다. 연결되면 배열로 바뀐다
+
 ## §11. 로그인 (auth)
 
 2026-10-05에 `API 초안` 로그인 4건(2026-09-28 검토 반영본)과 대조했다.
