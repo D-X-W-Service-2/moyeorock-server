@@ -2,7 +2,7 @@ package com.moyeorock.domain.join.repository;
 
 import com.moyeorock.domain.join.entity.JoinRequest;
 import com.moyeorock.domain.join.enums.JoinDirection;
-import com.moyeorock.domain.join.enums.JoinStatus;
+import com.moyeorock.global.common.enums.JoinStatus;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
@@ -53,7 +53,7 @@ public interface JoinRequestRepository extends JpaRepository<JoinRequest, Long> 
     /** 공고의 세션별 대기(PENDING) 신청 수. 결과는 [instrument, count] 쌍이다. */
     @Query("""
             SELECT r.instrument, COUNT(r) FROM JoinRequest r
-            WHERE r.recruitPostId = :postId AND r.status = com.moyeorock.domain.join.enums.JoinStatus.PENDING
+            WHERE r.recruitPostId = :postId AND r.status = com.moyeorock.global.common.enums.JoinStatus.PENDING
             GROUP BY r.instrument
             """)
     List<Object[]> countPendingByInstrument(@Param("postId") Long postId);

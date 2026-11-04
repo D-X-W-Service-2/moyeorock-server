@@ -254,9 +254,13 @@ public class GroupMemberService {
         }
     }
 
-    // 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
-    // 트랜잭션의 첫 조회여야 한다(GroupRepository.findByIdAndStatusForUpdate).
-    private void lockActiveGroup(Long groupId) {
+    /**
+     * 같은 모임의 모임원 변경을 한 번에 하나씩만 돌게 모임 행을 잠근다. 해체됐거나 없는 모임이면 404.
+     * 트랜잭션의 첫 조회여야 한다(GroupRepository.findByIdAndStatusForUpdate).
+     * 3팀 가입 신청·초대 생성과 승인·수락도 부른다 — 같은 사람의 대기 건이 둘 생기지 않게 한다.
+     */
+    @Transactional
+    public void lockActiveGroup(Long groupId) {
         groupRepository.findByIdAndStatusForUpdate(groupId, GroupStatus.ACTIVE)
                 .orElseThrow(() -> new BusinessException(ErrorCode.GROUP_NOT_FOUND));
     }

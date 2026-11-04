@@ -13,7 +13,6 @@ import com.moyeorock.domain.join.dto.response.JoinTargetResponse;
 import com.moyeorock.domain.join.entity.JoinRequest;
 import com.moyeorock.domain.join.enums.InvitationDecision;
 import com.moyeorock.domain.join.enums.JoinDirection;
-import com.moyeorock.domain.join.enums.JoinStatus;
 import com.moyeorock.domain.join.repository.JoinRequestRepository;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
 import com.moyeorock.domain.recruit.dto.response.RecruitPostApplyInfoResponse;
@@ -25,6 +24,7 @@ import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.JoinStatus;
 import com.moyeorock.global.common.enums.NotificationTargetType;
 import com.moyeorock.global.common.enums.NotificationType;
 import com.moyeorock.global.common.enums.TargetType;
@@ -88,6 +88,7 @@ public class JoinRequestService {
     public JoinRequestResponse apply(Long userId, JoinRequestCreateRequest request) {
         TargetType targetType = request.targetType();
         Long targetId = request.targetId();
+        lockTarget(targetType, targetId);
         JoinTargetResponse target = getTargetOrThrow(targetType, targetId);
         Instrument instrument = resolveInstrument(targetType, request.instrument());
 
@@ -150,6 +151,7 @@ public class JoinRequestService {
         if (userId.equals(inviteeId)) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
+        lockTarget(targetType, targetId);
         ensureCanManage(targetType, targetId, userId);
         JoinTargetResponse target = getTargetOrThrow(targetType, targetId);
         Instrument instrument = resolveInstrument(targetType, request.instrument());
@@ -225,6 +227,12 @@ public class JoinRequestService {
     private JoinResultResponse decide(Long userId, JoinRequest request, JoinStatus outcome) {
         if (outcome == JoinStatus.PENDING) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+        // 승인·수락은 소속을 추가하므로 아래의 어떤 일반 조회보다 먼저 대상 행을 잠근다. 그래야 소속 확인(ensureNotMember)과
+        // addMember가 최신 화면을 본다 — 늦게 잠그면 앞선 조회 시점의 화면으로 읽어 이미 소속인 사람을 다시 넣다가 유니크 위반(500)이 난다.
+        // 잠그는 순서는 신청 행 → 대상 행이다(회원 탈퇴 정리도 같은 순서). 거절·취소는 해체된 대상에도 되어야 해 잠그지 않는다.
+        if (outcome == JoinStatus.APPROVED) {
+            lockTarget(request.getTargetType(), request.getTargetId());
         }
         // 신청은 신청자가 취소하고 나머지는 대상의 팀장/모임장이 한다. 초대는 반대로 받은 사람이 수락·거절하고
         // 팀장/모임장이 취소한다. 권한을 먼저 보고 상태를 본다 — 권한 없는 사람에게 처리 여부를 드러내지 않는다.
@@ -328,6 +336,19 @@ public class JoinRequestService {
                 && !post.wantedInstruments().contains(instrument);
         if (!sameTarget || ownPost || unwantedInstrument) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    /**
+     * 신청·초대를 만들거나 승인할 때 대상 팀·모임 행을 잠근다. 같은 대상의 요청이 한 줄로 서므로 {@link #ensureNoPending}의
+     * 확인과 저장 사이에 다른 요청이 끼어들지 못한다(같은 사람의 대기 건이 둘 생기지 않는다). 트랜잭션의 첫 일반 조회보다 먼저 부른다.
+     * 팀은 행만 잠그고 해체 여부는 기존 흐름이 판정한다. 모임은 해체됐거나 없으면 여기서 404다.
+     */
+    private void lockTarget(TargetType targetType, Long targetId) {
+        if (targetType == TargetType.TEAM) {
+            teamService.lockTeam(targetId);
+        } else {
+            groupMemberService.lockActiveGroup(targetId);
         }
     }
 
