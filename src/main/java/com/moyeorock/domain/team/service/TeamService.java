@@ -263,6 +263,17 @@ public class TeamService {
                 () -> teamMemberRepository.save(TeamMember.create(teamId, userId, TeamRole.MEMBER, instrument)));
     }
 
+    /**
+     * 팀 행만 잠근다(3팀 가입 신청·초대 생성과 승인·수락). 같은 팀에 대한 신청·초대가 한 줄로 서서 같은 사람의 대기 건이
+     * 둘 생기지 않고, 승인 흐름이 낡은 화면으로 팀원 여부를 읽지 않는다. 상태는 보지 않는다 — 해체된 팀의 판정은
+     * 부르는 쪽의 기존 흐름({@link #addMember} 등)이 그대로 한다. 없는 팀이면 TEAM_NOT_FOUND다.
+     * 호출한 쪽의 트랜잭션에 참여하며, 그 트랜잭션의 첫 일반 조회보다 먼저 불러야 한다({@link #getTeamForUpdate}).
+     */
+    @Transactional
+    public void lockTeam(Long teamId) {
+        getTeamForUpdate(teamId);
+    }
+
     /** 공연 내 팀 생성(4팀). 만든 사람이 팀장이 된다. 공연 존재·상태 검증은 호출하는 4팀의 몫이다. */
     @Transactional
     public TeamDetailResponse createForPerformance(Long userId, Long performanceId, String name,
