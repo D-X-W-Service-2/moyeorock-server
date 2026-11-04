@@ -448,7 +448,7 @@ class PerformanceServiceTest {
     void createTeam_byMember_createsTeamViaTeamService() {
         givenPerformance();
         TeamDetailResponse team = new TeamDetailResponse(5L, "무명밴드", "발라드 위주로 갑니다.", Region.SEOUL,
-                List.of(Genre.BALLAD, Genre.ROCK), TeamStatus.ACTIVE, null, null, 1, List.of(), TeamRole.LEADER, null);
+                List.of(Genre.BALLAD, Genre.ROCK), TeamStatus.ACTIVE, null, null, 1, List.of(), List.of(), TeamRole.LEADER, null);
         when(teamService.createForPerformance(MEMBER_ID, PERFORMANCE_ID, "무명밴드", "발라드 위주로 갑니다.",
                 Region.SEOUL, List.of(Genre.BALLAD, Genre.ROCK), Instrument.BASS)).thenReturn(team);
 
