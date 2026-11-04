@@ -21,6 +21,8 @@ public enum ErrorCode {
     // user
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
+    // 회원 탈퇴 차단(팀장 위임 전·모임장 해체 전). 어느 팀·모임인지는 BusinessException의 message로 덧붙인다(api-spec §1 *)
+    WITHDRAW_BLOCKED_BY_ROLE(HttpStatus.CONFLICT, "모임장·팀장 직책을 정리한 뒤 탈퇴할 수 있습니다."),
 
     // team
     TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 팀입니다."),

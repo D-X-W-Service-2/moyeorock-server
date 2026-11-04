@@ -21,7 +21,7 @@ import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
-import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.domain.user.service.UserWithdrawService;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
@@ -68,7 +68,7 @@ class RecruitPostApiTest {
     private UserRepository userRepository;
 
     @Autowired
-    private UserService userService;
+    private UserWithdrawService userWithdrawService;
 
     @Autowired
     private TeamService teamService;
@@ -372,7 +372,7 @@ class RecruitPostApiTest {
                  "wantedSlots":[{"instrument":"KEY","count":1}],"region":"SEOUL"}
                 """.formatted(writerTeamId));
         teamService.changeMember(writerId, writerTeamId, otherId, new TeamMemberUpdateRequest(TeamRole.LEADER, null));
-        userService.withdraw(writerId);
+        userWithdrawService.withdraw(writerId);
 
         mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(otherId)))
                 .andExpect(status().isOk())
