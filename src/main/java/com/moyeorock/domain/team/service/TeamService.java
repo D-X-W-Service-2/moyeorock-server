@@ -25,6 +25,7 @@ import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
+import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -56,6 +57,7 @@ public class TeamService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserService userService;
     private final PerformanceMemberService performanceMemberService;
+    private final SetlistService setlistService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -77,7 +79,11 @@ public class TeamService {
         saveGenres(teamId, request.genres());
     }
 
-    /** 팀 해체. teams.status만 바꾼다 — 팀원·합주 등은 그대로 두고 조회에서 걸러진다(architecture.md §6). */
+    /**
+     * 팀 해체. teams.status만 바꾼다 — 팀원·합주 등은 그대로 두고 조회에서 걸러진다(architecture.md §6).
+     * 다만 그 팀의 선택곡·셋리스트 행은 같은 트랜잭션에서 지운다(4팀 SetlistService.deleteByTeam). 해체된 팀이 곡을 쥐고 있으면
+     * 같은 공연의 다른 팀이 그 곡을 넘기거나 고를 수 없기 때문이다. 공연 종료의 일괄 해체(disbandAllByPerformance)는 지우지 않는다.
+     */
     @Transactional
     public TeamStatusResponse disband(Long userId, Long teamId, TeamStatusUpdateRequest request) {
         if (request.status() != TeamStatus.DISBANDED) {
@@ -88,6 +94,7 @@ public class TeamService {
         requireActiveTeam(team);
 
         team.disband();
+        setlistService.deleteByTeam(teamId);
         return TeamStatusResponse.from(team);
     }
 
@@ -425,7 +432,8 @@ public class TeamService {
                 ? null
                 : performanceMemberService.getBrief(team.getPerformanceId());
 
-        return TeamDetailResponse.of(team, genres, performance, leader, toMemberResponses(members, users), myRole);
+        return TeamDetailResponse.of(team, genres, performance, leader, toMemberResponses(members, users),
+                setlistService.findTeamSongs(team.getId()), myRole);
     }
 
     private Map<Long, TeamSummaryResponse> toSummaryMap(List<Team> teams) {

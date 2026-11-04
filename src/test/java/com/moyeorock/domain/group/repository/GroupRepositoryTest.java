@@ -160,6 +160,26 @@ class GroupRepositoryTest {
     }
 
     @Test
+    @DisplayName("내 모임 전체는 페이징 없이 내 ACTIVE 모임원 자리만 가입 최신순으로 내 역할과 함께 준다 — 남의·탈퇴한·해체된 모임은 빠진다")
+    void findAllMyGroups_returnsMyActiveMemberships_latestFirst() {
+        Group first = joined(ME, group("먼저 가입"), 1);
+        Group latest = joined(ME, group("나중에 가입"), 2);
+        joined(OTHER, group("남의 모임"), 3);
+        GroupMember left = groupMemberRepository.save(GroupMember.create(
+                groupRepository.save(group("탈퇴한 모임")).getId(), ME, GroupRole.MEMBER));
+        left.leave();
+        Group disbanded = joined(ME, group("해체됨"), 4);
+        disbanded.disband();
+        groupRepository.flush();
+        groupMemberRepository.flush();
+
+        List<Object[]> rows = groupRepository.findAllMyGroups(ME);
+
+        assertThat(rows).extracting(row -> ((Group) row[0]).getId(), row -> row[1])
+                .containsExactly(tuple(latest.getId(), GroupRole.MEMBER), tuple(first.getId(), GroupRole.MEMBER));
+    }
+
+    @Test
     @DisplayName("모임 id 일괄 조회를 ACTIVE로 하면 해체된 모임은 빠진다")
     void findAllByIdInAndStatus_excludesDisbandedGroups() {
         Group active = groupRepository.save(group("활동 중"));
@@ -171,6 +191,25 @@ class GroupRepositoryTest {
                 List.of(active.getId(), disbanded.getId()), GroupStatus.ACTIVE))
                 .extracting(Group::getId)
                 .containsExactly(active.getId());
+    }
+
+    @Test
+    @DisplayName("내가 모임장인 모임은 해체되지 않은 모임만 모임 id 순으로 나온다 — 모임원이거나 남의 모임이면 빠진다")
+    void findOwnedGroups_returnsActiveGroupsIOwn() {
+        Group owned = owned(ME, group("내 모임"));
+        Group disbanded = owned(ME, group("해체한 모임"));
+        disbanded.disband();
+        joined(ME, group("모임원으로 있는 모임"), 1);
+        owned(OTHER, group("남의 모임"));
+        groupRepository.flush();
+
+        assertThat(groupRepository.findOwnedGroups(ME)).extracting(Group::getId).containsExactly(owned.getId());
+    }
+
+    private Group owned(Long userId, Group group) {
+        Group saved = groupRepository.save(group);
+        groupMemberRepository.saveAndFlush(GroupMember.create(saved.getId(), userId, GroupRole.OWNER));
+        return saved;
     }
 
     // findMyGroups의 각 행은 [Group, 내 역할]이다

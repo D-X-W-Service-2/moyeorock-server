@@ -21,6 +21,8 @@ public enum ErrorCode {
     // user
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 사용자입니다."),
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "이미 사용 중인 닉네임입니다."),
+    // 회원 탈퇴 차단(팀장 위임 전·모임장 해체 전). 어느 팀·모임인지는 BusinessException의 message로 덧붙인다(api-spec §1 *)
+    WITHDRAW_BLOCKED_BY_ROLE(HttpStatus.CONFLICT, "모임장·팀장 직책을 정리한 뒤 탈퇴할 수 있습니다."),
 
     // team
     TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 팀입니다."),
@@ -35,6 +37,9 @@ public enum ErrorCode {
     OAUTH_FAILED(HttpStatus.BAD_REQUEST, "카카오 인증에 실패했습니다."),
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "가입 요청이 만료되었습니다. 다시 시도해 주세요."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "이미 가입된 카카오 계정입니다."),
+
+    // 합주 (rehearsal)
+    REHEARSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 합주 일정입니다."),
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
@@ -66,6 +71,14 @@ public enum ErrorCode {
     // 저장 (bookmark)
     BOOKMARK_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 저장입니다."),
     BOOKMARK_DUPLICATED(HttpStatus.CONFLICT, "이미 저장한 대상입니다."),
+
+    // 노래 (song) — 코드 이름은 노션에 없어 4팀이 정했다(이슈 #103)
+    SONG_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 곡입니다."),
+
+    // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
+    SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),
+    SONG_ALREADY_IN_SETLIST(HttpStatus.CONFLICT, "같은 공연의 다른 팀이 이미 넘긴 곡입니다."),
+    SONG_NOT_TEAM_CANDIDATE(HttpStatus.CONFLICT, "팀이 셋리스트로 넘긴 곡만 확정할 수 있습니다."),
 
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다."),

@@ -10,6 +10,9 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.moyeorock.domain.setlist.dto.response.TeamSongResponse;
+import com.moyeorock.domain.setlist.service.SetlistService;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
@@ -76,6 +79,8 @@ class TeamServiceTest {
     UserService userService;
     @Mock
     PerformanceMemberService performanceMemberService;
+    @Mock
+    SetlistService setlistService;
     @InjectMocks
     TeamService teamService;
 
@@ -232,30 +237,44 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("팀 해체: 해체되면 그 팀의 선택곡·셋리스트를 지운다")
+    void disband_deletesSetlistAndTeamSongs() {
+        givenTeam(team());
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+
+        teamService.disband(LEADER_ID, TEAM_ID, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        verify(setlistService).deleteByTeam(TEAM_ID);
+    }
+
+    @Test
     @DisplayName("팀 해체: DISBANDED가 아닌 값은 VALIDATION_FAILED")
     void disband_withOtherStatus_isValidationFailed() {
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.ACTIVE)), ErrorCode.VALIDATION_FAILED);
+        verify(setlistService, never()).deleteByTeam(any());
     }
 
     @Test
-    @DisplayName("팀 해체: 팀장이 아니면 NOT_TEAM_LEADER")
+    @DisplayName("팀 해체: 팀장이 아니면 NOT_TEAM_LEADER이고 선택곡·셋리스트는 지우지 않는다")
     void disband_byNonLeader_isForbidden() {
         givenTeam(team());
         givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE));
 
         assertErrorCode(() -> teamService.disband(MEMBER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.NOT_TEAM_LEADER);
+        verify(setlistService, never()).deleteByTeam(any());
     }
 
     @Test
-    @DisplayName("팀 해체: 이미 해체된 팀을 다시 해체하면 INVALID_STATE")
+    @DisplayName("팀 해체: 이미 해체된 팀을 다시 해체하면 INVALID_STATE이고 선택곡·셋리스트는 지우지 않는다")
     void disband_alreadyDisbanded_isInvalidState() {
         givenTeam(disbandedTeam());
         givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
 
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.INVALID_STATE);
+        verify(setlistService, never()).deleteByTeam(any());
     }
 
     // ---------- changeMember ----------
@@ -539,6 +558,19 @@ class TeamServiceTest {
         assertThat(asStranger.myRole()).isNull();
         assertThat(asStranger.memberCount()).isEqualTo(2);
         assertThat(asStranger.leader().nickname()).isEqualTo("홍길동");
+    }
+
+    @Test
+    @DisplayName("팀 상세: 선택곡이 songs에 담기고, 고른 곡이 없으면 빈 목록이다")
+    void getDetail_includesTeamSongs() {
+        givenTeam(team());
+        given(teamMemberRepository.findActiveMembers(TEAM_ID)).willReturn(List.of());
+        given(userService.getSummaries(List.of())).willReturn(Map.of());
+        TeamSongResponse teamSong = new TeamSongResponse(21L, new SongSummaryResponse(88L, "Bohemian Rhapsody", "Queen"));
+        given(setlistService.findTeamSongs(TEAM_ID)).willReturn(List.of(teamSong)).willReturn(List.of());
+
+        assertThat(teamService.getDetail(LEADER_ID, TEAM_ID).songs()).containsExactly(teamSong);
+        assertThat(teamService.getDetail(LEADER_ID, TEAM_ID).songs()).isEmpty();
     }
 
     @Test
@@ -1019,5 +1051,15 @@ class TeamServiceTest {
 
         assertThat(first.getStatus()).isEqualTo(TeamStatus.DISBANDED);
         assertThat(second.getStatus()).isEqualTo(TeamStatus.DISBANDED);
+    }
+
+    @Test
+    @DisplayName("공연 종료 시 해체: 끝난 공연의 기록을 남기려고 선택곡·셋리스트는 지우지 않는다")
+    void disbandAllByPerformance_doesNotDeleteSetlistAndTeamSongs() {
+        given(teamRepository.findActiveByPerformanceIdForUpdate(7L)).willReturn(List.of(team()));
+
+        teamService.disbandAllByPerformance(7L);
+
+        verify(setlistService, never()).deleteByTeam(any());
     }
 }

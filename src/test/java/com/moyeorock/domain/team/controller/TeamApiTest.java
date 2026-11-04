@@ -91,7 +91,8 @@ class TeamApiTest {
                 .andExpect(jsonPath("$.data.memberCount").value(1))
                 .andExpect(jsonPath("$.data.myRole").value("LEADER"))
                 .andExpect(jsonPath("$.data.members[0].role").value("LEADER"))
-                .andExpect(jsonPath("$.data.members[0].instrument").value("BASS"));
+                .andExpect(jsonPath("$.data.members[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.songs").isEmpty());
     }
 
     @Test

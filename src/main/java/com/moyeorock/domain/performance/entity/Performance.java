@@ -78,7 +78,25 @@ public class Performance extends BaseEntity {
         this.posterImage = posterImage;
     }
 
+    public boolean isSetlistConfirmed() {
+        return setlistConfirmedAt != null;
+    }
+
+    // 확정된 셋리스트를 다시 확정하면 확정 시각도 새로 찍는다
+    public void confirmSetlist(LocalDateTime now) {
+        this.setlistConfirmedAt = now;
+    }
+
+    public void unconfirmSetlist() {
+        this.setlistConfirmedAt = null;
+    }
+
     public void changeStatus(PerformanceStatus status) {
         this.status = status;
+    }
+
+    // 끝난 공연(종료·취소). 소속 팀이 모두 해체돼 있어 상태를 되돌리거나 팀을 새로 만들 수 없다.
+    public boolean isFinished() {
+        return status == PerformanceStatus.DONE || status == PerformanceStatus.CANCELED;
     }
 }

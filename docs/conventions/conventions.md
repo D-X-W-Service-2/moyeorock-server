@@ -151,7 +151,8 @@ public class TeamService {
 
 - `JpaRepository<Team, Long>` 상속
 - 메서드 이름이 길어지면(조건 3개 초과) `@Query` 또는 QueryDSL. **QueryDSL은 아직 도입 안 함**
-- 연관관계 매핑을 안 쓰므로 `@EntityGraph`/`join fetch`로 N+1을 풀 일이 없다. 대신 여러 건의 참조 ID를 한 번에 다른 도메인 Service에 넘겨 일괄 조회하는 방식으로 N+1을 피한다(예: `UserService.getSummaries(Collection<Long> userIds)` · `getInstruments(Collection<Long> userIds)` · 자기 범위 안에서 닉네임으로 거르는 `filterByNickname(Collection<Long> userIds, String keyword)`. 셋 다 탈퇴 회원은 제외한다). 단건씩 반복 호출하지 않는다
+- 연관관계 매핑을 안 쓰므로 `@EntityGraph`/`join fetch`로 N+1을 풀 일이 없다. 대신 여러 건의 참조 ID를 한 번에 다른 도메인 Service에 넘겨 일괄 조회하는 방식으로 N+1을 피한다(예: `UserService.getSummaries(Collection<Long> userIds)` · `getProfileSummaries(Collection<Long> userIds)` · `getInstruments(Collection<Long> userIds)` · 자기 범위 안에서 닉네임으로 거르는 `filterByNickname(Collection<Long> userIds, String keyword)`. 넷 다 탈퇴 회원은 제외한다). 단건씩 반복 호출하지 않는다
+- 사용자 정보가 더 필요할 때: users 행에 있는 필드(지역 · 장르)는 `getProfileSummaries`처럼 변형 DTO(`UserProfileSummaryResponse`)를 더해 같은 쿼리로 받고, 자식 테이블 값(세션 · 실력)은 `getInstruments`처럼 별도 Map으로 받는다. 전자는 쿼리가 늘지 않고 후자는 조인이 필요해서 나눈다(PR #78 리뷰)
 - 팀 조회 메서드에는 `status = ACTIVE` 조건을 넣는다 (`docs/conventions/architecture.md` §6)
 
 ## 5. 네이밍

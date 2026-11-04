@@ -21,6 +21,9 @@ import com.moyeorock.domain.group.enums.GroupType;
 import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.dto.response.NoticePreviewResponse;
 import com.moyeorock.domain.notice.service.NoticeService;
+import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
+import com.moyeorock.domain.performance.enums.PerformanceStatus;
+import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Region;
@@ -61,11 +64,15 @@ class GroupServiceTest {
     @Mock
     private RecruitPostService recruitPostService;
 
+    @Mock
+    private PerformanceService performanceService;
+
     private GroupService groupService;
 
     @BeforeEach
     void setUp() {
-        groupService = new GroupService(groupRepository, groupMemberService, noticeService, recruitPostService);
+        groupService = new GroupService(groupRepository, groupMemberService, noticeService, recruitPostService,
+                performanceService);
     }
 
     @Test
@@ -83,11 +90,12 @@ class GroupServiceTest {
         assertThat(response.memberCount()).isEqualTo(1);
         assertThat(response.name()).isEqualTo("홍대 밴드부");
         assertThat(response.pinnedNotices()).isEmpty();
-        verifyNoInteractions(noticeService);
+        assertThat(response.upcomingPerformances()).isEmpty();
+        verifyNoInteractions(noticeService, performanceService);
     }
 
     @Test
-    @DisplayName("모임 상세는 모임원 수·내 역할·고정 공지를 함께 담는다")
+    @DisplayName("모임 상세는 모임원 수·내 역할·고정 공지·다가오는 공연을 함께 담는다")
     void getDetail_composesHomeScreen() {
         Group group = withId(group(), GROUP_ID);
         when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(Optional.of(group));
@@ -96,6 +104,9 @@ class GroupServiceTest {
         when(groupMemberService.countActiveMembers(GROUP_ID)).thenReturn(24);
         when(noticeService.getPinnedPreview(GROUP_ID)).thenReturn(List.of(
                 new NoticePreviewResponse(8L, "3월 정기공연 안내", true, LocalDateTime.now())));
+        PerformanceSummaryResponse upcoming = new PerformanceSummaryResponse(7L, "2026 정기공연",
+                LocalDateTime.now().plusMonths(1), "홍대 롤링홀", null, PerformanceStatus.PLANNED, LocalDateTime.now());
+        when(performanceService.findUpcoming(GROUP_ID)).thenReturn(List.of(upcoming));
 
         GroupDetailResponse response = groupService.getDetail(MEMBER_ID, GROUP_ID);
 
@@ -104,6 +115,7 @@ class GroupServiceTest {
         assertThat(response.ownerId()).isEqualTo(OWNER_ID);
         assertThat(response.pinnedNotices()).hasSize(1);
         assertThat(response.pinnedNotices().get(0).title()).isEqualTo("3월 정기공연 안내");
+        assertThat(response.upcomingPerformances()).containsExactly(upcoming);
     }
 
     @Test

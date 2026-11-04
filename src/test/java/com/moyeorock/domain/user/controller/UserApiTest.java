@@ -1,6 +1,7 @@
 package com.moyeorock.domain.user.controller;
 
 import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -11,10 +12,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
+import com.moyeorock.domain.group.enums.GroupType;
+import com.moyeorock.domain.group.service.GroupService;
+import com.moyeorock.domain.performance.dto.request.PerformanceCreateRequest;
+import com.moyeorock.domain.performance.service.PerformanceService;
+import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
+import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,8 +41,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * user Phase 1 7개를 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
+ * user Phase 1 7개 + Phase 2 내 활동·타인 프로필을 실제 HTTP 흐름(보안 필터·@Valid·쿼리 파라미터·에러 봉투)으로 확인한다.
  * 사용자는 Repository로 바로 만들고 토큰은 {@code JwtProvider}로 발급한다(RecruitPostApiTest 선례).
+ * 활동 재료는 2팀 {@code TeamService}·4팀 {@code GroupService}·{@code PerformanceService}로 만든다. 남의 Repository·Entity는
+ * 테스트에서도 만지지 않는다.
  * 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
 @SpringBootTest
@@ -52,9 +68,24 @@ class UserApiTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private TeamService teamService;
+
+    @Autowired
+    private GroupService groupService;
+
+    @Autowired
+    private PerformanceService performanceService;
+
     private long saveUser(String email, String nickname) {
         return userRepository.saveAndFlush(
                 User.signupWithEmail(email, "hash", nickname, LocalDateTime.of(2026, 9, 29, 10, 0))).getId();
+    }
+
+    /** userId가 팀장(LEADER)·BASS로 들어간 팀 하나를 만들고 팀 id를 돌려준다. 남의 Repository는 테스트에서도 만지지 않는다. */
+    private long createTeam(long userId, String name) {
+        return teamService.create(userId,
+                new TeamCreateRequest(name, null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
     }
 
     private String bearer(long userId) {
@@ -77,6 +108,75 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/me")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/search").param("nickname", "서")).andExpect(status().isUnauthorized());
         mockMvc.perform(get(BASE + "/nickname/check").param("nickname", "서준")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(BASE + "/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get(BASE + "/me/activities")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("내 활동은 200이며 속한 팀이 없으면 세 목록 모두 빈 배열이다(null 아님)")
+    void getActivities_noTeams_returnsEmptyLists() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.teams", hasSize(0)))
+                .andExpect(jsonPath("$.data.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.performances", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 만든 팀이 팀 요약 + 내 역할(LEADER)·악기로 담긴다. 모임·공연이 없으면 groups·performances는 빈 배열이다")
+    void getActivities_withTeam_returnsMembership() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long teamId = createTeam(me, "무명밴드");
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams", hasSize(1)))
+                .andExpect(jsonPath("$.data.teams[0].team.id").value(teamId))
+                .andExpect(jsonPath("$.data.teams[0].team.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.teams[0].team.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.teams[0].team.memberCount").value(1))
+                .andExpect(jsonPath("$.data.teams[0].role").value("LEADER"))
+                .andExpect(jsonPath("$.data.teams[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.performances", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("내 활동: 내가 만든 모임이 내 역할(OWNER)과 함께, 그 모임 공연에서 만든 팀이 나가는 진행 중 공연이 모임 이름·팀 이름과 함께 담긴다")
+    void getActivities_withGroupAndPerformance_returnsBoth() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long groupId = groupService.create(me,
+                new GroupCreateRequest("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+        long performanceId = performanceService.create(me, groupId,
+                new PerformanceCreateRequest("겨울 정기공연", null, LocalDateTime.now().plusDays(30), null, null)).id();
+        teamService.createForPerformance(me, performanceId, "공연팀", null, Region.SEOUL, List.of(Genre.ROCK),
+                Instrument.DRUM);
+
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.groups", hasSize(1)))
+                .andExpect(jsonPath("$.data.groups[0].id").value(groupId))
+                .andExpect(jsonPath("$.data.groups[0].name").value("홍대 밴드부"))
+                .andExpect(jsonPath("$.data.groups[0].type").value("REGULAR"))
+                .andExpect(jsonPath("$.data.groups[0].role").value("OWNER"))
+                .andExpect(jsonPath("$.data.performances", hasSize(1)))
+                .andExpect(jsonPath("$.data.performances[0].id").value(performanceId))
+                .andExpect(jsonPath("$.data.performances[0].title").value("겨울 정기공연"))
+                .andExpect(jsonPath("$.data.performances[0].groupName").value("홍대 밴드부"))
+                .andExpect(jsonPath("$.data.performances[0].status").value("PLANNED"))
+                .andExpect(jsonPath("$.data.performances[0].teamName").value("공연팀"))
+                .andExpect(jsonPath("$.data.performances[0].performedAt").exists());
+    }
+
+    @Test
+    @DisplayName("내 활동: 토큰의 사용자가 없으면(탈퇴 등) 다른 /me와 같이 404 USER_NOT_FOUND다")
+    void getActivities_unknownUser_returns404() throws Exception {
+        mockMvc.perform(get(BASE + "/me/activities").header("Authorization", bearer(999_999L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
     }
 
     @Test
@@ -210,6 +310,68 @@ class UserApiTest {
     }
 
     @Test
+    @DisplayName("탈퇴: 팀장인 활동 중인 팀이 있으면 409 WITHDRAW_BLOCKED_BY_ROLE이고 메시지에 팀 이름이 담기며 계정은 그대로다")
+    void withdraw_blockedWhileLeadingTeam() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        createTeam(id, "무명밴드");
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("WITHDRAW_BLOCKED_BY_ROLE"))
+                .andExpect(jsonPath("$.message").value("팀 '무명밴드'의 팀장을 위임한 뒤 탈퇴할 수 있습니다."))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+        mockMvc.perform(get(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("seojun@example.com"));
+    }
+
+    @Test
+    @DisplayName("탈퇴: 팀장이던 팀을 해체하면 더는 막히지 않고 200이다")
+    void withdraw_allowedAfterDisbandingLedTeam() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        long teamId = createTeam(id, "무명밴드");
+        teamService.disband(id, teamId, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.withdrawnAt").exists());
+    }
+
+    @Test
+    @DisplayName("탈퇴: 일반 팀원으로 있던 팀에서 빠져 팀원 수가 줄어든다(팀원 행 LEFT)")
+    void withdraw_leavesTeamsAsMember() throws Exception {
+        long leader = saveUser("leader@example.com", "팀장");
+        long member = saveUser("member@example.com", "팀원");
+        long teamId = createTeam(leader, "무명밴드");
+        teamService.addMember(teamId, member, Instrument.DRUM);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(2);
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(member)))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(member)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("탈퇴: 모임장인 활동 중인 모임이 있으면 409이고 메시지에 모임 이름이 담기며, 모임을 해체하면 200이다")
+    void withdraw_blockedWhileOwningGroup_thenAllowedAfterDisband() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        long groupId = groupService.create(id,
+                new GroupCreateRequest("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WITHDRAW_BLOCKED_BY_ROLE"))
+                .andExpect(jsonPath("$.message").value("모임 '홍대 밴드부'의 모임장을 위임하거나 모임을 해체한 뒤 탈퇴할 수 있습니다."));
+
+        groupService.disband(id, groupId);
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @DisplayName("검색: 부분 일치 ACTIVE 회원만 페이지 응답으로, 검색어가 없거나 비면 400이다")
     void search_partialMatch_orBlank400() throws Exception {
         long me = saveUser("me@example.com", "검색자");
@@ -262,5 +424,93 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/nickname/check").header("Authorization", bearer(me)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필 조회는 200이며 본인 전용 필드(email·isRecommendable)가 없고, 세션에 id가 없으며, 공개 사용자는 activities에 팀 활동이 담긴다")
+    void getProfile_returnsPublicFieldsOnly() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long target = saveUser("minseo@example.com", "임시민서");
+        onboard(target, ONBOARDING_BODY).andExpect(status().isOk());
+        long teamId = createTeam(target, "무명밴드");
+
+        mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(target))
+                .andExpect(jsonPath("$.data.nickname").value("서준"))
+                .andExpect(jsonPath("$.data.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.genres[0]").value("ROCK"))
+                .andExpect(jsonPath("$.data.instruments", hasSize(2)))
+                .andExpect(jsonPath("$.data.instruments[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.instruments[0].level").value("NOVICE"))
+                .andExpect(jsonPath("$.data.instruments[0]", not(hasKey("id"))))
+                .andExpect(jsonPath("$.data.isActivityPublic").value(true))
+                .andExpect(jsonPath("$.data.activities.teams", hasSize(1)))
+                .andExpect(jsonPath("$.data.activities.teams[0].team.id").value(teamId))
+                .andExpect(jsonPath("$.data.activities.teams[0].role").value("LEADER"))
+                .andExpect(jsonPath("$.data.activities.groups", hasSize(0)))
+                .andExpect(jsonPath("$.data.activities.performances", hasSize(0)))
+                .andExpect(jsonPath("$.data.createdAt").exists())
+                .andExpect(jsonPath("$.data", not(hasKey("email"))))
+                .andExpect(jsonPath("$.data", not(hasKey("isRecommendable"))))
+                .andExpect(jsonPath("$.data", not(hasKey("loginType"))))
+                .andExpect(jsonPath("$.data", not(hasKey("onboardingCompleted"))));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 활동 비공개로 바꾼 사용자는 팀이 있어도 isActivityPublic=false, activities=null로 내려간다(빈 목록 아님)")
+    void getProfile_privateActivity() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long target = saveUser("minseo@example.com", "민서");
+        createTeam(target, "비공개밴드");
+        putJson("/me", target, "{\"nickname\":\"민서\",\"isRecommendable\":true,\"isActivityPublic\":false}")
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE + "/" + target).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.isActivityPublic").value(false))
+                .andExpect(jsonPath("$.data", hasKey("activities")))
+                .andExpect(jsonPath("$.data.activities").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 본인 id로 불러도 특별 처리 없이 타인 프로필 형태(email 없음)로 200이다")
+    void getProfile_ownId_sameShape() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/" + me).header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(me))
+                .andExpect(jsonPath("$.data.nickname").value("조회자"))
+                .andExpect(jsonPath("$.data", not(hasKey("email"))));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: 탈퇴한 사용자와 없는 id는 404 USER_NOT_FOUND다")
+    void getProfile_withdrawnOrUnknown_returns404() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+        long withdrawn = saveUser("bye@example.com", "탈퇴예정");
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(withdrawn))).andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE + "/" + withdrawn).header("Authorization", bearer(me)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        mockMvc.perform(get(BASE + "/999999").header("Authorization", bearer(me)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("타인 프로필: id가 숫자가 아니면 400이고, /me는 /{id}에 먹히지 않고 내 프로필로 간다")
+    void getProfile_nonNumericId_returns400_andMeStillRoutes() throws Exception {
+        long me = saveUser("me@example.com", "조회자");
+
+        mockMvc.perform(get(BASE + "/abc").header("Authorization", bearer(me)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get(BASE + "/me").header("Authorization", bearer(me)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("me@example.com"));
     }
 }

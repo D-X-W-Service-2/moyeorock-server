@@ -10,7 +10,6 @@ import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
-import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.entity.UserInstrument;
 import com.moyeorock.domain.user.enums.UserStatus;
@@ -52,7 +51,7 @@ public class UserService {
     }
 
     @Transactional
-    /** 잠금 조회. 잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush(전 컬럼 UPDATE)가 탈퇴를 되돌린다(PR #57 리뷰). withdraw도 같은 이유. */
+    /** 잠금 조회. 잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush(전 컬럼 UPDATE)가 탈퇴를 되돌린다(PR #57 리뷰). 탈퇴(UserWithdrawService)도 같은 잠금 조회를 쓴다. */
     public UserMeResponse updateMe(Long userId, UserUpdateRequest request) {
         User user = getActiveUserForUpdate(userId);
         String nickname = normalizeAndValidateNickname(request.nickname());
@@ -60,13 +59,6 @@ public class UserService {
         user.updateProfile(nickname, request.region(), request.genres(), request.bio(),
                 request.profileImage(), request.isRecommendable(), request.isActivityPublic());
         return UserMeResponse.of(user, findInstruments(userId));
-    }
-
-    @Transactional
-    public UserWithdrawResponse withdraw(Long userId) {
-        User user = getActiveUserForUpdate(userId);
-        user.withdraw();
-        return new UserWithdrawResponse(user.getWithdrawnAt());
     }
 
     /** 재호출은 거부하지 않고 값만 갱신한다(멱등). 세션 교체가 UNIQUE에 걸리지 않도록 잠금 조회로 직렬화한다. */

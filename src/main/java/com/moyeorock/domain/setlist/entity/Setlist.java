@@ -46,4 +46,13 @@ public class Setlist extends BaseEntity {
         setlist.songId = songId;
         return setlist;
     }
+
+    public void changeSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
+    }
+
+    // 확정 해제 — 다시 확정 전 상태로 돌린다
+    public void clearSortOrder() {
+        this.sortOrder = null;
+    }
 }
