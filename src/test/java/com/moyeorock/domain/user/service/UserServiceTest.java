@@ -19,7 +19,6 @@ import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
-import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.entity.UserInstrument;
 import com.moyeorock.domain.user.enums.LoginType;
@@ -197,34 +196,6 @@ class UserServiceTest {
 
             assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(
                     () -> userService.updateMe(USER_ID, request("탈퇴회원_1"))), ErrorCode.VALIDATION_FAILED);
-        }
-    }
-
-    @Nested
-    @DisplayName("withdraw")
-    class Withdraw {
-
-        @Test
-        @DisplayName("상태를 WITHDRAWN으로 바꾸고 탈퇴 시각을 돌려준다")
-        void withdraws() {
-            User user = activeUser("서준");
-            givenActiveForUpdate(user);
-
-            UserWithdrawResponse response = userService.withdraw(USER_ID);
-
-            assertThat(user.getStatus()).isEqualTo(UserStatus.WITHDRAWN);
-            assertThat(user.getEmail()).isNull();
-            assertThat(user.getNickname()).isEqualTo("탈퇴회원_" + USER_ID);
-            assertThat(response.withdrawnAt()).isEqualTo(user.getWithdrawnAt());
-        }
-
-        @Test
-        @DisplayName("이미 탈퇴한 사용자는 활성 조회에 실패해 USER_NOT_FOUND")
-        void already_withdrawn_throws() {
-            given(userRepository.findByIdAndStatusForUpdate(USER_ID, UserStatus.ACTIVE)).willReturn(Optional.empty());
-
-            assertErrorCode(org.assertj.core.api.Assertions.catchThrowable(() -> userService.withdraw(USER_ID)),
-                    ErrorCode.USER_NOT_FOUND);
         }
     }
 

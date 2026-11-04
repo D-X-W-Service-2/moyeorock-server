@@ -19,6 +19,8 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     boolean existsByUserIdAndTargetUserId(Long userId, Long targetUserId);
 
+    boolean existsByUserIdAndTargetTeamId(Long userId, Long targetTeamId);
+
     /** 본인의 저장만 조회한다. 남의 저장 id는 없는 것과 똑같이 취급해 존재 여부를 드러내지 않는다. */
     Optional<Bookmark> findByIdAndUserId(Long id, Long userId);
 }

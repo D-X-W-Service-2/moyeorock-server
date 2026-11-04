@@ -51,6 +51,16 @@ public class TeamMemberService {
     }
 
     /**
+     * 활동 중인 팀장인지 여부만 돌려준다. ensureLeader와 달리 예외를 던지지 않아서, 화면에 보여줄 권한 표시
+     * (예: 합주 상세의 canEdit)를 계산할 때 쓴다. 팀의 존재·해체 여부는 보지 않으니 필요하면 ensure 메서드를 먼저 부른다.
+     */
+    public boolean isLeader(Long teamId, Long userId) {
+        return teamMemberRepository.findByTeamIdAndUserId(teamId, userId)
+                .filter(m -> m.getStatus() == MemberStatus.ACTIVE && m.getRole() == TeamRole.LEADER)
+                .isPresent();
+    }
+
+    /**
      * 팀이 속한 공연 id. 독립 팀이면 null이다. 없는 팀만 TEAM_NOT_FOUND이고 해체된 팀도 돌려준다 —
      * 해체 여부 검사는 위의 ensure 메서드를 먼저 부르는 쪽이 한다.
      */

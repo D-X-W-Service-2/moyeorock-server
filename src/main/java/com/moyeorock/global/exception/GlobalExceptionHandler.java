@@ -22,8 +22,9 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
+    // message는 예외가 들고 온 문장이다. 기본 생성자로 만들면 ErrorCode 메시지와 같다
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
-        return toResponse(e.getErrorCode());
+        return toResponse(e.getErrorCode(), e.getMessage());
     }
 
     // 여러 필드가 틀려도 첫 번째 하나만 message에 담는다. 기본 검증 메시지("공백일 수 없습니다")에는

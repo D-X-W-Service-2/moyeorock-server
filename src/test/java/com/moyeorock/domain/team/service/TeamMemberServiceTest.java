@@ -192,4 +192,20 @@ class TeamMemberServiceTest {
         assertThat(teamMemberService.getNames(List.of())).isEmpty();
         verify(teamRepository, never()).findAllById(List.of());
     }
+
+    // ---------- isLeader ----------
+
+    @Test
+    @DisplayName("팀장 여부: 활동 중인 팀장만 true이고 일반 팀원·탈퇴한 팀장·팀원이 아닌 사람은 false")
+    void isLeader_trueOnlyForActiveLeader() {
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+        givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE));
+        givenMember(3L, member(3L, TeamRole.LEADER, MemberStatus.LEFT));
+        givenMember(99L, null);
+
+        assertThat(teamMemberService.isLeader(TEAM_ID, LEADER_ID)).isTrue();
+        assertThat(teamMemberService.isLeader(TEAM_ID, MEMBER_ID)).isFalse();
+        assertThat(teamMemberService.isLeader(TEAM_ID, 3L)).isFalse();
+        assertThat(teamMemberService.isLeader(TEAM_ID, 99L)).isFalse();
+    }
 }

@@ -393,6 +393,65 @@ class GroupMemberServiceTest {
         assertThat(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).isFalse();
     }
 
+    @Test
+    @DisplayName("내가 모임장인 모임은 모임 요약으로 돌려준다 (1팀 회원 탈퇴 차단용)")
+    void findOwnedGroups_mapsToBrief() {
+        Group group = Group.create("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, "cover.jpg");
+        when(groupRepository.findOwnedGroups(OWNER_ID)).thenReturn(List.of(group));
+
+        assertThat(groupMemberService.findOwnedGroups(OWNER_ID))
+                .containsExactly(new GroupBriefResponse(null, "홍대 밴드부", "cover.jpg"));
+    }
+
+    @Test
+    @DisplayName("회원 탈퇴 시 모임원 행을 모두 LEFT로 바꾼다 — 해체된 모임은 모임장이어도 LEFT")
+    void leaveAllGroups_leavesEveryGroup() {
+        GroupMember inActiveGroup = GroupMember.create(GROUP_ID, MEMBER_ID, GroupRole.MEMBER);
+        GroupMember ownerOfDisbanded = GroupMember.create(2L, MEMBER_ID, GroupRole.OWNER);
+        when(groupMemberRepository.findActiveGroupIds(MEMBER_ID)).thenReturn(List.of(GROUP_ID, 2L));
+        givenGroupLocked();
+        when(groupRepository.findByIdAndStatusForUpdate(2L, GroupStatus.ACTIVE)).thenReturn(Optional.empty());
+        when(groupMemberRepository.findByGroupIdAndUserIdForUpdate(GROUP_ID, MEMBER_ID)).thenReturn(Optional.of(inActiveGroup));
+        when(groupMemberRepository.findByGroupIdAndUserIdForUpdate(2L, MEMBER_ID)).thenReturn(Optional.of(ownerOfDisbanded));
+
+        groupMemberService.leaveAllGroups(MEMBER_ID);
+
+        assertThat(inActiveGroup.getStatus()).isEqualTo(GroupMemberStatus.LEFT);
+        assertThat(ownerOfDisbanded.getStatus()).isEqualTo(GroupMemberStatus.LEFT);
+    }
+
+    @Test
+    @DisplayName("활동 중 모임의 모임장이면 OWNER_CANNOT_LEAVE — 모임 행을 잠근 뒤 모임원 행을 잠금 조회로 다시 읽어 판단한다")
+    void leaveAllGroups_throws_whenOwnerOfActiveGroup() {
+        GroupMember owner = GroupMember.create(GROUP_ID, OWNER_ID, GroupRole.OWNER);
+        when(groupMemberRepository.findActiveGroupIds(OWNER_ID)).thenReturn(List.of(GROUP_ID));
+        givenGroupLocked();
+        when(groupMemberRepository.findByGroupIdAndUserIdForUpdate(GROUP_ID, OWNER_ID)).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> groupMemberService.leaveAllGroups(OWNER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.OWNER_CANNOT_LEAVE);
+        assertThat(owner.getStatus()).isEqualTo(GroupMemberStatus.ACTIVE);
+        InOrder order = inOrder(groupRepository, groupMemberRepository);
+        order.verify(groupRepository).findByIdAndStatusForUpdate(GROUP_ID, GroupStatus.ACTIVE);
+        order.verify(groupMemberRepository).findByGroupIdAndUserIdForUpdate(GROUP_ID, OWNER_ID);
+    }
+
+    @Test
+    @DisplayName("잠그고 다시 읽었을 때 이미 강퇴됐으면 그대로 둔다")
+    void leaveAllGroups_skipsRowNoLongerActive() {
+        GroupMember banned = GroupMember.create(GROUP_ID, MEMBER_ID, GroupRole.MEMBER);
+        banned.ban();
+        when(groupMemberRepository.findActiveGroupIds(MEMBER_ID)).thenReturn(List.of(GROUP_ID));
+        givenGroupLocked();
+        when(groupMemberRepository.findByGroupIdAndUserIdForUpdate(GROUP_ID, MEMBER_ID)).thenReturn(Optional.of(banned));
+
+        groupMemberService.leaveAllGroups(MEMBER_ID);
+
+        assertThat(banned.getStatus()).isEqualTo(GroupMemberStatus.BANNED);
+    }
+
     private void givenGroupExists() {
         when(groupRepository.existsByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE)).thenReturn(true);
     }

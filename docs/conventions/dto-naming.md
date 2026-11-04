@@ -165,7 +165,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `getSummaries(Collection<Long> teamIds)` → `Map<Long, TeamSummaryResponse>` | 3팀 bookmark · 1팀 activity | 해체된 팀과 없는 id는 Map에서 빠진다. 호출하는 쪽이 "삭제된 항목"으로 처리 |
 | `addMember(Long teamId, Long userId, Instrument instrument)` | 3팀 join 승인 | 호출한 쪽 트랜잭션에 참여. 나갔던 팀원은 기존 행을 되살린다. 이미 팀원이거나 해체된 팀이면 `INVALID_STATE`. 공연 팀이면 `PerformanceMemberService.ensureGroupMember`로 그 공연을 연 모임의 활동 모임원인지 확인해 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER` |
 | `createForPerformance(userId, performanceId, name, description, region, genres, instrument)` → `TeamDetailResponse` | 4팀 performance | 만든 사람이 팀장. 공연 존재·상태 검증은 호출하는 쪽의 몫 |
-| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료(`DONE`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 셋리스트 기록을 남기려고 선택곡은 지우지 않는다 |
+| `disbandAllByPerformance(Long performanceId)` | 4팀 performance | 공연 종료·취소(`DONE`·`CANCELED`) 시 그 공연의 `ACTIVE` 팀을 해체. 여러 번 불러도 안전. 끝난 공연의 기록을 남기려고 셋리스트·선택곡(`setlists`·`team_songs`)은 지우지 않는다 |
 | `leavePerformanceTeams(Long userId, Collection<Long> performanceIds)` | 4팀 group(모임 탈퇴·강퇴) | 호출한 쪽 트랜잭션에 참여. 그 공연들의 활동 중인 팀에서 이 사람의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀·이미 나간 팀은 지나간다. 이 사람이 그중 한 팀의 팀장이면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 모임 탈퇴·강퇴 전체가 막히고 위임 안내 |
 | `leaveAllTeams(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람이 속한 활동 중인 모든 팀(공연 팀·독립 팀)의 `ACTIVE` 팀원 행을 `LEFT`로 바꾼다. 해체된 팀은 지나간다(해체 당시 인원 기록을 남기려고). 팀장 행이 남아 있으면 아무것도 바꾸지 않고 `409 LEADER_MUST_DELEGATE_FIRST` — 1팀이 먼저 `findLedTeams`로 막으므로 안전장치다 |
 | `findLedTeams(Long userId)` → `List<TeamSummaryResponse>` | 1팀 user(회원 탈퇴) | 내가 팀장인 활동 중인 팀. 팀원 행 `ACTIVE`·`LEADER`이고 팀도 `ACTIVE`인 경우만, 해체된 팀은 빠진다. 팀 id 순, 페이징 없음. 비어 있어야 탈퇴할 수 있고, 있으면 어느 팀 때문에 막혔는지 안내한다 |
@@ -206,6 +206,8 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `RehearsalSummaryResponse` | 캘린더 항목. `teamId`·`teamName` 포함 — 내 합주 목록에서 팀 구분에 필요 |
 | `RehearsalsResponse` | `(List<RehearsalSummaryResponse> rehearsals)` |
 | `RehearsalDetailResponse` | `memo` · `createdBy` · `canEdit` 추가 |
+
+구현 완료(2026-11-02, 이슈 #94). `RehearsalDetailResponse`는 `team: {id, name}`·`createdBy`·`canEdit`을 담고, `canEdit`은 작성자나 팀장일 때 true다. 목록의 `from`·`to`는 날짜이며 생략하면 이번 달, 최대 3달이다(`docs/specs/api-spec.md` §3).
 
 `RehearsalCreateRequest`와 `RehearsalUpdateRequest`는 지금 필드가 완전히 같지만 규칙 2에 따라 분리한다. 참가 여부 응답 같은 필드가 붙으면 곧 갈라진다.
 
@@ -338,7 +340,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 - **공지 권한은 "현재 모임장"이다.** 작성자가 전 모임장이어도 현 모임장만 수정·삭제할 수 있다 — `GroupNotice.isAuthor()`를 권한 판별에 쓰지 않는다
 - `GroupRole`에 `MANAGER`를 추가했다. **값만 있고 권한은 없다**(`MEMBER`와 동일 취급) — `erd.md` §5 참고
 
-`GroupDetailResponse`는 동아리 홈 화면이므로 `pinnedNotices`(고정 공지 최대 3건)와 `upcomingPerformances`를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
+`GroupDetailResponse`는 동아리 홈 화면이므로 `pinnedNotices`(고정 공지 최대 3건)와 `upcomingPerformances`(다가오는 공연 최대 3건, `PerformanceSummaryResponse` 재사용)를 함께 담는다. 공연 포스터를 눌러 공연 정보로 넘어가는 7.4 흐름을 한 번의 호출로 지원하려는 것이다.
 
 ---
 
@@ -371,15 +373,15 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `PerformanceActivityResponse` | `(Long id, String title, String groupName, LocalDateTime performedAt, PerformanceStatus status, String teamName)` — 1팀 내 활동의 참여 중인 공연 한 줄. `PerformanceService.findActivitiesByUserId`가 준다. 한 공연에 내 팀이 여럿이면 팀마다 한 줄이라 `teamName`만 다른 같은 공연이 여러 번 나온다 (2026-11-03, 이슈 #95) |
 | `SetlistResponse` | `(Long performanceId, boolean confirmed, List<SetlistItemResponse> setlist)` — 공연 셋리스트 조회·넘기기·확정 공통. 확정 전에는 넘겨진 곡 전체(`sortOrder` null), 확정 후에는 확정곡만 |
 | `SetlistSubmitRequest` | `(List<Long> songIds)` — 그 팀의 선택곡 안에서 고른다. 그 팀이 넘긴 곡 전체를 바꾼다 |
-| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다 |
+| `SetlistConfirmRequest` | `(List<Item> items)`, 중첩 `Item(Long teamId, Long songId, int sortOrder)` — 노션 페이지에는 `SetlistUpdateRequest`로 적혀 있으나 이름은 이 문서를 따른다. `SetlistService`에는 같은 모양의 값 `SetlistService.ConfirmItem`으로 바꿔 넘긴다 |
 
 `PerformanceTeamCreateRequest`는 `TeamCreateRequest`와 필드가 겹치지만 상속·재사용하지 않는다. 경로에서 `performanceId`가 이미 정해지므로 검증 규칙이 다르고, `domain/performance`가 `domain/team`의 요청 DTO를 import하면 의존 방향이 뒤집힌다. 응답은 `TeamDetailResponse`를 재사용한다 — 응답 DTO의 도메인 간 참조는 허용 범위다.
 
-공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`으로 바뀌면 소속 팀이 자동 해체된다. 응답에 영향받은 팀 수를 넣을지는 결정 필요.
+공연 상태 변경은 부수효과가 큰 엔드포인트다. `DONE`·`CANCELED`로 바뀌면 소속 팀이 자동 해체된다. 응답은 명세대로 `(id, status)`만 담고 영향받은 팀 수는 넣지 않았다(2026-11-01, 이슈 #88).
 
 ---
 
-## 10. song · setlist (4)
+## 10. song · setlist (5)
 
 패키지 `domain/song`, 팀 선택곡·셋리스트 항목은 `domain/setlist`. 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(2026-10-30, 이슈 #85) — 공연 셋리스트 엔드포인트는 §9
 
@@ -389,12 +391,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
+| 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
 
 **보조 DTO**
 
 | 클래스 | 설명 |
 |---|---|
-| `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, Map<Instrument, Level> difficulty)` |
+| `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, List<SongDifficultyResponse> difficulty)` — 곡 검색·추천의 곡 정보 |
+| `SongDifficultyResponse` | `(Instrument part, Level level)` — 파트별 난이도. 정보가 없는 파트는 목록에서 빠진다 |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 선택곡·셋리스트 항목용 축약형 |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song)` — 팀 선택곡 항목. 팀 상세 `songs`·팀 선택곡 저장 응답에서 재사용 |
 | `TeamSongsSaveRequest` | `(List<Long> songIds)` — 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제) |
@@ -404,7 +408,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 이전 이름 `TeamSetlistUpdateRequest`·`TeamSetlistResponse`와 `SongProgress`(`CANDIDATE|SELECTED|PRACTICING|DONE`)는 2026-10-30에 없앴다.
 
-`difficulty`를 `Map<Instrument, Level>`로 받는 건 `songs.difficulty` JSON 컬럼 구조를 그대로 반영한 것이다.
+`songs.difficulty` JSON 컬럼과 엔티티는 `Map<Instrument, Level>` 그대로 두고, 응답에서만 노션대로 `[{part, level}]` 배열로 펼친다(2026-11-02, 이슈 #103 — 전에는 응답도 Map 객체였다). 팀 선택곡 조회는 노션 "[추가 필요]" 페이지(`/v1/teams/{teamId}/setlist`)를 `/songs`로 맞춰 추가했다(이슈 #103).
 
 추천 2개는 **구현 방식 미정** 항목이다. 외부 모델을 붙이면 동기 응답이 불가능해져 `SongRecommendationJobResponse`(작업 id) + 폴링 조회가 추가된다. 지금 이름은 룰 기반 전제다.
 
@@ -451,14 +455,14 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 80 |
+| 엔드포인트 | 81 |
 | Request DTO | 36 |
 | Response DTO | 60 |
 | 전역 공통 | 5 |
 
-요청 DTO가 36개뿐인 이유는 80개 중 **47개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 36개뿐인 이유는 81개 중 **48개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
 
 ### 재사용 상위 5개
 

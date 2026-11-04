@@ -57,6 +57,11 @@ class PerformanceApiTest {
              "performedAt":"%s","venue":"홍대 롤링홀","posterImage":"https://cdn/poster.jpg"}
             """.formatted(PERFORMED_AT);
 
+    private static final String TEAM_BODY = """
+            {"name":"무명밴드","description":"발라드 위주로 갑니다.","region":"SEOUL",
+             "genres":["BALLAD","ROCK"],"instrument":"BASS"}
+            """;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -106,7 +111,8 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.data.createdBy.nickname").value("모임장"))
                 .andExpect(jsonPath("$.data.canEdit").value(true))
                 .andExpect(jsonPath("$.data.createdAt").exists())
-                .andExpect(jsonPath("$.data.teams").doesNotExist());
+                .andExpect(jsonPath("$.data.teams").isEmpty())
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
     }
 
     @Test
@@ -150,6 +156,31 @@ class PerformanceApiTest {
                 .andExpect(jsonPath("$.data.content[0].createdAt").exists())
                 .andExpect(jsonPath("$.data.totalElements").value(2))
                 .andExpect(jsonPath("$.data.last").value(false));
+    }
+
+    @Test
+    @DisplayName("동아리 홈의 upcomingPerformances는 공연이 없으면 빈 배열이고, 있으면 PLANNED·RECRUITING을 가까운 순으로 최대 3건 준다")
+    void groupHome_upcomingPerformances() throws Exception {
+        mockMvc.perform(get("/v1/groups/" + groupId).header("Authorization", bearer(memberId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.upcomingPerformances").isArray())
+                .andExpect(jsonPath("$.data.upcomingPerformances").isEmpty());
+
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace("2026 정기공연", "두 달 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER).replace("2026 정기공연", "한 달 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, RESCHEDULED).replace("2026 정기공연", "더 뒤 공연"));
+        createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, RESCHEDULED).replace("2026 정기공연", "가장 뒤 공연"));
+        long doneId = createPerformanceAndGetId(ownerId, CREATE_BODY.replace(PERFORMED_AT, EARLIER).replace("2026 정기공연", "끝난 공연"));
+        performanceRepository.findById(doneId).orElseThrow().changeStatus(PerformanceStatus.DONE);
+
+        mockMvc.perform(get("/v1/groups/" + groupId).header("Authorization", bearer(memberId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.upcomingPerformances.length()").value(3))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].title").value("한 달 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[1].title").value("두 달 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[2].title").value("더 뒤 공연"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].posterImage").value("https://cdn/poster.jpg"))
+                .andExpect(jsonPath("$.data.upcomingPerformances[0].status").value("PLANNED"));
     }
 
     @Test
@@ -198,6 +229,26 @@ class PerformanceApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(performanceId))
                 .andExpect(jsonPath("$.data.canEdit").value(false));
+    }
+
+    @Test
+    @DisplayName("공연 상세는 참여 팀과 요청자가 속한 팀 id를 담는다 — 팀에 없는 모임장은 myTeamIds가 비어 있다")
+    void getDetail_includesTeamsAndMyTeamIds() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        long teamId = createTeamAndGetId(memberId, performanceId);
+
+        getDetail(memberId, performanceId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams.length()").value(1))
+                .andExpect(jsonPath("$.data.teams[0].id").value(teamId))
+                .andExpect(jsonPath("$.data.teams[0].name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.teams[0].memberCount").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds.length()").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds[0]").value(teamId));
+        getDetail(ownerId, performanceId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.teams.length()").value(1))
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
     }
 
     @Test
@@ -254,6 +305,48 @@ class PerformanceApiTest {
     }
 
     @Test
+    @DisplayName("모임장이 공연을 종료하면 200과 바뀐 상태를 돌려주고, 소속 팀이 해체돼 상세의 teams가 빈다")
+    void changeStatus_toDone_disbandsTeams() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        createTeamAndGetId(memberId, performanceId);
+
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(performanceId))
+                .andExpect(jsonPath("$.data.status").value("DONE"));
+        getDetail(memberId, performanceId)
+                .andExpect(jsonPath("$.data.status").value("DONE"))
+                .andExpect(jsonPath("$.data.teams").isEmpty())
+                .andExpect(jsonPath("$.data.myTeamIds").isEmpty());
+    }
+
+    @Test
+    @DisplayName("종료한 공연은 정보를 고칠 수 없다 — 409 INVALID_STATE")
+    void update_afterDone_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}").andExpect(status().isOk());
+
+        updatePerformance(ownerId, performanceId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+        getDetail(memberId, performanceId)
+                .andExpect(jsonPath("$.data.title").value("2026 정기공연"));
+    }
+
+    @Test
+    @DisplayName("상태 값이 없거나 ERD에 없는 값(노션의 ENDED 등)이면 400 VALIDATION_FAILED다")
+    void changeStatus_withInvalidStatus_returns400() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        changeStatus(ownerId, performanceId, "{}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        changeStatus(ownerId, performanceId, "{\"status\":\"ENDED\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     @DisplayName("공연 일시를 지난 시각으로 고치면 400 VALIDATION_FAILED다")
     void update_toPastPerformedAt_returns400() throws Exception {
         long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
@@ -263,6 +356,82 @@ class PerformanceApiTest {
                 """.formatted(PAST))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("모임장이 아닌 모임원이 상태를 바꾸면 403 NOT_GROUP_OWNER다")
+    void changeStatus_byMember_returns403() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        changeStatus(memberId, performanceId, "{\"status\":\"RECRUITING\"}")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_OWNER"));
+    }
+
+    @Test
+    @DisplayName("끝난 공연의 상태를 바꾸면 409 INVALID_STATE다")
+    void changeStatus_ofFinishedPerformance_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"CANCELED\"}").andExpect(status().isOk());
+
+        changeStatus(ownerId, performanceId, "{\"status\":\"PLANNED\"}")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
+    @Test
+    @DisplayName("모임원이 공연 안에 팀을 만들면 201과 팀 상세(만든 사람이 팀장)를 돌려주고, 공연 상세의 myTeamIds에 들어간다")
+    void createTeam_byMember_returns201() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        String json = createTeam(memberId, performanceId, TEAM_BODY)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("무명밴드"))
+                .andExpect(jsonPath("$.data.region").value("SEOUL"))
+                .andExpect(jsonPath("$.data.genres[0]").value("BALLAD"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.leader.id").value(memberId))
+                .andExpect(jsonPath("$.data.memberCount").value(1))
+                .andExpect(jsonPath("$.data.members[0].instrument").value("BASS"))
+                .andExpect(jsonPath("$.data.myRole").value("LEADER"))
+                .andReturn().getResponse().getContentAsString();
+        long teamId = ((Number) JsonPath.read(json, "$.data.id")).longValue();
+
+        getDetail(memberId, performanceId).andExpect(jsonPath("$.data.myTeamIds[0]").value(teamId));
+    }
+
+    @Test
+    @DisplayName("팀 이름이나 세션이 빠지면 400 VALIDATION_FAILED다")
+    void createTeam_withMissingRequiredFields_returns400() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        createTeam(memberId, performanceId, "{\"instrument\":\"BASS\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        createTeam(memberId, performanceId, "{\"name\":\"무명밴드\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("모임원이 아니면 공연 안에 팀을 만들 수 없다 — 403 NOT_GROUP_MEMBER")
+    void createTeam_byNonMember_returns403() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+
+        createTeam(NON_MEMBER_ID, performanceId, TEAM_BODY)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_GROUP_MEMBER"));
+    }
+
+    @Test
+    @DisplayName("끝난 공연에는 팀을 만들 수 없다 — 409 INVALID_STATE")
+    void createTeam_inFinishedPerformance_returns409() throws Exception {
+        long performanceId = createPerformanceAndGetId(ownerId, CREATE_BODY);
+        changeStatus(ownerId, performanceId, "{\"status\":\"DONE\"}").andExpect(status().isOk());
+
+        createTeam(memberId, performanceId, TEAM_BODY)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
     }
 
     // 응답 JSON의 일시 형식(초까지)과 맞춘다 — LocalDateTime.toString()은 0초를 생략한다.
@@ -308,6 +477,24 @@ class PerformanceApiTest {
 
     private ResultActions getDetail(long userId, long performanceId) throws Exception {
         return mockMvc.perform(get("/v1/performances/" + performanceId).header("Authorization", bearer(userId)));
+    }
+
+    private ResultActions createTeam(long userId, long performanceId, String body) throws Exception {
+        return mockMvc.perform(post("/v1/performances/" + performanceId + "/teams")
+                .header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private long createTeamAndGetId(long userId, long performanceId) throws Exception {
+        String json = createTeam(userId, performanceId, TEAM_BODY).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return ((Number) JsonPath.read(json, "$.data.id")).longValue();
+    }
+
+    private ResultActions changeStatus(long userId, long performanceId, String body) throws Exception {
+        return mockMvc.perform(patch("/v1/performances/" + performanceId + "/status")
+                .header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     private ResultActions updatePerformance(long userId, long performanceId) throws Exception {

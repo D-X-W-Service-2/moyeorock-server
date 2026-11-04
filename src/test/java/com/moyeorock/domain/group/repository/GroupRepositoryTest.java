@@ -193,6 +193,25 @@ class GroupRepositoryTest {
                 .containsExactly(active.getId());
     }
 
+    @Test
+    @DisplayName("내가 모임장인 모임은 해체되지 않은 모임만 모임 id 순으로 나온다 — 모임원이거나 남의 모임이면 빠진다")
+    void findOwnedGroups_returnsActiveGroupsIOwn() {
+        Group owned = owned(ME, group("내 모임"));
+        Group disbanded = owned(ME, group("해체한 모임"));
+        disbanded.disband();
+        joined(ME, group("모임원으로 있는 모임"), 1);
+        owned(OTHER, group("남의 모임"));
+        groupRepository.flush();
+
+        assertThat(groupRepository.findOwnedGroups(ME)).extracting(Group::getId).containsExactly(owned.getId());
+    }
+
+    private Group owned(Long userId, Group group) {
+        Group saved = groupRepository.save(group);
+        groupMemberRepository.saveAndFlush(GroupMember.create(saved.getId(), userId, GroupRole.OWNER));
+        return saved;
+    }
+
     // findMyGroups의 각 행은 [Group, 내 역할]이다
     private static List<Long> groupIds(Page<Object[]> page) {
         return page.getContent().stream().map(row -> ((Group) row[0]).getId()).toList();

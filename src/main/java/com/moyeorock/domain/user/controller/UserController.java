@@ -12,6 +12,7 @@ import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
 import com.moyeorock.domain.user.service.UserActivityService;
 import com.moyeorock.domain.user.service.UserService;
+import com.moyeorock.domain.user.service.UserWithdrawService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
@@ -42,6 +43,7 @@ public class UserController {
 
     private final UserService userService;
     private final UserActivityService userActivityService;
+    private final UserWithdrawService userWithdrawService;
 
     @Operation(summary = "내 프로필 조회")
     @GetMapping("/me")
@@ -58,7 +60,7 @@ public class UserController {
     @Operation(summary = "탈퇴")
     @DeleteMapping("/me")
     public ApiResponse<UserWithdrawResponse> withdraw(@AuthUser Long userId) {
-        return ApiResponse.success(userService.withdraw(userId));
+        return ApiResponse.success(userWithdrawService.withdraw(userId));
     }
 
     @Operation(summary = "온보딩 등록")

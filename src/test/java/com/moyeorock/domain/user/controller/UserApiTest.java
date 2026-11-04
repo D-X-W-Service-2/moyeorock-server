@@ -12,7 +12,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.group.dto.request.GroupCreateRequest;
+import com.moyeorock.domain.group.enums.GroupType;
+import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
+import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
+import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.entity.User;
 import com.moyeorock.domain.user.repository.UserRepository;
@@ -63,12 +68,15 @@ class UserApiTest {
     @Autowired
     private TeamService teamService;
 
+    @Autowired
+    private GroupService groupService;
+
     private long saveUser(String email, String nickname) {
         return userRepository.saveAndFlush(
                 User.signupWithEmail(email, "hash", nickname, LocalDateTime.of(2026, 9, 29, 10, 0))).getId();
     }
 
-    /** userId가 팀장(LEADER)·BASS로 들어간 팀 하나를 만들고 팀 id를 돌려준다. */
+    /** userId가 팀장(LEADER)·BASS로 들어간 팀 하나를 만들고 팀 id를 돌려준다. 남의 Repository는 테스트에서도 만지지 않는다. */
     private long createTeam(long userId, String name) {
         return teamService.create(userId,
                 new TeamCreateRequest(name, null, Region.SEOUL, List.of(Genre.ROCK), Instrument.BASS)).id();
@@ -266,6 +274,68 @@ class UserApiTest {
         mockMvc.perform(get(BASE + "/me").header("Authorization", bearer(id)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("탈퇴: 팀장인 활동 중인 팀이 있으면 409 WITHDRAW_BLOCKED_BY_ROLE이고 메시지에 팀 이름이 담기며 계정은 그대로다")
+    void withdraw_blockedWhileLeadingTeam() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        createTeam(id, "무명밴드");
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("WITHDRAW_BLOCKED_BY_ROLE"))
+                .andExpect(jsonPath("$.message").value("팀 '무명밴드'의 팀장을 위임한 뒤 탈퇴할 수 있습니다."))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+        mockMvc.perform(get(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("seojun@example.com"));
+    }
+
+    @Test
+    @DisplayName("탈퇴: 팀장이던 팀을 해체하면 더는 막히지 않고 200이다")
+    void withdraw_allowedAfterDisbandingLedTeam() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        long teamId = createTeam(id, "무명밴드");
+        teamService.disband(id, teamId, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.withdrawnAt").exists());
+    }
+
+    @Test
+    @DisplayName("탈퇴: 일반 팀원으로 있던 팀에서 빠져 팀원 수가 줄어든다(팀원 행 LEFT)")
+    void withdraw_leavesTeamsAsMember() throws Exception {
+        long leader = saveUser("leader@example.com", "팀장");
+        long member = saveUser("member@example.com", "팀원");
+        long teamId = createTeam(leader, "무명밴드");
+        teamService.addMember(teamId, member, Instrument.DRUM);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(2);
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(member)))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(leader).get(0).team().memberCount()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(teamService.findMemberships(member)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("탈퇴: 모임장인 활동 중인 모임이 있으면 409이고 메시지에 모임 이름이 담기며, 모임을 해체하면 200이다")
+    void withdraw_blockedWhileOwningGroup_thenAllowedAfterDisband() throws Exception {
+        long id = saveUser("seojun@example.com", "임시서준");
+        long groupId = groupService.create(id,
+                new GroupCreateRequest("홍대 밴드부", null, GroupType.REGULAR, Region.SEOUL, null)).id();
+
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("WITHDRAW_BLOCKED_BY_ROLE"))
+                .andExpect(jsonPath("$.message").value("모임 '홍대 밴드부'의 모임장을 위임하거나 모임을 해체한 뒤 탈퇴할 수 있습니다."));
+
+        groupService.disband(id, groupId);
+        mockMvc.perform(delete(BASE + "/me").header("Authorization", bearer(id)))
+                .andExpect(status().isOk());
     }
 
     @Test
