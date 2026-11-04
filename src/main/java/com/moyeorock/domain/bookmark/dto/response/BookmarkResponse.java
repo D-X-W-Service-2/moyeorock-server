@@ -36,7 +36,10 @@ public record BookmarkResponse(
             return new BookmarkTarget(team.id(), team.name(), team.region(), team.genres(), null);
         }
 
-        /** 곡은 제목이 name이고, region·genres·imageUrl은 null이다(곡 축약형에 없다). */
+        /**
+         * 곡은 제목이 name이고, region·genres·imageUrl은 null이다. 곡 축약형에는 가수(artist)가 있지만 이 target은 세 타입이
+         * 공유하는 모양이라 가수를 담을 필드가 없어 내려가지 않는다. 장르는 곡 축약형에도 없다.
+         */
         public static BookmarkTarget fromSong(SongSummaryResponse song) {
             return new BookmarkTarget(song.id(), song.title(), null, null, null);
         }
