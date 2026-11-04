@@ -2,6 +2,7 @@ package com.moyeorock.domain.user.service;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.join.service.JoinRequestService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
@@ -25,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>UserService에 두지 않는 이유: TeamService가 UserService를 주입받고 있어 UserService가 그쪽을 주입받으면
  * 생성자 순환이 된다(architecture.md §3, UserActivityService와 같은 사정). 다른 도메인은 이 클래스를 주입받지 않는다.
  *
- * <p>통과하면 모임원 행(4팀 leaveAllGroups, #112)과 팀원 행(2팀 leaveAllTeams, #97)을 전부 LEFT로 바꾼다. 그대로 두면 탈퇴 회원이
+ * <p>통과하면 대기 중인 가입 신청·초대를 닫고(3팀 cancelPendingOf), 모임원 행(4팀 leaveAllGroups, #112)과 팀원 행(2팀 leaveAllTeams, #97)을 전부 LEFT로 바꾼다. 그대로 두면 탈퇴 회원이
  * memberCount에는 세어지는데 목록에서는 빠져 둘이 어긋난다.
  */
 @Service
@@ -35,6 +36,7 @@ public class UserWithdrawService {
     private final UserRepository userRepository;
     private final TeamService teamService;
     private final GroupMemberService groupMemberService;
+    private final JoinRequestService joinRequestService;
 
     /**
      * 사용자 행을 잠근 뒤 직책을 확인한다(잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush가 되돌린다, PR #57 리뷰).
@@ -51,6 +53,7 @@ public class UserWithdrawService {
         if (!ledTeams.isEmpty() || !ownedGroups.isEmpty()) {
             throw new BusinessException(ErrorCode.WITHDRAW_BLOCKED_BY_ROLE, blockedMessage(ledTeams, ownedGroups));
         }
+        joinRequestService.cancelPendingOf(userId);
         groupMemberService.leaveAllGroups(userId);
         teamService.leaveAllTeams(userId);
         user.withdraw();

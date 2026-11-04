@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.join.service.JoinRequestService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
@@ -42,6 +43,8 @@ class UserWithdrawServiceTest {
     TeamService teamService;
     @Mock
     GroupMemberService groupMemberService;
+    @Mock
+    JoinRequestService joinRequestService;
     @InjectMocks
     UserWithdrawService userWithdrawService;
 
@@ -78,6 +81,7 @@ class UserWithdrawServiceTest {
         assertThat(user.getEmail()).isNull();
         assertThat(user.getNickname()).isEqualTo("탈퇴회원_" + USER_ID);
         assertThat(response.withdrawnAt()).isEqualTo(user.getWithdrawnAt());
+        verify(joinRequestService).cancelPendingOf(USER_ID);
         verify(groupMemberService).leaveAllGroups(USER_ID);
         verify(teamService).leaveAllTeams(USER_ID);
     }
@@ -96,6 +100,7 @@ class UserWithdrawServiceTest {
         assertThat(thrown.getMessage()).isEqualTo("팀 '무명밴드', '두번째'의 팀장을 위임한 뒤 탈퇴할 수 있습니다.");
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("seojun@example.com");
+        verify(joinRequestService, never()).cancelPendingOf(USER_ID);
         verify(groupMemberService, never()).leaveAllGroups(USER_ID);
         verify(teamService, never()).leaveAllTeams(USER_ID);
     }

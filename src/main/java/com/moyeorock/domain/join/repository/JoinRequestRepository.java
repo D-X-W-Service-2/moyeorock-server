@@ -21,6 +21,11 @@ public interface JoinRequestRepository extends JpaRepository<JoinRequest, Long> 
     @Query("SELECT r FROM JoinRequest r WHERE r.id = :id")
     Optional<JoinRequest> findByIdForUpdate(@Param("id") Long id);
 
+    /** 회원 탈퇴 정리용. 이 사람이 신청자이거나 초대받은 사람인 대기 건을 id 순으로 잠그고 읽는다(승인·취소와 겹쳐도 한 번만 처리). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM JoinRequest r WHERE r.userId = :userId AND r.status = com.moyeorock.domain.join.enums.JoinStatus.PENDING ORDER BY r.id")
+    List<JoinRequest> findPendingByUserIdForUpdate(@Param("userId") Long userId);
+
     /**
      * 중복 검사. 신청과 초대를 가리지 않는다 — 둘이 동시에 있으면 가입 경로가 둘이 되기 때문이다(domains.md).
      * 팀 대상과 모임 대상은 컬럼이 달라 메서드를 나눴다.
