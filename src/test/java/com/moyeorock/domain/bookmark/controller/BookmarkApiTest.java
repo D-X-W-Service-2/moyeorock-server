@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.song.entity.Song;
+import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.enums.TeamStatus;
@@ -60,6 +62,9 @@ class BookmarkApiTest {
 
     @Autowired
     private TeamService teamService;
+
+    @Autowired
+    private SongRepository songRepository;
 
     private long createTeam(long leaderId, String name) {
         return teamService.create(leaderId,
@@ -201,14 +206,32 @@ class BookmarkApiTest {
     }
 
     @Test
-    @DisplayName("임시: SONG 저장은 400이고, targetType·targetId 누락·잘못된 값도 400이다")
+    @DisplayName("targetType·targetId 누락·잘못된 값은 400이다")
     void create_unsupportedOrInvalid_returns400() throws Exception {
-        create(OWNER, "SONG", 5L).andExpect(status().isBadRequest())
+        create(OWNER, "GROUP", 5L).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        create(OWNER, "GROUP", 5L).andExpect(status().isBadRequest());
         mockMvc.perform(post(BASE).header("Authorization", bearer(OWNER))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"targetType\":\"USER\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("SONG 저장: 201과 곡 요약, 중복 409, 없는 곡 404, 목록에서 SONG 필터가 된다")
+    void song_flow() throws Exception {
+        long songId = songRepository.save(Song.create("Creep", "Radiohead", Genre.ROCK, null, null, null, null)).getId();
+
+        create(OWNER, "SONG", songId).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.targetType").value("SONG"))
+                .andExpect(jsonPath("$.data.target.name").value("Creep"))
+                .andExpect(jsonPath("$.data.target.region").value(nullValue()));
+        create(OWNER, "SONG", songId).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOOKMARK_DUPLICATED"));
+        create(OWNER, "SONG", 9_999_999L).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SONG_NOT_FOUND"));
+
+        mockMvc.perform(get(BASE + "?targetType=SONG").header("Authorization", bearer(OWNER)))
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].target.name").value("Creep"));
     }
 
     @Test

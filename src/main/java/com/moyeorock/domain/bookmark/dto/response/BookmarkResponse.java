@@ -2,6 +2,7 @@ package com.moyeorock.domain.bookmark.dto.response;
 
 import com.moyeorock.domain.bookmark.entity.Bookmark;
 import com.moyeorock.domain.bookmark.enums.BookmarkTargetType;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.user.dto.response.UserProfileSummaryResponse;
 import com.moyeorock.global.common.enums.Genre;
@@ -33,6 +34,14 @@ public record BookmarkResponse(
         /** 팀은 이미지가 없어 imageUrl이 null이다. */
         public static BookmarkTarget fromTeam(TeamSummaryResponse team) {
             return new BookmarkTarget(team.id(), team.name(), team.region(), team.genres(), null);
+        }
+
+        /**
+         * 곡은 제목이 name이고, region·genres·imageUrl은 null이다. 곡 축약형에는 가수(artist)가 있지만 이 target은 세 타입이
+         * 공유하는 모양이라 가수를 담을 필드가 없어 내려가지 않는다. 장르는 곡 축약형에도 없다.
+         */
+        public static BookmarkTarget fromSong(SongSummaryResponse song) {
+            return new BookmarkTarget(song.id(), song.title(), null, null, null);
         }
 
         public static BookmarkTarget fromUser(UserProfileSummaryResponse user) {

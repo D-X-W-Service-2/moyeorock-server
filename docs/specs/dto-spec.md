@@ -946,7 +946,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 { "targetType": "USER", "targetId": 30 }
 ```
 
-`targetType`은 `TEAM`·`USER`·`SONG`이지만 **지금은 `USER`·`TEAM`만 저장된다**(임시, `SONG`은 `400 VALIDATION_FAILED`). `api-spec.md` §10 참고.
+`targetType`은 `TEAM`·`USER`·`SONG`이고 세 대상 모두 저장된다. 곡 `target`은 `name`=제목, 나머지는 `null`이다. `api-spec.md` §10 참고.
 
 ### BookmarkResponse / PageResponse\<BookmarkResponse\>
 
