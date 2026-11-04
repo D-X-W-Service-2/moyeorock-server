@@ -43,6 +43,11 @@ public class NotificationService {
         return NotificationsResponse.of(unreadCount, page);
     }
 
+    /** 안 읽은 알림 수(대시보드용). 단일 쿼리라 트랜잭션을 걸지 않는다. */
+    public int countUnread(Long userId) {
+        return notificationRepository.countByUserIdAndIsReadFalse(userId);
+    }
+
     /**
      * 읽음 처리. {@code ids}가 null이거나 비어 있으면 전체 읽음, 아니면 지정한 알림만이다.
      * 요청 바디 자체가 없어도({@code request == null}) 전체 읽음이다.

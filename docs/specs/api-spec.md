@@ -314,6 +314,8 @@
 |---|---|---|---|---|---|
 | GET | `/v1/dashboard` | 대시보드&nbsp;통합 | | `DashboardResponse` | 7.3 / 7.1.1 |
 
+> 대시보드는 2026-11-04 구현했다(이슈 #135). 합주·공고 개수·기간 기준과 `recommendedSongs: null`(AI 연결 전)은 `dto-spec.md` DashboardResponse 참고.
+
 ---
 
 ## §11. 로그인 (auth) — 1팀
