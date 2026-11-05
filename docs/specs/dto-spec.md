@@ -861,6 +861,48 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
 - 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
+### SongsUpsertRequest / SongsUpsertResponse
+
+AI 서버 곡 일괄 등록·갱신(`PUT /v1/internal/songs`, 2026-11-05 신규 · 이슈 #147). 인증·동작은 `api-spec.md` §9 ◇.
+
+```json
+{
+  "songs": [
+    {
+      "externalId": "yt:fJ9rUzIMcZQ",
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen",
+      "genre": "ROCK",
+      "songKey": "Bb",
+      "bpm": 72,
+      "difficulty": [
+        { "part": "VOCAL", "level": "ADVANCED" },
+        { "part": "DRUM", "level": "INTERMEDIATE" }
+      ]
+    }
+  ]
+}
+```
+
+```json
+{ "created": 480, "updated": 20 }
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `songs` | List | O | 1~500개 |
+| `songs[].externalId` | String | O | AI 쪽 곡 id. 100자 이하. 이 값으로 같은 곡을 찾는다(`songs.external_id` 유일). 한 요청 안에서 겹치면 400 |
+| `songs[].title` | String | O | 200자 이하 |
+| `songs[].artist` | String | O | 100자 이하 |
+| `songs[].genre` | Enum | O | `Genre`(`ROCK` `INDIE` `PUNK` `METAL` `POP` `BALLAD` `JAZZ` `HIPHOP` `RNB` `ACOUSTIC` `ETC`) |
+| `songs[].songKey` | String | X | 10자 이하 |
+| `songs[].bpm` | Integer | X | 양수 |
+| `songs[].difficulty` | List | X | 곡 검색 응답과 같은 `[{part, level}]` 배열. `part`는 `Instrument`, `level`은 `Level`. 한 곡에 같은 파트가 두 번이면 400. 없거나 빈 배열이면 난이도 정보 없음 |
+
+- 응답 `created`는 새로 만든 곡 수, `updated`는 이미 있던 곡 수다(내용이 같아도 갱신으로 센다). 합이 요청한 곡 수다
+- 이미 있는 곡은 보낸 값으로 **통째로** 바꾼다 — 선택 값(`songKey`·`bpm`·`difficulty`)을 빼고 보내면 비워진다
+- DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
+
 ### SongRecommendationResponse
 
 ```json

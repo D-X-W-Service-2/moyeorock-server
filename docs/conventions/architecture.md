@@ -9,7 +9,8 @@ com.moyeorock
 ├── global/
 │   ├── config/          OpenApiConfig, SecurityConfig(CORS 포함), WebConfig, JpaAuditingConfig, TimezoneConfig
 │   ├── security/        JwtProvider, JwtAuthenticationFilter,
-│   │                    AuthUserArgumentResolver, @AuthUser
+│   │                    AuthUserArgumentResolver, @AuthUser,
+│   │                    InternalApiKeyFilter(/v1/internal/** — AI 서버 등 내부 서버 API 키)
 │   ├── exception/       GlobalExceptionHandler, ErrorCode, BusinessException
 │   ├── logging/         RequestLoggingFilter, MdcKeys
 │   ├── common/
