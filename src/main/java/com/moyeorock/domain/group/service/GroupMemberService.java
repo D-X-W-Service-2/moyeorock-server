@@ -81,6 +81,9 @@ public class GroupMemberService {
      * <p>{@link #changeRole}과 같이 <b>권한 확인을 대상 조회보다 먼저</b> 한다 — 권한 없는 요청자에게
      * 다른 모임원의 존재 여부를 404/403으로 구분해 알려주지 않으려는 것이다. 요청자 행을 대상 행보다
      * 먼저 읽는 순서도 두 메서드가 같아진다. 위임과 같은 이유로 모임 행을 먼저 잠근다.
+     *
+     * <p>모임원 행만 바꾼다. 공연 팀에서 빼기와 강퇴 알림은 {@link GroupService#changeMemberStatus}가 이 메서드 뒤에
+     * 묶어서 하므로 내보내기·탈퇴는 그쪽으로 부른다.
      */
     @Transactional
     public void changeStatus(Long userId, Long groupId, Long targetUserId) {
