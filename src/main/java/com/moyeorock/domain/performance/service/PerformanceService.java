@@ -93,6 +93,15 @@ public class PerformanceService {
     }
 
     /**
+     * 모임의 공연 id 전체 — GroupService가 모임 탈퇴·강퇴 때 공연 팀에서 빼려고 부른다. 모임 권한은 부르는 쪽이 확인한다.
+     * 상태로 거르지 않는다. 끝난 공연의 팀은 이미 해체돼 {@code TeamService.leavePerformanceTeams}가 건너뛰고,
+     * 공연 종료와 팀 생성이 겹쳐 끝난 공연에 남은 활동 팀(architecture.md §7)도 함께 정리된다. 없으면 빈 목록이다.
+     */
+    public List<Long> findIdsByGroupId(Long groupId) {
+        return performanceRepository.findIdsByGroupId(groupId);
+    }
+
+    /**
      * 공연 상세. 공연을 읽어야 어느 모임인지 알 수 있어 공연 존재(404)를 모임원 확인(403)보다 먼저 한다.
      * 해체된 모임의 공연은 ensureActiveMember가 {@code GROUP_NOT_FOUND}로 막는다.
      * 다른 도메인 Service 호출이 섞인 조회라 트랜잭션을 걸지 않는다(conventions.md §3).

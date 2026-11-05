@@ -136,6 +136,20 @@ class PerformanceRepositoryTest {
                 .containsExactly("가을 공연 1부", "가을 공연 2부", "겨울 공연");
     }
 
+    @Test
+    @DisplayName("모임의 공연 id는 상태와 관계없이 그 모임 공연만 주고, 공연이 없으면 빈 목록이다")
+    void findIdsByGroupId_returnsAllStatuses_ofThatGroupOnly() {
+        Performance planned = save(GROUP_ID, "예정 공연", LocalDateTime.of(2026, 12, 1, 18, 0), PerformanceStatus.PLANNED);
+        Performance done = save(GROUP_ID, "끝난 공연", LocalDateTime.of(2026, 9, 1, 18, 0), PerformanceStatus.DONE);
+        Performance canceled = save(GROUP_ID, "취소된 공연", LocalDateTime.of(2026, 10, 1, 18, 0),
+                PerformanceStatus.CANCELED);
+        save(OTHER_GROUP_ID, "다른 모임 공연", LocalDateTime.of(2026, 11, 1, 18, 0), PerformanceStatus.PLANNED);
+
+        assertThat(performanceRepository.findIdsByGroupId(GROUP_ID))
+                .containsExactlyInAnyOrder(planned.getId(), done.getId(), canceled.getId());
+        assertThat(performanceRepository.findIdsByGroupId(99L)).isEmpty();
+    }
+
     private Performance save(Long groupId, String title, LocalDateTime performedAt) {
         return save(groupId, title, performedAt, PerformanceStatus.PLANNED);
     }
