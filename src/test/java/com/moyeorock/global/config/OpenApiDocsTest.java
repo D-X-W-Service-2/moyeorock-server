@@ -112,5 +112,8 @@ class OpenApiDocsTest {
         assertThat(header).isEqualTo("X-Internal-Api-Key");
         Object unauthorized = read("$.paths['/v1/internal/songs'].put.responses['401']");
         assertThat(unauthorized).isNotNull();
+        // AI 팀이 Swagger만 보고 쓸 수 있게 인증 헤더·호출 규칙을 설명에 담는다
+        String description = read("$.paths['/v1/internal/songs'].put.description");
+        assertThat(description).contains("X-Internal-Api-Key", "500곡", "externalId");
     }
 }

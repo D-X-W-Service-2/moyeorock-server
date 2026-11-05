@@ -174,6 +174,8 @@ ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 
 
 컨트롤러 메서드에는 `@Operation(summary = ...)` 정도만 붙인다. 이 요약이 없으면 `OperationSummaryTest`가 실패해 CI가 막는다. 요청·응답 스키마는 DTO에서 자동 생성되므로 `@ApiResponses`를 장황하게 달지 않는다.
 
+**예외 — 내부 API(`/v1/internal/**`)는 `description`에 인증·호출 규칙을 적는다**(2026-11-05, 이슈 #147). 다른 팀(AI 파트)이 코드나 프론트 협업 없이 Swagger만 보고 쓰는 API라서다. 헤더, upsert·삭제 여부, 한 번에 보낼 수 있는 양, 요청 예시, 에러 메시지 모양을 담는다. 허용 enum 값은 Swagger가 스키마에서 보여 주므로 설명에 다시 적지 않는다(enum이 바뀌면 설명만 낡는다). 설명이 길면 컨트롤러의 상수(text block)로 둔다(`SongController.UPSERT_DESCRIPTION`).
+
 나머지는 `global/config/OpenApiConfig`가 문서 전체에 한 번에 처리한다 — 컨트롤러에 따로 붙이지 않는다.
 
 | 자동 처리 | 내용 |
