@@ -67,6 +67,7 @@ Controller → Service → Repository → DB
 | `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
 | `user` → `team` `group` `performance` | 내 활동·타인 프로필 조립은 `UserActivityService`가 `TeamService`·`GroupMemberService`·`PerformanceService`를 호출. `TeamService`·`PerformanceService`는 `UserService`를 주입받으므로 조립을 `UserService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #90) |
 | `group` → `performance` | 동아리 홈의 다가오는 공연은 `GroupService → PerformanceService.findUpcoming`. 그래서 `PerformanceService`는 `GroupService`를 부르지 않고 모임 권한·정보를 `GroupMemberService`로만 받는다(2026-11-03, #112) |
+| `group` → `team` | 모임 탈퇴·강퇴 시 공연 팀에서 빼기는 `GroupService → TeamService.leavePerformanceTeams`. `GroupMemberService`에서 부르면 `TeamService → PerformanceMemberService → GroupMemberService`로 순환하므로 `GroupService`가 묶는다. `GroupService`를 주입받는 Service는 없다(2026-11-05, 이슈 #143) |
 | `user` → `team` `group` | 회원 탈퇴 차단은 `UserWithdrawService`가 `TeamService.findLedTeams`·`leaveAllTeams`와 `GroupMemberService.findOwnedGroups`·`leaveAllGroups`를 호출. `TeamService`가 `UserService`를 주입받으므로 `UserService`에 두면 생성자 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(B-8, 2026-11-02) |
 
 ### 순환 참조가 생기면
