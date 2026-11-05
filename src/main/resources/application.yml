@@ -57,6 +57,11 @@ file:
       base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
       upload-url-expiry-seconds: 600
 
+# AI 서버 같은 내부 서버가 부르는 /v1/internal/**의 인증 키(X-Internal-Api-Key 헤더, 이슈 #147). 값이 없으면 내부 API를
+# 모두 거절한다 — 배포 환경에 INTERNAL_API_KEY를 넣고 같은 값을 AI 팀에 GitHub 밖에서 전달한다.
+internal:
+  api-key: ${INTERNAL_API_KEY:}
+
 # 문서(/v3/api-docs, /swagger-ui.html)는 SWAGGER_ENABLED=true일 때만 열린다. 값이 없으면 닫힌다 — 운영 배포에서
 # 설정을 빠뜨려도 API 문서가 노출되지 않게 하려는 것이다(PR #114 리뷰). 로컬·개발은 .env에 SWAGGER_ENABLED=true를 둔다.
 springdoc:

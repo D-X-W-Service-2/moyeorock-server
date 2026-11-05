@@ -51,6 +51,10 @@ file:
       base-url: http://localhost:8080
       upload-url-expiry-seconds: 600
 
+# 내부 API(/v1/internal/**) 인증 키 — 테스트 전용 값(SongUpsertApiTest가 이 값으로 부른다, 이슈 #147).
+internal:
+  api-key: test-internal-api-key
+
 # main application.yml의 cors.allowed-origins 기본값과 같게 둔다(CorsConfigTest가 이 목록으로 검증, #123).
 cors:
   allowed-origins: "http://localhost:*,https://moyeorock.kro.kr,https://moyeorak.pages.dev,https://moyeorock-client-test-alpha.vercel.app"
