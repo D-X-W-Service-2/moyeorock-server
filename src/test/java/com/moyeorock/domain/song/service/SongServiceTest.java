@@ -1,26 +1,33 @@
 package com.moyeorock.domain.song.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.moyeorock.domain.song.dto.request.SongsUpsertRequest;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.dto.response.SongsUpsertResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -94,5 +101,82 @@ class SongServiceTest {
     void getSummaries_returnsEmpty_whenNoIds() {
         assertThat(songService.getSummaries(List.of())).isEmpty();
         verifyNoInteractions(songRepository);
+    }
+
+    @Test
+    @DisplayName("일괄 등록·갱신은 없는 externalId는 새로 만들고, 있는 externalId는 보낸 값으로 통째로 바꾼다")
+    void upsertAll_createsNew_andReplacesExisting() {
+        Song existing = Song.create("옛 제목", "옛 가수", Genre.POP, "C", 100,
+                Map.of(Instrument.BASS, Level.BEGINNER), "ext-1");
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1", "ext-2"))).thenReturn(List.of(existing));
+
+        SongsUpsertResponse response = songService.upsertAll(new SongsUpsertRequest(List.of(
+                item("ext-1", "Bohemian Rhapsody", List.of(
+                        new SongsUpsertRequest.Difficulty(Instrument.VOCAL, Level.ADVANCED))),
+                item("ext-2", "Creep", null))));
+
+        assertThat(response).isEqualTo(new SongsUpsertResponse(1, 1));
+        assertThat(existing.getTitle()).isEqualTo("Bohemian Rhapsody");
+        assertThat(existing.getGenre()).isEqualTo(Genre.ROCK);
+        assertThat(existing.getSongKey()).isNull();
+        assertThat(existing.getDifficulty()).containsExactly(Map.entry(Instrument.VOCAL, Level.ADVANCED));
+        assertThat(existing.getExternalId()).isEqualTo("ext-1");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Song>> saved = ArgumentCaptor.forClass(List.class);
+        verify(songRepository).saveAll(saved.capture());
+        assertThat(saved.getValue()).singleElement().satisfies(song -> {
+            assertThat(song.getExternalId()).isEqualTo("ext-2");
+            assertThat(song.getTitle()).isEqualTo("Creep");
+            assertThat(song.getDifficulty()).isNull();
+        });
+    }
+
+    @Test
+    @DisplayName("한 요청 안에 같은 externalId가 있으면 몇 번째 곡인지 담아 VALIDATION_FAILED를 던지고 조회·저장하지 않는다")
+    void upsertAll_throws_whenExternalIdDuplicated() {
+        SongsUpsertRequest request = new SongsUpsertRequest(List.of(
+                item("ext-1", "A", null), item("ext-2", "B", null), item("ext-1", "C", null)));
+
+        assertThatThrownBy(() -> songService.upsertAll(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageStartingWith("songs[2].externalId:")
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        verifyNoInteractions(songRepository);
+    }
+
+    @Test
+    @DisplayName("한 곡의 난이도에 같은 파트가 두 번 있으면 VALIDATION_FAILED이고 새 곡을 저장하지 않는다")
+    void upsertAll_throws_whenDifficultyPartDuplicated() {
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1"))).thenReturn(List.of());
+        SongsUpsertRequest request = new SongsUpsertRequest(List.of(item("ext-1", "A", List.of(
+                new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.NOVICE),
+                new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.ADVANCED)))));
+
+        assertThatThrownBy(() -> songService.upsertAll(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageStartingWith("songs[0].difficulty:")
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        verify(songRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("난이도가 빈 배열이면 정보 없음(null)으로 저장한다")
+    void upsertAll_storesNullDifficulty_whenEmpty() {
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1"))).thenReturn(List.of());
+
+        songService.upsertAll(new SongsUpsertRequest(List.of(item("ext-1", "A", List.of()))));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Song>> saved = ArgumentCaptor.forClass(List.class);
+        verify(songRepository).saveAll(saved.capture());
+        assertThat(saved.getValue().get(0).getDifficulty()).isNull();
+    }
+
+    // 장르 ROCK, 아티스트 고정, 키·BPM 없음 — 갱신 테스트에서 "빠진 선택 값은 비워진다"를 확인하려고 비워 둔다.
+    private static SongsUpsertRequest.Item item(String externalId, String title,
+            List<SongsUpsertRequest.Difficulty> difficulty) {
+        return new SongsUpsertRequest.Item(externalId, title, "Queen", Genre.ROCK, null, null, difficulty);
     }
 }
