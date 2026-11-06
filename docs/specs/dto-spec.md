@@ -861,15 +861,15 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
 - 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
-### SongsUpsertRequest / SongsUpsertResultResponse
+### AiSongPage (AI 서버 응답 · 잠정)
 
-AI 서버 곡 일괄 등록·갱신(`PUT /v1/internal/songs`, 2026-11-05 신규 · 이슈 #147). 인증·동작은 `api-spec.md` §9 ◇.
+백엔드가 AI 서버에서 받는 곡 카탈로그 한 페이지(`GET {AI}/v1/songs?cursor=&limit=`, 2026-11-06 · 이슈 #147). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다(`KakaoUserInfo`와 같은 자리). 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.**
 
 ```json
 {
   "songs": [
     {
-      "externalId": "yt:fJ9rUzIMcZQ",
+      "externalId": "youtube:Lb3mQdm-UHs",
       "title": "Bohemian Rhapsody",
       "artist": "Queen",
       "genre": "ROCK",
@@ -880,30 +880,25 @@ AI 서버 곡 일괄 등록·갱신(`PUT /v1/internal/songs`, 2026-11-05 신규 
         { "part": "DRUM", "level": "INTERMEDIATE" }
       ]
     }
-  ]
+  ],
+  "nextCursor": "eyJpZCI6NTAwfQ"
 }
-```
-
-```json
-{ "created": 480, "updated": 20 }
 ```
 
 | 필드 | 타입 | 필수 | 설명 |
 |---|---|---|---|
-| `songs` | List | O | 1~500개 |
-| `songs[].externalId` | String | O | AI 쪽 곡 id. 100자 이하. 이 값으로 같은 곡을 찾는다(`songs.external_id` 유일). **대소문자를 구분한다**(`yt:abc` ≠ `yt:ABC`). 앞뒤 공백이 있거나 한 요청 안에서 겹치면 400 |
+| `songs` | List | O | 한 페이지 최대 `limit`(500)개. 없으면 응답 형식 위반으로 그 회차가 실패한다 |
+| `nextCursor` | String | X | 다음 페이지 커서. `null`이면 마지막 페이지. 백엔드는 해석하지 않고 그대로 다음 요청에 넣는다 |
+| `songs[].externalId` | String | O | AI 쪽 곡 id. 100자 이하. 이 값으로 같은 곡을 찾는다(`songs.external_id` 유일). **대소문자를 구분한다**. 앞뒤 공백이 있거나 한 페이지 안에서 겹치면 그 곡을 건너뛴다 |
 | `songs[].title` | String | O | 200자 이하 |
 | `songs[].artist` | String | O | 100자 이하 |
 | `songs[].genre` | Enum | O | `Genre`(`ROCK` `INDIE` `PUNK` `METAL` `POP` `BALLAD` `JAZZ` `HIPHOP` `RNB` `ACOUSTIC` `ETC`) |
 | `songs[].songKey` | String | X | 10자 이하. 빈 문자열·공백뿐이면 키 정보 없음(`null`)으로 저장하고, 앞뒤 공백은 지운다 |
 | `songs[].bpm` | Integer | X | 양수 |
-| `songs[].difficulty` | List | X | 곡 검색 응답과 같은 `[{part, level}]` 배열. `part`는 `Instrument`, `level`은 `Level`. 한 곡에 같은 파트가 두 번이면 400. 없거나 빈 배열이면 난이도 정보 없음 |
+| `songs[].difficulty` | List | X | 곡 검색 응답과 같은 `[{part, level}]` 배열. `part`는 `Instrument`, `level`은 `Level`. 한 곡에 같은 파트가 두 번이면 그 곡을 건너뛴다. 없거나 빈 배열이면 난이도 정보 없음 |
 
-- 응답 `created`는 새로 만든 곡 수, `updated`는 이미 있던 곡 수다(내용이 같아도 갱신으로 센다). 합이 요청한 곡 수다
-- 이미 있는 곡은 보낸 값으로 **통째로** 바꾼다 — 선택 값(`songKey`·`bpm`·`difficulty`)을 빼고 보내면 비워진다
+- 필수 값이 빠지거나 길이를 넘는 곡은 그 곡만 건너뛰고 나머지는 저장한다
 - DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
-- 같은 새 `externalId`를 담은 요청이 동시에 부딪히면 한쪽이 `409 INVALID_STATE`다 — 아무것도 저장되지 않았으니 다시 보낸다
-- 응답 이름은 2026-11-06에 `SongsUpsertResponse`에서 바꿨다 — 동작이 아니라 결과 모양을 나타내게(`dto-naming.md` §0, PR #148 리뷰)
 
 ### SongRecommendationResponse
 
