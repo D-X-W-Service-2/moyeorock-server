@@ -51,10 +51,14 @@ file:
       base-url: http://localhost:8080
       upload-url-expiry-seconds: 600
 
-# 내부 API(/v1/internal/**) 인증 키 — 테스트 전용 값(SongUpsertApiTest가 이 값으로 부른다, 이슈 #147).
-# 32바이트보다 짧으면 InternalApiKeyFilter가 전부 거절하므로 그보다 길게 둔다.
-internal:
-  api-key: test-internal-api-key-0123456789abcdef
+# AI 곡 동기화 — 테스트에서는 스케줄을 끄고 AI 서버 주소도 비워 둔다(이슈 #147)
+ai:
+  server:
+    base-url: ""
+    api-key: ""
+  song-sync:
+    enabled: false
+    cron: "0 0 4 * * *"
 
 # main application.yml의 cors.allowed-origins 기본값과 같게 둔다(CorsConfigTest가 이 목록으로 검증, #123).
 cors:

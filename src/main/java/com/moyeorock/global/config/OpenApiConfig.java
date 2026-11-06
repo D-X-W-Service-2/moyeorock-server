@@ -1,7 +1,6 @@
 package com.moyeorock.global.config;
 
 import com.moyeorock.global.security.AuthUser;
-import com.moyeorock.global.security.InternalApiKeyFilter;
 import com.moyeorock.global.security.PublicEndpoints;
 import io.swagger.v3.core.util.Json;
 import io.swagger.v3.oas.models.Components;
@@ -47,8 +46,6 @@ public class OpenApiConfig {
     }
 
     private static final String SECURITY_SCHEME_NAME = "bearerAuth";
-    // 내부 서버(AI 서버) 전용 /v1/internal/**는 JWT 대신 API 키 헤더로 인증한다(InternalApiKeyFilter, 이슈 #147)
-    private static final String INTERNAL_SECURITY_SCHEME_NAME = "internalApiKey";
     private static final String ERROR_SCHEMA_NAME = "ErrorResponse";
     private static final String JSON = "application/json";
 
@@ -83,12 +80,7 @@ public class OpenApiConfig {
                                 new SecurityScheme()
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
-                                        .bearerFormat("JWT"))
-                        .addSecuritySchemes(INTERNAL_SECURITY_SCHEME_NAME,
-                                new SecurityScheme()
-                                        .type(SecurityScheme.Type.APIKEY)
-                                        .in(SecurityScheme.In.HEADER)
-                                        .name(InternalApiKeyFilter.HEADER)))
+                                        .bearerFormat("JWT")))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME));
     }
 
@@ -106,8 +98,7 @@ public class OpenApiConfig {
      * <ul>
      *   <li>{@code Pageable}과 검색 조건 객체를 필수 객체 파라미터 하나가 아니라 쿼리 파라미터로 펼친다</li>
      *   <li>응답 미디어 타입 {@code *}{@code /*}를 {@code application/json}으로 바꾼다</li>
-     *   <li>공개 엔드포인트({@link PublicEndpoints})는 인증 표시를 없애고, 내부 API({@code /v1/internal/**})는 JWT 대신
-     *       API 키 헤더로 표시한다. 공개가 아니면 401을, 요청 값이 있으면 400을 단다.
+     *   <li>공개 엔드포인트({@link PublicEndpoints})는 인증 표시를 없애고, 나머지에는 401을, 요청 값이 있으면 400을 단다.
      *       404·409처럼 엔드포인트마다 다른 코드는 자동으로 알 수 없어 붙이지 않는다(규약: @ApiResponses를 장황하게 달지 않는다)</li>
      * </ul>
      */
@@ -124,9 +115,6 @@ public class OpenApiConfig {
                 useJsonMediaType(operation);
                 if (isPublic(matcher, path)) {
                     operation.setSecurity(List.of());
-                } else if (matcher.match(InternalApiKeyFilter.PATH_PATTERN, path)) {
-                    operation.setSecurity(List.of(new SecurityRequirement().addList(INTERNAL_SECURITY_SCHEME_NAME)));
-                    addError(operation, "401", "내부 API 키가 필요합니다.");
                 } else {
                     addError(operation, "401", "인증이 필요합니다.");
                 }

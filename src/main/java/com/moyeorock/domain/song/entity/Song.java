@@ -18,7 +18,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// 곡 마스터 데이터 — AI 서버가 자기 카탈로그의 곡 id(external_id)로 넣고 갱신한다(PUT /v1/internal/songs, 이슈 #147).
+// 곡 마스터 데이터 — 백엔드가 AI 서버 곡 카탈로그를 받아와 AI 쪽 곡 id(external_id) 기준으로 넣고 갱신한다(SongService#syncFromAi, 이슈 #147).
 // 팀·사용자 데이터를 담지 않는다. 갱신해도 updated_at은 없다(erd.md §8).
 @Entity
 @Table(name = "songs")
@@ -66,7 +66,7 @@ public class Song extends BaseTimeEntity {
         return song;
     }
 
-    // AI 서버가 같은 externalId로 다시 보낸 곡 — 보낸 값으로 통째로 바꾼다(빠진 선택 값은 비워진다). externalId는 바꾸지 않는다.
+    // AI 카탈로그에 같은 externalId로 다시 들어온 곡 — 받은 값으로 통째로 바꾼다(빠진 선택 값은 비워진다). externalId는 바꾸지 않는다.
     public void update(String title, String artist, Genre genre, String songKey, Integer bpm,
             Map<Instrument, Level> difficulty) {
         this.title = title;

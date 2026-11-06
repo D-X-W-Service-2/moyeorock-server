@@ -27,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 곡 검색의 보안 필터·쿼리 파라미터 변환·JSON 모양(난이도 배열)을 실제 HTTP 흐름으로 확인한다.
- * 곡은 Repository로 직접 넣는다(곡을 넣는 내부 API는 SongUpsertApiTest). 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
+ * 곡을 넣는 API가 없어서 곡은 Repository로 직접 넣는다. 클래스 단위 {@code @Transactional}이라 테스트마다 롤백된다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

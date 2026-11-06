@@ -1,42 +1,53 @@
 package com.moyeorock.domain.song.service;
 
-import com.moyeorock.domain.song.dto.request.SongsUpsertRequest;
+import com.moyeorock.domain.song.client.AiSongClient;
+import com.moyeorock.domain.song.client.AiSongPage;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
-import com.moyeorock.domain.song.dto.response.SongsUpsertResultResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
-import com.moyeorock.global.exception.BusinessException;
-import com.moyeorock.global.exception.ErrorCode;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 곡 마스터 조회와 AI 서버의 곡 일괄 등록·갱신. 곡은 AI 서버 카탈로그에서 들어오는 데이터라 화면용 쓰기는 없다(Song 엔티티 주석).
+ * 곡 마스터 조회와 AI 서버 곡 카탈로그 동기화. 곡은 AI 서버 카탈로그에서 들어오는 데이터라 화면용 쓰기는 없다(Song 엔티티 주석).
  * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을 확인하려고 이 Service를 부른다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SongService {
 
+    // AI 서버에 요청하는 페이지 크기 — 한 페이지가 한 트랜잭션이다
+    static final int SYNC_PAGE_SIZE = 500;
+
     private final SongRepository songRepository;
+    private final AiSongClient aiSongClient;
+    private final TransactionTemplate transactionTemplate;
+    private final Validator validator;
+    private final AtomicBoolean syncing = new AtomicBoolean(false);
 
     /**
      * 곡 검색. keyword는 앞뒤 공백을 지우고, 비어 있으면 조건 없이 전체다. 정렬은 제목 순 고정(SongRepository)이라
@@ -59,86 +70,151 @@ public class SongService {
     }
 
     /**
-     * AI 서버 곡 일괄 등록·갱신(PUT /v1/internal/songs, 이슈 #147). externalId가 이미 있으면 보낸 값으로 바꾸고, 없으면
-     * 새로 만든다 — 같은 요청을 다시 보내도 결과가 같다. 요청에 없는 곡은 지우지 않는다(팀 선택곡·셋리스트가 참조한다).
-     * 한 요청이 한 트랜잭션이라 하나라도 틀리면 아무것도 저장되지 않는다. 한 요청 안의 externalId 중복과 한 곡의 같은 파트
-     * 중복은 VALIDATION_FAILED이고, 메시지에 몇 번째 곡인지 담는다(검증 메시지와 같은 {@code songs[i].필드: 사유} 모양).
-     * 입력 검증은 모두 조회 전에 끝낸다. externalId는 대소문자를 구분한다 — DB 콜레이션도 같은 기준이다(V13).
-     * {@code songKey}가 공백뿐이면 키 정보 없음(null)으로 저장한다.
-     *
-     * <p>같은 새 externalId를 담은 요청 둘이 동시에 오면 유니크 제약(uk_songs_external_id)으로 한쪽이 실패한다 — 이때는
-     * {@code 409 INVALID_STATE}이고 AI 서버가 다시 보내면 된다(다시 보내도 결과가 같다). 요청은 차례로 보내는 것을 전제로 한다(api-spec.md §9).
+     * AI 곡 동기화 스케줄({@code ai.song-sync.cron}, 기본 매일 04:00). {@code ai.song-sync.enabled=true}일 때만
+     * 돈다(SongSyncConfig). 실패해도 다음 회차에 처음부터 다시 받으면 되므로 로그만 남긴다.
      */
-    @Transactional
-    public SongsUpsertResultResponse upsertAll(SongsUpsertRequest request) {
-        List<SongsUpsertRequest.Item> items = request.songs();
-        ensureUniqueExternalIds(items);
-        List<Map<Instrument, Level>> difficulties = toDifficulties(items);
-        Map<String, Song> existing = songRepository.findAllByExternalIdIn(
-                        items.stream().map(SongsUpsertRequest.Item::externalId).toList()).stream()
-                .collect(Collectors.toMap(Song::getExternalId, Function.identity()));
+    @Scheduled(cron = "${ai.song-sync.cron}", zone = "Asia/Seoul")
+    public void syncFromAiOnSchedule() {
+        try {
+            SyncResult result = syncFromAi();
+            log.info("AI 곡 동기화 완료: {}", result);
+        } catch (RuntimeException e) {
+            log.error("AI 곡 동기화 실패 — 이미 저장한 페이지는 남는다", e);
+        }
+    }
 
+    /**
+     * AI 서버 곡 카탈로그를 처음부터 끝까지 받아 songs에 넣는다(이슈 #147). 백엔드가 AI 서버를 부르고, AI 서버는 백엔드를 부르지 않는다.
+     *
+     * <ul>
+     *   <li>externalId 기준 upsert — 없으면 만들고, 있으면 받은 값으로 통째로 바꾼다(빠진 선택 값은 비워진다). 곡 id는 그대로다.
+     *       다시 돌려도 결과가 같다. 카탈로그에 없는 곡은 지우지 않는다(팀 선택곡·셋리스트가 참조한다).</li>
+     *   <li>HTTP 호출은 트랜잭션 밖에서 하고, 페이지마다 따로 커밋한다 — AI 응답을 기다리는 동안 DB 커넥션을 잡지 않고,
+     *       중간에 실패해도 앞 페이지는 남는다. 그래서 이 메서드에는 {@code @Transactional}을 붙이지 않는다.</li>
+     *   <li>검증에 걸린 곡(필수 값 누락·길이 초과·같은 파트 중복·한 페이지 안 externalId 중복)은 그 곡만 건너뛰고 로그를 남긴다.</li>
+     *   <li>한 번에 하나만 돈다. 이미 돌고 있거나 AI 서버 주소가 없으면 아무것도 하지 않고 {@link SyncResult#NOT_RUN}이다.</li>
+     *   <li>AI 서버 호출 실패와 응답 형식 위반(songs 없음, 같은 커서 반복)은 예외로 그 회차를 끝낸다.</li>
+     * </ul>
+     */
+    public SyncResult syncFromAi() {
+        if (!aiSongClient.isConfigured()) {
+            log.warn("AI 서버 주소(ai.server.base-url)가 없어 곡 동기화를 건너뜁니다.");
+            return SyncResult.NOT_RUN;
+        }
+        if (!syncing.compareAndSet(false, true)) {
+            log.warn("AI 곡 동기화가 이미 돌고 있어 이번 실행은 건너뜁니다.");
+            return SyncResult.NOT_RUN;
+        }
+        try {
+            return syncAllPages();
+        } finally {
+            syncing.set(false);
+        }
+    }
+
+    private SyncResult syncAllPages() {
+        int pages = 0;
+        int created = 0;
+        int updated = 0;
+        int skipped = 0;
+        String cursor = null;
+        do {
+            AiSongPage page = aiSongClient.fetchSongs(cursor, SYNC_PAGE_SIZE);
+            pages++;
+            List<SongValues> valid = validSongs(pages, page.songs());
+            skipped += page.songs().size() - valid.size();
+            if (!valid.isEmpty()) {
+                int createdInPage = transactionTemplate.execute(status -> upsert(valid));
+                created += createdInPage;
+                updated += valid.size() - createdInPage;
+            }
+            String next = page.nextCursor();
+            if (next != null && next.equals(cursor)) {
+                throw new IllegalStateException("AI 서버가 같은 커서를 다시 돌려줬습니다: " + next);
+            }
+            cursor = next;
+        } while (cursor != null);
+        return new SyncResult(pages, created, updated, skipped);
+    }
+
+    // 한 페이지를 한 트랜잭션으로 저장하고 새로 만든 곡 수를 돌려준다. 한 번에 하나만 돌아서 같은 새 externalId가 동시에 들어올 일은 없다.
+    private int upsert(List<SongValues> songs) {
+        Map<String, Song> existing = songRepository.findAllByExternalIdIn(
+                        songs.stream().map(SongValues::externalId).toList()).stream()
+                .collect(Collectors.toMap(Song::getExternalId, Function.identity()));
         List<Song> created = new ArrayList<>();
-        for (int i = 0; i < items.size(); i++) {
-            SongsUpsertRequest.Item item = items.get(i);
-            Map<Instrument, Level> difficulty = difficulties.get(i);
-            String songKey = toSongKey(item.songKey());
-            Song song = existing.get(item.externalId());
+        for (SongValues values : songs) {
+            Song song = existing.get(values.externalId());
             if (song == null) {
-                created.add(Song.create(item.title(), item.artist(), item.genre(), songKey, item.bpm(),
-                        difficulty, item.externalId()));
+                created.add(Song.create(values.title(), values.artist(), values.genre(), values.songKey(),
+                        values.bpm(), values.difficulty(), values.externalId()));
             } else {
-                song.update(item.title(), item.artist(), item.genre(), songKey, item.bpm(), difficulty);
+                song.update(values.title(), values.artist(), values.genre(), values.songKey(), values.bpm(),
+                        values.difficulty());
             }
         }
-        saveCreated(created);
-        return new SongsUpsertResultResponse(created.size(), items.size() - created.size());
+        songRepository.saveAll(created);
+        return created.size();
     }
 
-    // 사전 검사가 없는 동시 요청 충돌(같은 새 externalId)만 남는다 — 500이 아니라 다시 보내면 되는 409로 알린다(SetlistService와 같은 방식).
-    private void saveCreated(List<Song> created) {
-        try {
-            songRepository.saveAllAndFlush(created);
-        } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(ErrorCode.INVALID_STATE);
-        }
-    }
-
-    private static void ensureUniqueExternalIds(List<SongsUpsertRequest.Item> items) {
+    // 곡마다 검증하고 DB 모양으로 바꾼다. 걸린 곡은 빼고 이유를 남긴다. 순서는 받은 순서다.
+    private List<SongValues> validSongs(int pageNumber, List<AiSongPage.Item> items) {
+        List<SongValues> result = new ArrayList<>(items.size());
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < items.size(); i++) {
-            if (!seen.add(items.get(i).externalId())) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                        "songs[" + i + "].externalId: 같은 요청 안에 같은 외부 곡 아이디가 있습니다.");
+            AiSongPage.Item item = items.get(i);
+            String problem = findProblem(item, seen);
+            if (problem != null) {
+                log.warn("AI 곡 건너뜀 — {}페이지 songs[{}] externalId={}: {}", pageNumber, i,
+                        item == null ? null : item.externalId(), problem);
+                continue;
             }
-        }
-    }
-
-    // 곡마다 난이도를 DB 모양으로 바꾼다. 같은 파트 중복 검증이 여기서 끝나므로 조회 전에 부른다. 순서는 요청 순서다.
-    private static List<Map<Instrument, Level>> toDifficulties(List<SongsUpsertRequest.Item> items) {
-        List<Map<Instrument, Level>> result = new ArrayList<>(items.size());
-        for (int i = 0; i < items.size(); i++) {
-            result.add(toDifficulty(i, items.get(i).difficulty()));
+            seen.add(item.externalId());
+            result.add(new SongValues(item.externalId(), item.title(), item.artist(), item.genre(),
+                    toSongKey(item.songKey()), item.bpm(), toDifficulty(item.difficulty())));
         }
         return result;
     }
 
-    // 요청의 배열을 DB 모양(파트 → 수준 객체, songs.difficulty JSON)으로 바꾼다. 없거나 비어 있으면 난이도 정보 없음(null)이다.
-    private static Map<Instrument, Level> toDifficulty(int index, List<SongsUpsertRequest.Difficulty> difficulty) {
+    private String findProblem(AiSongPage.Item item, Set<String> seen) {
+        if (item == null) {
+            return "곡이 비어 있습니다.";
+        }
+        Set<ConstraintViolation<AiSongPage.Item>> violations = validator.validate(item);
+        if (!violations.isEmpty()) {
+            return violations.stream()
+                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                    .sorted()
+                    .collect(Collectors.joining(", "));
+        }
+        if (seen.contains(item.externalId())) {
+            return "같은 페이지에 같은 외부 곡 아이디가 이미 있습니다.";
+        }
+        if (hasDuplicatePart(item.difficulty())) {
+            return "difficulty: 같은 파트가 두 번 들어 있습니다.";
+        }
+        return null;
+    }
+
+    private static boolean hasDuplicatePart(List<AiSongPage.Difficulty> difficulty) {
+        if (difficulty == null) {
+            return false;
+        }
+        Set<Instrument> parts = EnumSet.noneOf(Instrument.class);
+        return !difficulty.stream().allMatch(part -> parts.add(part.part()));
+    }
+
+    // 받은 배열을 DB 모양(파트 → 수준 객체, songs.difficulty JSON)으로 바꾼다. 없거나 비어 있으면 난이도 정보 없음(null)이다.
+    private static Map<Instrument, Level> toDifficulty(List<AiSongPage.Difficulty> difficulty) {
         if (difficulty == null || difficulty.isEmpty()) {
             return null;
         }
         Map<Instrument, Level> result = new EnumMap<>(Instrument.class);
-        for (SongsUpsertRequest.Difficulty part : difficulty) {
-            if (result.put(part.part(), part.level()) != null) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                        "songs[" + index + "].difficulty: 같은 파트가 두 번 들어 있습니다.");
-            }
-        }
+        difficulty.forEach(part -> result.put(part.part(), part.level()));
         return result;
     }
 
-    // 빈 문자열·공백뿐인 키는 정보 없음(null)이다 — 빼고 보낸 것과 같게 저장해 응답에 "" 가 나가지 않게 한다.
+    // 빈 문자열·공백뿐인 키는 정보 없음(null)이다 — 응답에 "" 가 나가지 않게 한다.
     private static String toSongKey(String songKey) {
         if (songKey == null || songKey.isBlank()) {
             return null;
@@ -151,5 +227,17 @@ public class SongService {
             return null;
         }
         return keyword.strip();
+    }
+
+    /** 동기화 한 회차 결과. 페이지 수, 새로 만든 곡, 받은 값으로 바꾼 곡(내용이 같아도 센다), 검증에 걸려 건너뛴 곡 수. */
+    public record SyncResult(int pages, int created, int updated, int skipped) {
+
+        /** AI 서버 주소가 없거나 이미 돌고 있어 이번 회차를 돌리지 않았다. */
+        public static final SyncResult NOT_RUN = new SyncResult(0, 0, 0, 0);
+    }
+
+    // 검증을 통과하고 DB 모양으로 바꾼 곡 값
+    private record SongValues(String externalId, String title, String artist, Genre genre, String songKey,
+            Integer bpm, Map<Instrument, Level> difficulty) {
     }
 }
