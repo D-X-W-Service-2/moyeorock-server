@@ -229,15 +229,17 @@
 | GET | `/v1/songs?keyword=&genre=&page=&size=` ¶ | 곡&nbsp;검색 | | `PageResponse<SongResponse>` | 세션별 난이도 포함 |
 | GET | `/v1/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
 | GET | `/v1/teams/{teamId}/songs/recommendations` | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 |
-| PUT | `/v1/internal/songs` ◇ | 곡&nbsp;일괄&nbsp;등록·갱신&nbsp;(AI&nbsp;서버&nbsp;전용) | `SongsUpsertRequest` | `SongsUpsertResponse` | API 키 |
+| PUT | `/v1/internal/songs` ◇ | 곡&nbsp;일괄&nbsp;등록·갱신&nbsp;(AI&nbsp;서버&nbsp;전용) | `SongsUpsertRequest` | `SongsUpsertResultResponse` | API 키 |
 
 > ¶ `API 초안`에서 `page`·`size` 페이징 파라미터가 명시적으로 추가됐다(2026-09-11).
 > ◇ **2026-11-05 신규(이슈 #147)** — AI 파트는 자기들이 수집·분석한 곡으로만 추천하므로 곡 마스터(`songs`)를 AI 쪽 목록과 같게 둬야 한다. 그래서 AI 서버가 우리 API를 불러 곡을 넣는다(화면에서 부르는 API가 아니다).
-> - **인증은 JWT가 아니라 `X-Internal-Api-Key` 헤더**다. 서버 설정 `INTERNAL_API_KEY`와 같아야 하고, 비어 있으면 전부 거절한다. 사용자 토큰으로는 부를 수 없고, 이 키로 다른 `/v1/**`를 부를 수도 없다. 틀리면 `401 UNAUTHORIZED`(고른 이유와 대안은 이슈 #147 PR "기술 선택 및 대안")
+> - **인증은 JWT가 아니라 `X-Internal-Api-Key` 헤더**다. 서버 설정 `INTERNAL_API_KEY`와 같아야 하고, 설정이 비어 있거나 32바이트보다 짧으면 전부 거절한다. 사용자 토큰으로는 부를 수 없고, 이 키로 다른 `/v1/**`를 부를 수도 없다. 틀리면 `401 UNAUTHORIZED`(고른 이유와 대안은 이슈 #147 PR "기술 선택 및 대안")
 > - **`externalId`(AI 쪽 곡 id) 기준 upsert** — 없으면 만들고(`created`), 있으면 보낸 값으로 통째로 바꾼다(`updated`, 빠진 선택 값은 비워진다). 곡 `id`는 바뀌지 않는다. 같은 요청을 다시 보내도 결과가 같다
+> - **`externalId`는 대소문자를 구분한다**(`yt:abc` ≠ `yt:ABC`, DB도 `utf8mb4_0900_bin` — V13). 앞뒤에 공백이 있으면 400이다(2026-11-06, PR #148 리뷰)
+> - **바꾼 곡 정보는 그 곡을 참조하는 곳에 그대로 보인다** — 팀 선택곡·셋리스트(끝난 공연 포함)·저장 목록은 `songs.id`만 들고 있어 제목·아티스트를 고치면 함께 바뀐다. 카탈로그 정정을 반영하려는 의도된 동작이다(2026-11-06, PR #148 리뷰)
 > - **요청에 없는 곡은 지우지 않는다** — 팀 선택곡·셋리스트가 곡을 참조한다
 > - **한 번에 1~500곡**, 요청 단위로 전부 성공하거나 전부 실패한다(트랜잭션 하나). 한 요청 안의 `externalId` 중복, 한 곡의 같은 파트 중복은 `400 VALIDATION_FAILED`이고 `message`에 `songs[i].필드: 사유`로 몇 번째 곡인지 담는다. 없는 장르·파트·수준 값도 400이다(이때는 위치 없이 기본 메시지)
-> - **요청은 차례로 보낸다** — 같은 새 `externalId`를 담은 요청 둘이 동시에 오면 유니크 제약(`uk_songs_external_id`)으로 한쪽이 실패한다
+> - **요청은 차례로 보낸다** — 같은 새 `externalId`를 담은 요청 둘이 동시에 오면 유니크 제약(`uk_songs_external_id`)으로 한쪽이 실패한다. 실패한 쪽은 `409 INVALID_STATE`(기본 메시지)이고 아무것도 저장되지 않았으니 다시 보내면 된다(2026-11-06, PR #148 리뷰 — 이전엔 500)
 > - 값은 우리 enum 그대로다 — 장르 `Genre` 11개(맞는 게 없으면 `ETC`), 파트 `Instrument`, 수준 `Level`. 노션 `API 초안`에 "곡 일괄 등록·갱신 (AI 서버 전용)" 페이지를 추가했다(2026-11-05)
 > 🚧 추천 2개(내 취향 추천곡·팀 곡 추천)는 추천 방식(룰 기반/외부 모델)과 소유 도메인이 정해지지 않아 셋리스트 구현(이슈 #103) 범위에서 뺐다(2026-11-02).
 > ⚠️ `docs/conventions/domains.md`는 song 3개(곡 검색·내 취향 추천곡·곡 일괄 등록·갱신 — 2026-11-05 이슈 #147로 2 → 3)로 집계한다. 팀 곡 추천을 song에 두면 4개가 되므로 **소유 도메인(song vs setlist) 확인 필요.** `API 초안`은 이 3개를 모두 "노래 / 셋리스트"로 묶어만 두어 이 논쟁을 해소하지 못한다. 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).

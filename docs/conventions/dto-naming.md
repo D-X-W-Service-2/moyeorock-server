@@ -388,7 +388,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
 | 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
-| 곡 일괄 등록·갱신 (AI 서버 전용) | PUT | `/v1/internal/songs` | `SongsUpsertRequest` | `SongsUpsertResponse` |
+| 곡 일괄 등록·갱신 (AI 서버 전용) | PUT | `/v1/internal/songs` | `SongsUpsertRequest` | `SongsUpsertResultResponse` |
 
 **보조 DTO**
 
@@ -402,7 +402,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `TeamSongsResponse` | `(Long teamId, List<TeamSongResponse> songs)` |
 | `SetlistItemResponse` | `(Long teamId, String teamName, SongSummaryResponse song, Integer sortOrder)` — 공연 셋리스트 항목. `teamName`은 해체된 팀도 나온다(끝난 공연의 셋리스트) |
 | `SongsUpsertRequest` | `(List<Item> songs)` — 중첩 `Item(externalId, title, artist, genre, songKey, bpm, List<Difficulty> difficulty)`·`Difficulty(part, level)`. 이 요청에서만 쓰는 항목이라 중첩 record다. 1~500개. `TeamSongsSaveRequest`처럼 목록 통째라 복수형(2026-11-05, 이슈 #147) |
-| `SongsUpsertResponse` | `(int created, int updated)` — 새로 만든 곡 수와 이미 있어 바꾼 곡 수 |
+| `SongsUpsertResultResponse` | `(int created, int updated)` — 새로 만든 곡 수와 이미 있어 바꾼 곡 수. `{Entity}{Shape}Response` 패턴이라 동작(`Upsert`)만이 아니라 결과 모양(`Result`)을 붙였다(2026-11-06, PR #148 리뷰) |
 | `SongRecommendationResponse` · `TeamSongRecommendationResponse` | 추천 근거(`reasons`) 포함 여부가 달라 분리. 팀 쪽은 곡마다 `selectedByOtherTeam`(같은 공연의 다른 팀이 이미 고른 곡, 구 `alreadyInSetlist`) |
 
 이전 이름 `TeamSetlistUpdateRequest`·`TeamSetlistResponse`와 `SongProgress`(`CANDIDATE|SELECTED|PRACTICING|DONE`)는 2026-10-30에 없앴다.

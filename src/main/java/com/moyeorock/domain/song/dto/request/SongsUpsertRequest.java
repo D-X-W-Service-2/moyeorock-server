@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.util.List;
@@ -23,10 +24,15 @@ public record SongsUpsertRequest(
 ) {
 
     public static final int MAX_SONGS = 500;
+    // 비어 있거나, 공백이 아닌 글자로 시작하고 끝난다
+    private static final String NO_SURROUNDING_SPACE = "(\\S(.*\\S)?)?";
 
     public record Item(
+            // 대소문자를 구분하고(V13), 앞뒤 공백은 받지 않는다 — 공백 하나 차이로 같은 곡이 따로 생기지 않게(PR #148 리뷰).
+            // 빈 문자열은 패턴이 통과시켜 @NotBlank 메시지만 나간다.
             @NotBlank(message = "외부 곡 아이디는 필수입니다.")
             @Size(max = 100, message = "외부 곡 아이디는 100자 이하여야 합니다.")
+            @Pattern(regexp = NO_SURROUNDING_SPACE, message = "외부 곡 아이디 앞뒤에 공백이 있으면 안 됩니다.")
             String externalId,
 
             @NotBlank(message = "곡 제목은 필수입니다.")
@@ -40,6 +46,7 @@ public record SongsUpsertRequest(
             @NotNull(message = "장르는 필수입니다.")
             Genre genre,
 
+            // 빈 문자열·공백뿐이면 키 정보 없음(null)으로 저장한다(SongService)
             @Size(max = 10, message = "곡 키는 10자 이하여야 합니다.")
             String songKey,
 

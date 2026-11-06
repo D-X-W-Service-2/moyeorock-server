@@ -2,7 +2,7 @@ package com.moyeorock.domain.song.controller;
 
 import com.moyeorock.domain.song.dto.request.SongsUpsertRequest;
 import com.moyeorock.domain.song.dto.response.SongResponse;
-import com.moyeorock.domain.song.dto.response.SongsUpsertResponse;
+import com.moyeorock.domain.song.dto.response.SongsUpsertResultResponse;
 import com.moyeorock.domain.song.service.SongService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -37,24 +37,26 @@ public class SongController {
             - 키가 없거나 틀리면 `401 UNAUTHORIZED`입니다.
 
             ### 동작
-            - `externalId`(AI 쪽 곡 id)로 같은 곡을 찾습니다. 처음 보는 곡은 **새로 만들고**, 이미 있는 곡은 **보낸 값으로 통째로 바꿉니다**
+            - `externalId`(AI 쪽 곡 id)로 같은 곡을 찾습니다. **대소문자를 구분합니다**(`yt:abc`와 `yt:ABC`는 다른 곡).
+              처음 보는 곡은 **새로 만들고**, 이미 있는 곡은 **보낸 값으로 통째로 바꿉니다**
               (`songKey`·`bpm`·`difficulty`를 빼고 보내면 비워집니다). 곡 `id`는 바뀌지 않습니다.
+            - 바꾼 제목·아티스트 등은 그 곡을 고른 팀 선택곡·셋리스트·저장 목록에도 그대로 보입니다.
             - 같은 요청을 다시 보내도 결과가 같습니다 — 전체 목록을 처음부터 다시 보내도 안전합니다.
             - 요청에 없는 곡은 **지우지 않습니다**.
             - 한 요청은 전부 저장되거나 전부 실패합니다. 하나라도 틀리면 아무것도 저장되지 않습니다.
 
             ### 보내는 방법
-            - 한 번에 **1~500곡**입니다. 더 많으면 500곡씩 나눠 **하나씩 차례로** 보내 주세요(동시에 보내면 같은 새 곡이 겹칠 때 한쪽이 실패할 수 있습니다).
+            - 한 번에 **1~500곡**입니다. 더 많으면 500곡씩 나눠 **하나씩 차례로** 보내 주세요(동시에 보내면 같은 새 곡이 겹칠 때 한쪽이 `409`로 실패할 수 있습니다).
             - 한 요청 안에 같은 `externalId`가 두 번 있으면 400입니다.
 
             ### 필드
             | 필드 | 필수 | 규칙 |
             |---|---|---|
-            | `externalId` | O | AI 쪽 곡 id, 100자 이하 |
+            | `externalId` | O | AI 쪽 곡 id, 100자 이하. 대소문자 구분. 앞뒤 공백은 400 |
             | `title` | O | 200자 이하 |
             | `artist` | O | 100자 이하 |
             | `genre` | O | 아래 Schema의 enum 값 중 하나. 맞는 장르가 없으면 `ETC` |
-            | `songKey` | X | 10자 이하 (예: `Bb`) |
+            | `songKey` | X | 10자 이하 (예: `Bb`). 빈 문자열·공백뿐이면 키 정보 없음(`null`)으로 저장 |
             | `bpm` | X | 양수 |
             | `difficulty` | X | `[{"part", "level"}]` 배열. `part`·`level`은 Schema의 enum 값. 한 곡에 같은 `part`는 한 번만. 없거나 빈 배열이면 난이도 정보 없음 |
 
@@ -85,6 +87,7 @@ public class SongController {
             - `400 VALIDATION_FAILED` — `message`에 몇 번째 곡의 어떤 필드인지 담깁니다. 예: `songs[3].externalId: 같은 요청 안에 같은 외부 곡 아이디가 있습니다.`
               없는 enum 값(장르 등)이나 JSON 형식 오류는 위치 없이 `입력값이 올바르지 않습니다.`입니다.
             - `401 UNAUTHORIZED` — `X-Internal-Api-Key`가 없거나 틀림
+            - `409 INVALID_STATE` — 같은 새 곡을 담은 다른 요청과 동시에 처리돼 부딪힘. 아무것도 저장되지 않았으니 **같은 요청을 다시 보내면** 됩니다
             """;
 
     private final SongService songService;
@@ -103,7 +106,7 @@ public class SongController {
      */
     @Operation(summary = "곡 일괄 등록·갱신 (AI 서버 전용)", description = UPSERT_DESCRIPTION)
     @PutMapping("/v1/internal/songs")
-    public ApiResponse<SongsUpsertResponse> upsertAll(@Valid @RequestBody SongsUpsertRequest request) {
+    public ApiResponse<SongsUpsertResultResponse> upsertAll(@Valid @RequestBody SongsUpsertRequest request) {
         return ApiResponse.success(songService.upsertAll(request));
     }
 }

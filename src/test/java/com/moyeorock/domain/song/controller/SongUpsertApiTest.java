@@ -9,9 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
-import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.security.InternalApiKeyFilter;
 import com.moyeorock.global.security.JwtProvider;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 class SongUpsertApiTest {
 
     private static final String PATH = "/v1/internal/songs";
-    private static final String KEY_HEADER = "X-Internal-Api-Key";
 
     @Value("${internal.api-key}")
     private String apiKey;
@@ -59,7 +58,7 @@ class SongUpsertApiTest {
         String body = body(song("ext-1", "Creep", "ROCK", null));
 
         upsert(put(PATH), body).andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-        upsert(put(PATH).header(KEY_HEADER, "wrong-key"), body).andExpect(status().isUnauthorized());
+        upsert(put(PATH).header(InternalApiKeyFilter.HEADER, "wrong-key"), body).andExpect(status().isUnauthorized());
         upsert(put(PATH).header("Authorization", "Bearer " + jwtProvider.generateToken(1L)), body)
                 .andExpect(status().isUnauthorized());
 
@@ -69,7 +68,7 @@ class SongUpsertApiTest {
     @Test
     @DisplayName("API 키로는 화면용 API(곡 검색)를 부를 수 없다 — 401")
     void apiKey_doesNotOpenUserApi() throws Exception {
-        mockMvc.perform(get("/v1/songs").header(KEY_HEADER, apiKey)).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/v1/songs").header(InternalApiKeyFilter.HEADER, apiKey)).andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -148,8 +147,47 @@ class SongUpsertApiTest {
         assertThat(songRepository.findAllByExternalIdIn(List.of("ext-1"))).isEmpty();
     }
 
+    @Test
+    @DisplayName("externalId는 대소문자를 구분한다 — 대소문자만 다른 id는 다른 곡으로 만들고, 다시 보내면 그 곡만 바꾼다")
+    void upsert_treatsExternalIdCaseSensitively() throws Exception {
+        upsert(withKey(), body(song("yt:abcDEF", "A", "ROCK", null), song("yt:abcdef", "B", "ROCK", null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(2))
+                .andExpect(jsonPath("$.data.updated").value(0));
+
+        upsert(withKey(), body(song("yt:abcdef", "B (Live)", "ROCK", null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.created").value(0))
+                .andExpect(jsonPath("$.data.updated").value(1));
+
+        Map<String, String> titles = songRepository.findAllByExternalIdIn(List.of("yt:abcDEF", "yt:abcdef")).stream()
+                .collect(Collectors.toMap(Song::getExternalId, Song::getTitle));
+        assertThat(titles).containsOnly(Map.entry("yt:abcDEF", "A"), Map.entry("yt:abcdef", "B (Live)"));
+    }
+
+    @Test
+    @DisplayName("externalId 앞뒤에 공백이 있으면 400이고 몇 번째 곡인지 알려주며, 아무것도 저장되지 않는다")
+    void upsert_externalIdWithSurroundingSpace_returns400() throws Exception {
+        upsert(withKey(), body(song("ext-1", "A", "ROCK", null), song("ext-2 ", "B", "ROCK", null)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("songs[1].externalId: 외부 곡 아이디 앞뒤에 공백이 있으면 안 됩니다."));
+
+        assertThat(songRepository.findAllByExternalIdIn(List.of("ext-1", "ext-2", "ext-2 "))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("songKey가 빈 문자열·공백뿐이면 키 정보 없음(null)으로 저장한다")
+    void upsert_storesBlankSongKeyAsNull() throws Exception {
+        upsert(withKey(), "{\"songs\":[{\"externalId\":\"ext-1\",\"title\":\"A\",\"artist\":\"Queen\",\"genre\":\"ROCK\","
+                + "\"songKey\":\"  \"}]}")
+                .andExpect(status().isOk());
+
+        assertThat(songRepository.findAllByExternalIdIn(List.of("ext-1")))
+                .singleElement().satisfies(song -> assertThat(song.getSongKey()).isNull());
+    }
+
     private MockHttpServletRequestBuilder withKey() {
-        return put(PATH).header(KEY_HEADER, apiKey);
+        return put(PATH).header(InternalApiKeyFilter.HEADER, apiKey);
     }
 
     private ResultActions upsert(MockHttpServletRequestBuilder builder, String body) throws Exception {

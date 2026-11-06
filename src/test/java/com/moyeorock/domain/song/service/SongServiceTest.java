@@ -3,7 +3,6 @@ package com.moyeorock.domain.song.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -12,7 +11,7 @@ import com.moyeorock.domain.song.dto.request.SongsUpsertRequest;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
-import com.moyeorock.domain.song.dto.response.SongsUpsertResponse;
+import com.moyeorock.domain.song.dto.response.SongsUpsertResultResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -31,6 +30,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -110,12 +110,12 @@ class SongServiceTest {
                 Map.of(Instrument.BASS, Level.BEGINNER), "ext-1");
         when(songRepository.findAllByExternalIdIn(List.of("ext-1", "ext-2"))).thenReturn(List.of(existing));
 
-        SongsUpsertResponse response = songService.upsertAll(new SongsUpsertRequest(List.of(
+        SongsUpsertResultResponse response = songService.upsertAll(new SongsUpsertRequest(List.of(
                 item("ext-1", "Bohemian Rhapsody", List.of(
                         new SongsUpsertRequest.Difficulty(Instrument.VOCAL, Level.ADVANCED))),
                 item("ext-2", "Creep", null))));
 
-        assertThat(response).isEqualTo(new SongsUpsertResponse(1, 1));
+        assertThat(response).isEqualTo(new SongsUpsertResultResponse(1, 1));
         assertThat(existing.getTitle()).isEqualTo("Bohemian Rhapsody");
         assertThat(existing.getGenre()).isEqualTo(Genre.ROCK);
         assertThat(existing.getSongKey()).isNull();
@@ -123,7 +123,7 @@ class SongServiceTest {
         assertThat(existing.getExternalId()).isEqualTo("ext-1");
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Song>> saved = ArgumentCaptor.forClass(List.class);
-        verify(songRepository).saveAll(saved.capture());
+        verify(songRepository).saveAllAndFlush(saved.capture());
         assertThat(saved.getValue()).singleElement().satisfies(song -> {
             assertThat(song.getExternalId()).isEqualTo("ext-2");
             assertThat(song.getTitle()).isEqualTo("Creep");
@@ -146,19 +146,47 @@ class SongServiceTest {
     }
 
     @Test
-    @DisplayName("한 곡의 난이도에 같은 파트가 두 번 있으면 VALIDATION_FAILED이고 새 곡을 저장하지 않는다")
+    @DisplayName("한 곡의 난이도에 같은 파트가 두 번 있으면 몇 번째 곡인지 담아 VALIDATION_FAILED를 던지고 조회·저장하지 않는다")
     void upsertAll_throws_whenDifficultyPartDuplicated() {
-        when(songRepository.findAllByExternalIdIn(List.of("ext-1"))).thenReturn(List.of());
-        SongsUpsertRequest request = new SongsUpsertRequest(List.of(item("ext-1", "A", List.of(
-                new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.NOVICE),
-                new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.ADVANCED)))));
+        SongsUpsertRequest request = new SongsUpsertRequest(List.of(
+                item("ext-1", "A", null),
+                item("ext-2", "B", List.of(
+                        new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.NOVICE),
+                        new SongsUpsertRequest.Difficulty(Instrument.DRUM, Level.ADVANCED)))));
 
         assertThatThrownBy(() -> songService.upsertAll(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageStartingWith("songs[0].difficulty:")
+                .hasMessageStartingWith("songs[1].difficulty:")
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.VALIDATION_FAILED);
-        verify(songRepository, never()).saveAll(any());
+        verifyNoInteractions(songRepository);
+    }
+
+    @Test
+    @DisplayName("새 곡 저장이 유니크 제약에 걸리면(같은 새 externalId의 동시 요청) 500이 아니라 INVALID_STATE를 던진다")
+    void upsertAll_throwsInvalidState_whenConcurrentInsertCollides() {
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1"))).thenReturn(List.of());
+        when(songRepository.saveAllAndFlush(any())).thenThrow(new DataIntegrityViolationException("uk_songs_external_id"));
+
+        assertThatThrownBy(() -> songService.upsertAll(new SongsUpsertRequest(List.of(item("ext-1", "A", null)))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_STATE);
+    }
+
+    @Test
+    @DisplayName("songKey가 공백뿐이면 키 정보 없음(null)으로, 앞뒤 공백이 있으면 지우고 저장한다")
+    void upsertAll_normalizesSongKey() {
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1", "ext-2"))).thenReturn(List.of());
+
+        songService.upsertAll(new SongsUpsertRequest(List.of(
+                new SongsUpsertRequest.Item("ext-1", "A", "Queen", Genre.ROCK, "   ", null, null),
+                new SongsUpsertRequest.Item("ext-2", "B", "Queen", Genre.ROCK, " Bb ", null, null))));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Song>> saved = ArgumentCaptor.forClass(List.class);
+        verify(songRepository).saveAllAndFlush(saved.capture());
+        assertThat(saved.getValue()).extracting(Song::getSongKey).containsExactly(null, "Bb");
     }
 
     @Test
@@ -170,7 +198,7 @@ class SongServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Song>> saved = ArgumentCaptor.forClass(List.class);
-        verify(songRepository).saveAll(saved.capture());
+        verify(songRepository).saveAllAndFlush(saved.capture());
         assertThat(saved.getValue().get(0).getDifficulty()).isNull();
     }
 
