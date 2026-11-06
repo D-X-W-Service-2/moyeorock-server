@@ -328,6 +328,50 @@ class PerformanceSetlistApiTest {
                 .andExpect(jsonPath("$.data.setlist[1].teamName").value("A팀"));
     }
 
+    @Test
+    @DisplayName("확정을 해제하면 공연 상세의 setlist는 다시 빈 목록이다")
+    void detail_returnsEmptySetlist_afterUnconfirm() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "]").andExpect(status().isOk());
+        confirm(ownerId, item(teamAId, creepId, 1)).andExpect(status().isOk());
+        getDetail(leaderAId).andExpect(jsonPath("$.data.setlist.length()").value(1));
+
+        unconfirm(ownerId).andExpect(status().isOk());
+
+        getDetail(leaderAId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.setlist").isArray())
+                .andExpect(jsonPath("$.data.setlist").isEmpty());
+    }
+
+    @Test
+    @DisplayName("확정 뒤 팀이 개별 해체되면 그 팀 곡은 상세에서 빠져 순서 번호가 비고, 모든 팀이 해체되면 확정 상태여도 빈 목록이다")
+    void detail_dropsDisbandedTeamSongs_evenWhenConfirmed() throws Exception {
+        submit(leaderAId, teamAId, "[" + creepId + "]").andExpect(status().isOk());
+        submit(leaderBId, teamBId, "[" + wonderwallId + "]").andExpect(status().isOk());
+        confirm(ownerId, item(teamBId, wonderwallId, 1) + "," + item(teamAId, creepId, 2)).andExpect(status().isOk());
+
+        disbandTeam(leaderBId, teamBId);
+
+        getDetail(leaderAId)
+                .andExpect(jsonPath("$.data.setlist.length()").value(1))
+                .andExpect(jsonPath("$.data.setlist[0].song.title").value("Creep"))
+                .andExpect(jsonPath("$.data.setlist[0].sortOrder").value(2));
+
+        disbandTeam(leaderAId, teamAId);
+
+        // 빈 목록이 곧 확정 전은 아니다 — 확정 여부는 셋리스트 조회의 confirmed로 본다
+        getDetail(ownerId).andExpect(jsonPath("$.data.setlist").isEmpty());
+        getSetlist(ownerId)
+                .andExpect(jsonPath("$.data.confirmed").value(true))
+                .andExpect(jsonPath("$.data.setlist").isEmpty());
+    }
+
+    private void disbandTeam(long leaderId, long teamId) throws Exception {
+        mockMvc.perform(patch("/v1/teams/" + teamId + "/status").header("Authorization", bearer(leaderId))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"DISBANDED\"}"))
+                .andExpect(status().isOk());
+    }
+
     private ResultActions getDetail(long userId) throws Exception {
         return mockMvc.perform(get("/v1/performances/" + performanceId).header("Authorization", bearer(userId)));
     }
