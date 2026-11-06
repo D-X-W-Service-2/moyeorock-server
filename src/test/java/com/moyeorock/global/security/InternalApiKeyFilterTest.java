@@ -13,6 +13,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 class InternalApiKeyFilterTest {
 
+    // MIN_KEY_BYTES(32) 이상이어야 쓰인다
+    private static final String KEY = "secret-key-0123456789abcdefghijklmn";
+
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clearContext();
@@ -23,8 +26,8 @@ class InternalApiKeyFilterTest {
     void setsAuthentication_whenKeyMatches() throws Exception {
         AtomicBoolean passed = new AtomicBoolean();
 
-        new InternalApiKeyFilter("secret-key")
-                .doFilterInternal(requestWithKey("secret-key"), new MockHttpServletResponse(), (req, res) -> passed.set(true));
+        new InternalApiKeyFilter(KEY)
+                .doFilterInternal(requestWithKey(KEY), new MockHttpServletResponse(), (req, res) -> passed.set(true));
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authentication).isNotNull();
@@ -35,12 +38,12 @@ class InternalApiKeyFilterTest {
     @Test
     @DisplayName("헤더가 없거나 키가 다르면 인증하지 않고 넘긴다 — 막는 것은 인가 단계(401)다")
     void doesNotAuthenticate_whenKeyMissingOrWrong() throws Exception {
-        InternalApiKeyFilter filter = new InternalApiKeyFilter("secret-key");
+        InternalApiKeyFilter filter = new InternalApiKeyFilter(KEY);
 
         filter.doFilterInternal(new MockHttpServletRequest(), new MockHttpServletResponse(), (req, res) -> {});
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
 
-        filter.doFilterInternal(requestWithKey("secret-key-2"), new MockHttpServletResponse(), (req, res) -> {});
+        filter.doFilterInternal(requestWithKey(KEY + "-2"), new MockHttpServletResponse(), (req, res) -> {});
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
@@ -55,6 +58,28 @@ class InternalApiKeyFilterTest {
 
             assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         }
+    }
+
+    @Test
+    @DisplayName("설정 키가 32바이트보다 짧으면 같은 키를 보내도 인증하지 않는다 — 추측하기 쉬운 키로 내부 API가 열리지 않는다")
+    void rejectsEverything_whenConfiguredKeyTooShort() throws Exception {
+        String shortKey = "a".repeat(InternalApiKeyFilter.MIN_KEY_BYTES - 1);
+        InternalApiKeyFilter filter = new InternalApiKeyFilter(shortKey);
+
+        filter.doFilterInternal(requestWithKey(shortKey), new MockHttpServletResponse(), (req, res) -> {});
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("설정 키가 정확히 32바이트면 쓰인다")
+    void acceptsKey_whenExactlyMinLength() throws Exception {
+        String minKey = "a".repeat(InternalApiKeyFilter.MIN_KEY_BYTES);
+
+        new InternalApiKeyFilter(minKey)
+                .doFilterInternal(requestWithKey(minKey), new MockHttpServletResponse(), (req, res) -> {});
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
     }
 
     private static MockHttpServletRequest requestWithKey(String key) {

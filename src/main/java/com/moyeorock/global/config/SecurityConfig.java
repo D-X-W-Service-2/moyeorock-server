@@ -38,7 +38,7 @@ public class SecurityConfig {
     @Value("${cors.allowed-origins}")
     private String[] allowedOrigins;
 
-    // 내부 서버(AI 서버) 인증 키. 비어 있으면 /v1/internal/** 요청을 모두 거절한다(InternalApiKeyFilter, 이슈 #147).
+    // 내부 서버(AI 서버) 인증 키. 비어 있거나 32바이트보다 짧으면 /v1/internal/** 요청을 모두 거절한다(InternalApiKeyFilter, 이슈 #147).
     @Value("${internal.api-key:}")
     private String internalApiKey;
 

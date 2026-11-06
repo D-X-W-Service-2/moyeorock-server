@@ -162,7 +162,7 @@ public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 
 비로그인 허용 엔드포인트에서는 `null`이 들어온다. 명세의 `myRole` `canEdit` `myJoinRequest` 같은 필드가 이 값에 따라 달라진다.
 
-**내부 서버 API는 `/v1/internal/**`에 둔다**(2026-11-05, 이슈 #147). 사람이 아니라 AI 서버 같은 내부 서버가 부르는 API다. JWT가 아니라 `X-Internal-Api-Key` 헤더(서버 설정 `INTERNAL_API_KEY`)로 인증하고, `SecurityConfig`의 내부 체인이 기본 체인보다 먼저 가져간다 — 사용자 토큰으로 내부 API를, 내부 키로 일반 API를 부를 수 없다. `@AuthUser`는 쓰지 않는다. 키가 비어 있으면 전부 401이다. 이유와 대안은 이슈 #147 PR의 "기술 선택 및 대안"
+**내부 서버 API는 `/v1/internal/**`에 둔다**(2026-11-05, 이슈 #147). 사람이 아니라 AI 서버 같은 내부 서버가 부르는 API다. JWT가 아니라 `X-Internal-Api-Key` 헤더(서버 설정 `INTERNAL_API_KEY`)로 인증하고, `SecurityConfig`의 내부 체인이 기본 체인보다 먼저 가져간다 — 사용자 토큰으로 내부 API를, 내부 키로 일반 API를 부를 수 없다. `@AuthUser`는 쓰지 않는다. 설정 키가 비어 있거나 32바이트보다 짧으면 전부 401이다. 이유와 대안은 이슈 #147 PR의 "기술 선택 및 대안"
 
 ## 8. 날짜
 

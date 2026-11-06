@@ -19,6 +19,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * 맞지 않으면 아무것도 하지 않고 넘겨서 인가 단계가 401로 막는다(JwtAuthFilter와 같은 흐름).
  *
  * <p>키가 비어 있으면(설정을 빠뜨린 배포) 어떤 요청도 통과시키지 않는다 — 내부 API가 열린 채로 뜨지 않게.
+ * {@value #MIN_KEY_BYTES}바이트보다 짧은 키도 같다 — 추측하기 쉬운 키로 곡 마스터 전체를 덮어쓸 수 있게 두지 않는다(PR #148 리뷰).
  * 비교는 {@link MessageDigest#isEqual}로 한다(길이가 같으면 내용과 관계없이 같은 시간이 걸린다).
  *
  * <p>Bean으로 등록하지 않는다 — {@code @Component}로 두면 Spring Boot가 모든 요청에 서블릿 필터로도 건다.
@@ -29,6 +30,8 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
 
     public static final String PATH_PATTERN = "/v1/internal/**";
     public static final String HEADER = "X-Internal-Api-Key";
+    // .env.example은 openssl rand -base64 48(64자)로 만들라고 안내한다
+    public static final int MIN_KEY_BYTES = 32;
     private static final String PRINCIPAL = "internal-server";
 
     private final byte[] apiKey;
@@ -39,7 +42,14 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
             this.apiKey = new byte[0];
             return;
         }
-        this.apiKey = apiKey.getBytes(StandardCharsets.UTF_8);
+        byte[] key = apiKey.getBytes(StandardCharsets.UTF_8);
+        if (key.length < MIN_KEY_BYTES) {
+            log.warn("internal.api-key(INTERNAL_API_KEY)가 {}바이트보다 짧아 {} 요청을 모두 거절합니다.",
+                    MIN_KEY_BYTES, PATH_PATTERN);
+            this.apiKey = new byte[0];
+            return;
+        }
+        this.apiKey = key;
     }
 
     @Override
