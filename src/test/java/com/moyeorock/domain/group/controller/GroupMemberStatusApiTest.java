@@ -144,7 +144,7 @@ class GroupMemberStatusApiTest {
         changeStatus(ownerId, memberId)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("LEADER_MUST_DELEGATE_FIRST"))
-                .andExpect(jsonPath("$.message").value("공연 팀의 팀장인 모임원은 팀장을 위임한 뒤에 내보낼 수 있습니다."));
+                .andExpect(jsonPath("$.message").value("팀장을 위임한 뒤 탈퇴할 수 있습니다."));
 
         assertThat(groupMemberService.isActiveMember(groupId, memberId)).isTrue();
         assertThat(teamMemberService.isActiveMember(teamId, memberId)).isTrue();

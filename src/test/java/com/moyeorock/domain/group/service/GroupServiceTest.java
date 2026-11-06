@@ -276,7 +276,7 @@ class GroupServiceTest {
     }
 
     @Test
-    @DisplayName("강퇴 대상이 공연 팀 팀장이면 LEADER_MUST_DELEGATE_FIRST를 모임장용 문구로 던지고 알림을 보내지 않는다")
+    @DisplayName("강퇴 대상이 공연 팀 팀장이면 LEADER_MUST_DELEGATE_FIRST를 기본 문구 그대로 던지고 알림을 보내지 않는다")
     void changeMemberStatus_kick_throws_whenTargetLeadsPerformanceTeam() {
         when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L));
         doThrow(new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST))
@@ -284,7 +284,7 @@ class GroupServiceTest {
 
         assertThatThrownBy(() -> groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("공연 팀의 팀장인 모임원은 팀장을 위임한 뒤에 내보낼 수 있습니다.")
+                .hasMessage(ErrorCode.LEADER_MUST_DELEGATE_FIRST.getMessage())
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
         verifyNoInteractions(eventPublisher);
