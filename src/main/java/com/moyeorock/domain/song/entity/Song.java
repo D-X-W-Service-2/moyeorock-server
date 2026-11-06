@@ -49,6 +49,7 @@ public class Song extends BaseTimeEntity {
     @Column(columnDefinition = "json")
     private Map<Instrument, Level> difficulty;
 
+    // DB 콜레이션은 utf8mb4_0900_bin(대소문자 구분, V13) — SongService의 Java 비교와 기준이 같다
     @Column(name = "external_id", length = 100)
     private String externalId;
 
