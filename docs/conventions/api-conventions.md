@@ -162,6 +162,8 @@ public ApiResponse<UserMeResponse> getMe(@AuthUser Long userId) { ... }
 
 비로그인 허용 엔드포인트에서는 `null`이 들어온다. 명세의 `myRole` `canEdit` `myJoinRequest` 같은 필드가 이 값에 따라 달라진다.
 
+**내부 서버 API는 `/v1/internal/**`에 둔다**(2026-11-05, 이슈 #147). 사람이 아니라 AI 서버 같은 내부 서버가 부르는 API다. JWT가 아니라 `X-Internal-Api-Key` 헤더(서버 설정 `INTERNAL_API_KEY`)로 인증하고, `SecurityConfig`의 내부 체인이 기본 체인보다 먼저 가져간다 — 사용자 토큰으로 내부 API를, 내부 키로 일반 API를 부를 수 없다. `@AuthUser`는 쓰지 않는다. 설정 키가 비어 있거나 32바이트보다 짧으면 전부 401이다. 이유와 대안은 이슈 #147 PR의 "기술 선택 및 대안"
+
 ## 8. 날짜
 
 ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 하지 않는다.
@@ -172,13 +174,15 @@ ISO-8601 문자열. `LocalDateTime`으로 받고 보낸다. 타임존 변환은 
 
 컨트롤러 메서드에는 `@Operation(summary = ...)` 정도만 붙인다. 이 요약이 없으면 `OperationSummaryTest`가 실패해 CI가 막는다. 요청·응답 스키마는 DTO에서 자동 생성되므로 `@ApiResponses`를 장황하게 달지 않는다.
 
+**예외 — 내부 API(`/v1/internal/**`)는 `description`에 인증·호출 규칙을 적는다**(2026-11-05, 이슈 #147). 다른 팀(AI 파트)이 코드나 프론트 협업 없이 Swagger만 보고 쓰는 API라서다. 헤더, upsert·삭제 여부, 한 번에 보낼 수 있는 양, 요청 예시, 에러 메시지 모양을 담는다. 허용 enum 값은 Swagger가 스키마에서 보여 주므로 설명에 다시 적지 않는다(enum이 바뀌면 설명만 낡는다). 설명이 길면 컨트롤러의 상수(text block)로 둔다(`SongController.UPSERT_DESCRIPTION`).
+
 나머지는 `global/config/OpenApiConfig`가 문서 전체에 한 번에 처리한다 — 컨트롤러에 따로 붙이지 않는다.
 
 | 자동 처리 | 내용 |
 |---|---|
 | 태그 | 컨트롤러 패키지의 도메인 이름으로 한글 태그를 붙인다(`team-controller` 대신 `팀`). 새 도메인은 `OpenApiConfig`의 `DOMAIN_TAGS`에 이름을 추가한다. 목록에 없으면 패키지 이름 그대로 나온다 |
 | 페이징·검색 조건 | `Pageable`은 `page`·`size`로, `@ModelAttribute` 검색 조건 객체는 필드별 쿼리 파라미터로 펼친다. `sort`는 서버가 정렬을 고정하고 무시하므로 문서에서 뺀다. `@ParameterObject`를 붙일 필요가 없다 |
-| 인증 표시 | 기본은 전 엔드포인트 `bearerAuth`다. `PublicEndpoints`의 경로(로그인·가입·Swagger 자체 등)는 인증 표시를 없앤다. 공개 경로를 늘리면 `PublicEndpoints`만 고치면 문서에도 반영된다 |
+| 인증 표시 | 기본은 전 엔드포인트 `bearerAuth`다. `PublicEndpoints`의 경로(로그인·가입·Swagger 자체 등)는 인증 표시를 없앤다. 공개 경로를 늘리면 `PublicEndpoints`만 고치면 문서에도 반영된다. `/v1/internal/**`는 `internalApiKey`(`X-Internal-Api-Key` 헤더)로 표시한다 |
 | 공통 에러 응답 | 인증이 필요한 엔드포인트에 `401`, 요청 값(바디·파라미터)이 있는 엔드포인트에 `400`을 `ErrorResponse`(§1 실패 봉투)로 단다. `404`·`409`처럼 엔드포인트마다 다른 코드는 자동으로 알 수 없어 달지 않는다 |
 | 미디어 타입 | 응답은 `application/json`으로 표기한다 |
 | `@AuthUser` | 파라미터로 노출하지 않는다 |

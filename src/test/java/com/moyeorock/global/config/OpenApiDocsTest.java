@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.jayway.jsonpath.JsonPath;
 import com.moyeorock.config.TestcontainersConfig;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -100,5 +101,19 @@ class OpenApiDocsTest {
     void authUser_isHidden() {
         List<String> names = read("$.paths['/v1/teams'].get.parameters[*].name");
         assertThat(names).doesNotContain("userId");
+    }
+
+    @Test
+    @DisplayName("내부 API(/v1/internal/**)는 JWT가 아니라 X-Internal-Api-Key 헤더 인증으로 표시된다")
+    void internalApi_usesApiKeyScheme() {
+        List<Map<String, Object>> security = read("$.paths['/v1/internal/songs'].put.security");
+        assertThat(security).singleElement().satisfies(item -> assertThat(item).containsOnlyKeys("internalApiKey"));
+        String header = read("$.components.securitySchemes.internalApiKey.name");
+        assertThat(header).isEqualTo("X-Internal-Api-Key");
+        Object unauthorized = read("$.paths['/v1/internal/songs'].put.responses['401']");
+        assertThat(unauthorized).isNotNull();
+        // AI 팀이 Swagger만 보고 쓸 수 있게 인증 헤더·호출 규칙을 설명에 담는다
+        String description = read("$.paths['/v1/internal/songs'].put.description");
+        assertThat(description).contains("X-Internal-Api-Key", "500곡", "externalId");
     }
 }

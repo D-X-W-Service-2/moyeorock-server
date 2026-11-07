@@ -1,5 +1,6 @@
 package com.moyeorock.global.config;
 
+import com.moyeorock.global.security.InternalApiKeyFilter;
 import com.moyeorock.global.security.JwtAuthFilter;
 import com.moyeorock.global.security.JwtProvider;
 import com.moyeorock.global.security.PublicEndpoints;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -36,11 +38,41 @@ public class SecurityConfig {
     @Value("${cors.allowed-origins}")
     private String[] allowedOrigins;
 
+    // 내부 서버(AI 서버) 인증 키. 비어 있거나 32바이트보다 짧으면 /v1/internal/** 요청을 모두 거절한다(InternalApiKeyFilter, 이슈 #147).
+    @Value("${internal.api-key:}")
+    private String internalApiKey;
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * 내부 서버가 부르는 {@code /v1/internal/**} 전용 체인 — 아래 기본 체인보다 먼저 본다. 사용자 JWT 필터를 걸지 않아
+     * 로그인 토큰으로는 통과할 수 없고, {@code X-Internal-Api-Key}가 맞을 때만 들어온다. 서버끼리 부르는 API라
+     * 브라우저용 CORS는 열지 않는다. 401·403 응답 모양은 기본 체인과 같다.
+     */
+    @Bean
+    @Order(1)
+    public SecurityFilterChain internalSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher(InternalApiKeyFilter.PATH_PATTERN)
+                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+                .addFilterBefore(new InternalApiKeyFilter(internalApiKey), AuthorizationFilter.class)
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(restAuthenticationEntryPoint)
+                        .accessDeniedHandler(restAccessDeniedHandler)
+                );
+
+        return http.build();
+    }
+
+    // 기본 체인(사용자 JWT). @Order가 없어 가장 나중에 보므로 /v1/internal/**는 위 내부 체인이 먼저 가져간다.
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http

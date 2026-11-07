@@ -1,21 +1,35 @@
 package com.moyeorock.domain.song.service;
 
+import com.moyeorock.domain.song.dto.request.SongsUpsertRequest;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.dto.response.SongsUpsertResultResponse;
+import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
+import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 곡 마스터 조회. 곡은 외부 카탈로그에서 들여오는 데이터라 이 Service는 쓰지 않고 읽기만 한다(Song 엔티티 주석).
+ * 곡 마스터 조회와 AI 서버의 곡 일괄 등록·갱신. 곡은 AI 서버 카탈로그에서 들어오는 데이터라 화면용 쓰기는 없다(Song 엔티티 주석).
  * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을 확인하려고 이 Service를 부른다.
  */
 @Service
@@ -42,6 +56,94 @@ public class SongService {
         return songRepository.findAllById(songIds).stream()
                 .map(SongSummaryResponse::from)
                 .collect(Collectors.toMap(SongSummaryResponse::id, Function.identity()));
+    }
+
+    /**
+     * AI 서버 곡 일괄 등록·갱신(PUT /v1/internal/songs, 이슈 #147). externalId가 이미 있으면 보낸 값으로 바꾸고, 없으면
+     * 새로 만든다 — 같은 요청을 다시 보내도 결과가 같다. 요청에 없는 곡은 지우지 않는다(팀 선택곡·셋리스트가 참조한다).
+     * 한 요청이 한 트랜잭션이라 하나라도 틀리면 아무것도 저장되지 않는다. 한 요청 안의 externalId 중복과 한 곡의 같은 파트
+     * 중복은 VALIDATION_FAILED이고, 메시지에 몇 번째 곡인지 담는다(검증 메시지와 같은 {@code songs[i].필드: 사유} 모양).
+     * 입력 검증은 모두 조회 전에 끝낸다. externalId는 대소문자를 구분한다 — DB 콜레이션도 같은 기준이다(V13).
+     * {@code songKey}가 공백뿐이면 키 정보 없음(null)으로 저장한다.
+     *
+     * <p>같은 새 externalId를 담은 요청 둘이 동시에 오면 유니크 제약(uk_songs_external_id)으로 한쪽이 실패한다 — 이때는
+     * {@code 409 INVALID_STATE}이고 AI 서버가 다시 보내면 된다(다시 보내도 결과가 같다). 요청은 차례로 보내는 것을 전제로 한다(api-spec.md §9).
+     */
+    @Transactional
+    public SongsUpsertResultResponse upsertAll(SongsUpsertRequest request) {
+        List<SongsUpsertRequest.Item> items = request.songs();
+        ensureUniqueExternalIds(items);
+        List<Map<Instrument, Level>> difficulties = toDifficulties(items);
+        Map<String, Song> existing = songRepository.findAllByExternalIdIn(
+                        items.stream().map(SongsUpsertRequest.Item::externalId).toList()).stream()
+                .collect(Collectors.toMap(Song::getExternalId, Function.identity()));
+
+        List<Song> created = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            SongsUpsertRequest.Item item = items.get(i);
+            Map<Instrument, Level> difficulty = difficulties.get(i);
+            String songKey = toSongKey(item.songKey());
+            Song song = existing.get(item.externalId());
+            if (song == null) {
+                created.add(Song.create(item.title(), item.artist(), item.genre(), songKey, item.bpm(),
+                        difficulty, item.externalId()));
+            } else {
+                song.update(item.title(), item.artist(), item.genre(), songKey, item.bpm(), difficulty);
+            }
+        }
+        saveCreated(created);
+        return new SongsUpsertResultResponse(created.size(), items.size() - created.size());
+    }
+
+    // 사전 검사가 없는 동시 요청 충돌(같은 새 externalId)만 남는다 — 500이 아니라 다시 보내면 되는 409로 알린다(SetlistService와 같은 방식).
+    private void saveCreated(List<Song> created) {
+        try {
+            songRepository.saveAllAndFlush(created);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.INVALID_STATE);
+        }
+    }
+
+    private static void ensureUniqueExternalIds(List<SongsUpsertRequest.Item> items) {
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < items.size(); i++) {
+            if (!seen.add(items.get(i).externalId())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                        "songs[" + i + "].externalId: 같은 요청 안에 같은 외부 곡 아이디가 있습니다.");
+            }
+        }
+    }
+
+    // 곡마다 난이도를 DB 모양으로 바꾼다. 같은 파트 중복 검증이 여기서 끝나므로 조회 전에 부른다. 순서는 요청 순서다.
+    private static List<Map<Instrument, Level>> toDifficulties(List<SongsUpsertRequest.Item> items) {
+        List<Map<Instrument, Level>> result = new ArrayList<>(items.size());
+        for (int i = 0; i < items.size(); i++) {
+            result.add(toDifficulty(i, items.get(i).difficulty()));
+        }
+        return result;
+    }
+
+    // 요청의 배열을 DB 모양(파트 → 수준 객체, songs.difficulty JSON)으로 바꾼다. 없거나 비어 있으면 난이도 정보 없음(null)이다.
+    private static Map<Instrument, Level> toDifficulty(int index, List<SongsUpsertRequest.Difficulty> difficulty) {
+        if (difficulty == null || difficulty.isEmpty()) {
+            return null;
+        }
+        Map<Instrument, Level> result = new EnumMap<>(Instrument.class);
+        for (SongsUpsertRequest.Difficulty part : difficulty) {
+            if (result.put(part.part(), part.level()) != null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                        "songs[" + index + "].difficulty: 같은 파트가 두 번 들어 있습니다.");
+            }
+        }
+        return result;
+    }
+
+    // 빈 문자열·공백뿐인 키는 정보 없음(null)이다 — 빼고 보낸 것과 같게 저장해 응답에 "" 가 나가지 않게 한다.
+    private static String toSongKey(String songKey) {
+        if (songKey == null || songKey.isBlank()) {
+            return null;
+        }
+        return songKey.strip();
     }
 
     private String normalizeKeyword(String keyword) {
