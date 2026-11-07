@@ -2,6 +2,8 @@ package com.moyeorock.domain.song.repository;
 
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.global.common.enums.Genre;
+import java.util.Collection;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,6 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface SongRepository extends JpaRepository<Song, Long> {
+
+    // AI 서버 곡 일괄 등록·갱신 — 이미 있는 곡을 externalId로 한 번에 찾는다(uk_songs_external_id 인덱스).
+    List<Song> findAllByExternalIdIn(Collection<String> externalIds);
 
     /**
      * 곡 검색. keyword는 제목·아티스트 부분 일치이고 {@code %}·{@code _}를 글자 그대로 찾는다(GroupRepository.findMyGroups와
