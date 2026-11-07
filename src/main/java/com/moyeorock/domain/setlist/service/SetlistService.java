@@ -74,12 +74,13 @@ public class SetlistService {
     // ---------- 공연 셋리스트 (PerformanceService가 공연·팀 확인 뒤 부른다) ----------
 
     /**
-     * 공연 셋리스트 행. 확정 전에는 팀들이 넘긴 곡 전체를 팀별·넘긴 순으로, 확정 후에는 확정곡을 순서대로 준다.
+     * 공연 셋리스트 행. 확정 전에는 팀들이 넘긴 곡 전체를 팀별·넘긴 순으로, 확정 후에는 확정곡(순서가 매겨진 행)만 순서대로 준다.
+     * 확정 여부는 부르는 쪽이 공연을 읽어 넘기므로, 그 사이 확정 해제가 끼어들어도 순서 없는 행은 확정곡으로 섞이지 않는다.
      * 팀 이름은 해체된 팀도 나온다(TeamMemberService.getNames) — 끝난 공연의 셋리스트를 남긴다.
      */
     public List<SetlistItemResponse> getSetlist(Long performanceId, boolean confirmed) {
         List<Setlist> rows = confirmed
-                ? setlistRepository.findAllByPerformanceIdOrderBySortOrderAscIdAsc(performanceId)
+                ? setlistRepository.findAllByPerformanceIdAndSortOrderIsNotNullOrderBySortOrderAscIdAsc(performanceId)
                 : setlistRepository.findAllByPerformanceIdOrderByTeamIdAscIdAsc(performanceId);
         Map<Long, String> teamNames = teamMemberService.getNames(rows.stream().map(Setlist::getTeamId).distinct().toList());
         Map<Long, SongSummaryResponse> songs = songService.getSummaries(rows.stream().map(Setlist::getSongId).toList());
