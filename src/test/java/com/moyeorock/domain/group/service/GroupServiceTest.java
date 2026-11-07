@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -25,8 +26,12 @@ import com.moyeorock.domain.performance.dto.response.PerformanceSummaryResponse;
 import com.moyeorock.domain.performance.enums.PerformanceStatus;
 import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.global.common.dto.PageResponse;
+import com.moyeorock.global.common.enums.NotificationTargetType;
+import com.moyeorock.global.common.enums.NotificationType;
 import com.moyeorock.global.common.enums.Region;
+import com.moyeorock.global.event.NotificationEvent;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.time.LocalDateTime;
@@ -36,8 +41,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -67,12 +75,18 @@ class GroupServiceTest {
     @Mock
     private PerformanceService performanceService;
 
+    @Mock
+    private TeamService teamService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private GroupService groupService;
 
     @BeforeEach
     void setUp() {
         groupService = new GroupService(groupRepository, groupMemberService, noticeService, recruitPostService,
-                performanceService);
+                performanceService, teamService, eventPublisher);
     }
 
     @Test
@@ -229,6 +243,79 @@ class GroupServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.GROUP_NOT_FOUND);
         verifyNoInteractions(groupMemberService, recruitPostService);
+    }
+
+    @Test
+    @DisplayName("본인이 탈퇴하면 모임원 상태를 바꾼 뒤 그 모임 공연 팀에서도 빠지고 알림은 없다")
+    void changeMemberStatus_leave_removesFromPerformanceTeams_withoutNotification() {
+        when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L, 8L));
+
+        groupService.changeMemberStatus(MEMBER_ID, GROUP_ID, MEMBER_ID);
+
+        InOrder order = inOrder(groupMemberService, teamService);
+        order.verify(groupMemberService).changeStatus(MEMBER_ID, GROUP_ID, MEMBER_ID);
+        order.verify(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L, 8L));
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("모임장이 내보내면 대상이 공연 팀에서 빠지고 대상에게 GROUP_MEMBER_REMOVED 알림을 보낸다")
+    void changeMemberStatus_kick_removesFromPerformanceTeams_andNotifiesTarget() {
+        when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L));
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE))
+                .thenReturn(Optional.of(withId(group(), GROUP_ID)));
+
+        groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
+
+        verify(groupMemberService).changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
+        verify(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L));
+        ArgumentCaptor<NotificationEvent> event = ArgumentCaptor.forClass(NotificationEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue()).isEqualTo(new NotificationEvent(MEMBER_ID, NotificationType.GROUP_MEMBER_REMOVED,
+                "홍대 밴드부에서 내보내졌습니다.", NotificationTargetType.GROUP, GROUP_ID));
+    }
+
+    @Test
+    @DisplayName("강퇴 대상이 공연 팀 팀장이면 LEADER_MUST_DELEGATE_FIRST를 기본 문구 그대로 던지고 알림을 보내지 않는다")
+    void changeMemberStatus_kick_throws_whenTargetLeadsPerformanceTeam() {
+        when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L));
+        doThrow(new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST))
+                .when(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L));
+
+        assertThatThrownBy(() -> groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(ErrorCode.LEADER_MUST_DELEGATE_FIRST.getMessage())
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("본인 탈퇴인데 공연 팀 팀장이면 LEADER_MUST_DELEGATE_FIRST를 기본 문구 그대로 던진다")
+    void changeMemberStatus_leave_throws_whenLeadsPerformanceTeam_withDefaultMessage() {
+        when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L));
+        doThrow(new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST))
+                .when(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L));
+
+        assertThatThrownBy(() -> groupService.changeMemberStatus(MEMBER_ID, GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(ErrorCode.LEADER_MUST_DELEGATE_FIRST.getMessage())
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("모임원 상태 변경이 막히면(모임장 아님) 공연 팀을 건드리지 않고 알림도 없다")
+    void changeMemberStatus_throws_whenNotOwner_andSkipsTeams() {
+        doThrow(new BusinessException(ErrorCode.NOT_GROUP_OWNER))
+                .when(groupMemberService).changeStatus(30L, GROUP_ID, MEMBER_ID);
+
+        assertThatThrownBy(() -> groupService.changeMemberStatus(30L, GROUP_ID, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_GROUP_OWNER);
+        verifyNoInteractions(performanceService, teamService, eventPublisher);
     }
 
     private static Group group() {
