@@ -297,6 +297,49 @@ class TeamApiTest {
     }
 
     @Test
+    @DisplayName("팀원 추천: 팀장이 요청하면 200이고, 후보가 없으면 AI를 부르지 않고 빈 목록이다")
+    void recommendMembers_leader_returnsEmptyWhenNoCandidates() throws Exception {
+        long teamId = createTeam(LEADER_ID);
+
+        read("/v1/teams/" + teamId + "/members/recommendations?instrument=DRUM", LEADER_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.instrument").value("DRUM"))
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 팀장이 아니면 403, 없는 팀은 404, 해체된 팀은 409다")
+    void recommendMembers_permissionAndTeamState() throws Exception {
+        long teamId = createTeam(LEADER_ID);
+        addMember(teamId, MEMBER_ID);
+
+        read("/v1/teams/" + teamId + "/members/recommendations?instrument=DRUM", MEMBER_ID)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NOT_TEAM_LEADER"));
+        read("/v1/teams/999999/members/recommendations?instrument=DRUM", LEADER_ID)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TEAM_NOT_FOUND"));
+        send(patch("/v1/teams/" + teamId + "/status"), LEADER_ID, "{\"status\":\"DISBANDED\"}")
+                .andExpect(status().isOk());
+        read("/v1/teams/" + teamId + "/members/recommendations?instrument=DRUM", LEADER_ID)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_STATE"));
+    }
+
+    @Test
+    @DisplayName("팀원 추천: instrument가 없거나 잘못된 값이면 400이다")
+    void recommendMembers_invalidInstrument_returns400() throws Exception {
+        long teamId = createTeam(LEADER_ID);
+
+        read("/v1/teams/" + teamId + "/members/recommendations", LEADER_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        read("/v1/teams/" + teamId + "/members/recommendations?instrument=PIANO", LEADER_ID)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     @DisplayName("내 팀 목록은 내가 속한 팀만 돌려주고, 탈퇴하면 빠진다")
     void getMyTeams_returnsOnlyMyActiveTeams() throws Exception {
         long mine = createTeam(LEADER_ID);
