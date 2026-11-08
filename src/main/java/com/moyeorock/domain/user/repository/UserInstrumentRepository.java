@@ -2,8 +2,10 @@ package com.moyeorock.domain.user.repository;
 
 import com.moyeorock.domain.user.entity.UserInstrument;
 import com.moyeorock.domain.user.enums.UserStatus;
+import com.moyeorock.global.common.enums.Instrument;
 import java.util.Collection;
 import java.util.List;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -26,6 +28,21 @@ public interface UserInstrumentRepository extends JpaRepository<UserInstrument, 
             """)
     List<UserInstrument> findAllByUserIdInAndUserStatusNotOrderByUserIdAscIdAsc(
             @Param("userIds") Collection<Long> userIds, @Param("excludedStatus") UserStatus excludedStatus);
+
+    /**
+     * 추천 후보 조회용(UserService.findRecommendationCandidates). 활동 중(ACTIVE)이고 추천을 허용한(is_recommendable) 사용자 중
+     * 지정 악기를 가진 사람을 userId 순으로 돌려준다. 제외할 사용자는 호출자가 넘긴다. 개수 상한은 Pageable로 건다.
+     */
+    @Query("""
+            select ui from UserInstrument ui
+            where ui.instrument = :instrument
+              and ui.userId not in :excludedUserIds
+              and ui.userId in (select u.id from User u where u.status = :status and u.isRecommendable = true)
+            order by ui.userId asc
+            """)
+    List<UserInstrument> findRecommendationCandidates(@Param("instrument") Instrument instrument,
+            @Param("excludedUserIds") Collection<Long> excludedUserIds, @Param("status") UserStatus status,
+            Pageable pageable);
 
     /**
      * 벌크 JPQL로 즉시 DELETE를 실행한다. 엔티티 remove 방식이면 Hibernate flush 순서(INSERT → DELETE)와

@@ -301,6 +301,48 @@ class UserRepositoryTest {
     }
 
     @Test
+    @DisplayName("추천 후보는 활동 중·추천 허용·해당 악기 보유 사용자만, 제외 대상을 뺀 채 userId 순으로 상한까지 나온다")
+    void recommendation_candidates_filter_and_limit() {
+        User first = saveUser("후보1", UserStatus.ACTIVE);
+        User second = saveUser("후보2", UserStatus.ACTIVE);
+        User third = saveUser("후보3", UserStatus.ACTIVE);
+        User excluded = saveUser("제외", UserStatus.ACTIVE);
+        User refuses = saveUser("거부", UserStatus.ACTIVE);
+        ReflectionTestUtils.setField(refuses, "isRecommendable", false);
+        User suspended = saveUser("정지", UserStatus.SUSPENDED);
+        User withdrawn = saveUser("탈퇴", UserStatus.WITHDRAWN);
+        User otherInstrument = saveUser("베이시스트", UserStatus.ACTIVE);
+        for (User drummer : List.of(first, second, third, excluded, refuses, suspended, withdrawn)) {
+            entityManager.persist(UserInstrument.create(drummer.getId(), Instrument.DRUM, Level.ADVANCED));
+        }
+        entityManager.persist(UserInstrument.create(otherInstrument.getId(), Instrument.BASS, Level.ADVANCED));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<UserInstrument> all = userInstrumentRepository.findRecommendationCandidates(
+                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, PageRequest.of(0, 10));
+        List<UserInstrument> limited = userInstrumentRepository.findRecommendationCandidates(
+                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, PageRequest.of(0, 2));
+
+        assertThat(all).extracting(UserInstrument::getUserId)
+                .containsExactly(first.getId(), second.getId(), third.getId());
+        assertThat(limited).extracting(UserInstrument::getUserId).containsExactly(first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("제외 목록이 비어 있어도 추천 후보 쿼리가 동작한다")
+    void recommendation_candidates_with_empty_exclusion() {
+        User drummer = saveUser("드러머", UserStatus.ACTIVE);
+        entityManager.persist(UserInstrument.create(drummer.getId(), Instrument.DRUM, Level.NOVICE));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(userInstrumentRepository.findRecommendationCandidates(
+                Instrument.DRUM, List.of(), UserStatus.ACTIVE, PageRequest.of(0, 10)))
+                .extracting(UserInstrument::getUserId).containsExactly(drummer.getId());
+    }
+
+    @Test
     @DisplayName("닉네임 부분 일치의 %·_는 와일드카드가 아니라 글자 그대로 비교된다")
     void nickname_containing_escapes_like_wildcards() {
         User underscore = saveUser("a_b", UserStatus.ACTIVE);
