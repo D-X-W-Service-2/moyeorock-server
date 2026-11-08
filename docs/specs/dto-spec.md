@@ -290,6 +290,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 점수 높은 순 **최대 10명**이다. 후보가 없으면 `candidates`는 빈 배열이다. `user`는 `UserSummaryResponse`(`id`·`nickname`·`profileImage`)이고, `score`·`reasons`는 AI 서버가 매긴 값 그대로다(`reasons`가 없으면 빈 배열). 구현: 이슈 #150(2026-11-08).
+
 ## §3. 합주 (rehearsal)
 
 ### RehearsalCreateRequest
@@ -899,6 +901,27 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - 필수 값이 빠지거나 길이를 넘는 곡은 그 곡만 건너뛰고 나머지는 저장한다
 - DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
+
+### AiRecommendRequest · AiRecommendResponse (AI 서버 팀원 추천 · 잠정)
+
+백엔드가 AI 서버에 보내는 팀원 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/members`, 2026-11-08 · 이슈 #150). 프론트 API의 DTO가 아니라 `domain/team/client`에 둔다. 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.** 값은 ERD 컬럼과 우리 enum 그대로다.
+
+```json
+{
+  "team": { "id": 5, "region": "SEOUL", "genres": ["ROCK", "POP"] },
+  "instrument": "DRUM",
+  "members": [ { "userId": 3, "instrument": "VOCAL", "level": "ADVANCED" } ],
+  "candidates": [ { "userId": 30, "region": "SEOUL", "genres": ["ROCK"], "level": "INTERMEDIATE" } ]
+}
+```
+
+```json
+{ "candidates": [ { "userId": 30, "score": 0.87, "reasons": ["장르 일치: ROCK", "활동 지역 동일"] } ] }
+```
+
+- `members[].instrument`는 그 사람이 이 팀에서 맡은 세션(`team_members.instrument`), `members[].level`은 그 악기에서의 실력(`user_instruments.level`, 없으면 `null`)이다. `candidates[].level`은 요청한 `instrument`에서의 실력이다.
+- 온보딩 전 사용자는 `region`·`genres`가 `null`일 수 있다. `team.region`도 `null`일 수 있다.
+- 응답의 `score`·`reasons`가 비어 있어도 읽는다(점수가 없는 항목은 버리고, `reasons`가 없으면 빈 배열로 응답한다). 응답에 `candidates` 자체가 없으면 계약 위반이라 `503`이다.
 
 ### SongRecommendationResponse
 

@@ -127,6 +127,8 @@
 
 **AI 추천 3개는 2팀·4팀에 나뉘어 있다** — 팀원 추천(2팀), 개인 추천곡·팀 곡 추천(4팀). 룰 기반이냐 외부 모델이냐를 **두 팀이 함께 결정해야 한다.** 한쪽만 폴링 방식이 되면 프론트가 두 패턴을 구현하게 된다.
 
+팀원 추천은 2026-11-08에 구현했다(이슈 #150): 백엔드가 후보를 골라 AI 서버(`POST {AI}/v1/recommendations/members`, 잠정)에 요청마다 동기 호출한다. 후보 조회는 1팀 `UserService.findRecommendationCandidates`를 쓴다. 곡 추천 2개는 아직 방식이 정해지지 않았다.
+
 ## 착수 순서
 
 1. 1팀 — `global/common/dto` `enums` `exception`
