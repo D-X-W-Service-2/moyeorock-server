@@ -1,5 +1,5 @@
 # moyeorock DB 테이블 명세 — ERD v3
-대상: MySQL 8.0 · 18 테이블 · PK `BIGINT AUTO_INCREMENT`
+대상: MySQL 8.0 · 20 테이블 · PK `BIGINT AUTO_INCREMENT`
 기준: `band_erd_v3_mysql.drawio` 에서 자동 생성
 표기: 타입 칸에 `NOT NULL`만 명시한다. 표기 없으면 NULL 허용.
 
@@ -391,6 +391,50 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 ---
 
+## 개인 연습
+
+> 2026-11-09 신규(이슈 #155, V13 — 번호는 머지 때 재확인). 4팀 `practice` 도메인 소유. 다른 팀 테이블은 건드리지 않는다. 계획: `docs/plans/practice-recording.md`.
+
+### 19. `practice_recordings`
+
+개인 연습 녹음 + AI 분석 상태. 올린 본인만 본다
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+|  | `user_id` | `BIGINT NOT NULL` | → users · 올린 사람. FK 아님(CLAUDE.md 절대 규칙 6) |
+|  | `title` | `VARCHAR(100) NOT NULL` | 100자 이하 |
+|  | `audio_file_key` | `VARCHAR(255) NOT NULL` | 스토리지 key `practice/{uuid}.{확장자}` — URL이 아니다(녹음은 비공개, 읽을 때마다 임시 URL). `files.file_key`와 같은 값 |
+|  | `status` | `VARCHAR(10) NOT NULL` | SUBMITTED\|ANALYZING\|DONE\|FAILED |
+|  | `failure_reason` | `VARCHAR(255)` | 화면에 그대로 보여 줄 실패 사유. FAILED일 때만 값 |
+|  | `analyzed_at` | `DATETIME(6)` | 분석이 끝난 시각. DONE일 때만 값 |
+|  | `active_user_id` | `BIGINT` 생성 컬럼(STORED) | 진행 중(SUBMITTED·ANALYZING)이면 `user_id`, 아니면 NULL. 엔티티에 매핑하지 않는다 |
+|  | `created_at` | `DATETIME(6)` | 분석을 요청한 시각. 다시 요청해도 바뀌지 않는다 |
+|  | `updated_at` | `DATETIME(6)` |  |
+
+- **인덱스** `(user_id, created_at)` ← 내 연습 녹음 목록(최근 요청 순)·진행 중 확인
+- **유니크** `(active_user_id)` ← 한 사람당 진행 중 분석 1개. 동시 요청까지 DB가 막는다(`flyway-migration.md` §3-5 패턴)
+
+> 행은 삭제 API에서 hard delete한다(`practice_feedbacks`도 함께, `architecture.md` §6). 서버가 재시작하면 부팅 전에 바뀐 진행 중 행을 FAILED로 정리한다.
+
+### 20. `practice_feedbacks`
+
+AI 분석 결과 한 줄(구간·세션·내용). 분석이 끝날 때 한꺼번에 쓰고 고치지 않는다
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+|  | `recording_id` | `BIGINT NOT NULL` | → practice_recordings. FK 아님(같은 도메인이어도 — 절대 규칙 6) |
+|  | `start_sec` | `INT NOT NULL` | 구간 시작(초) |
+|  | `end_sec` | `INT NOT NULL` | 구간 끝(초) |
+|  | `part` | `VARCHAR(20) NOT NULL` | 세션 — 공용 `Instrument`(VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY) |
+|  | `content` | `TEXT NOT NULL` | 피드백 문장 |
+
+- **인덱스** `(recording_id, start_sec)` ← 상세의 구간 시작 순 조회, 녹음 삭제 때 일괄 삭제
+- 타임스탬프 없음 — 생성 시각은 부모의 `analyzed_at`이다
+
+---
+
 ## 관계
 
 | 부모 | 자식 | 카디널리티 | 비고 |
@@ -423,6 +467,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | `performances` | `setlists` | 1:N | 공연 셋리스트 |
 | `teams` | `setlists` | 1:N | 곡을 넘긴 팀 |
 | `songs` | `setlists` | 1:N |  |
+| `users` | `practice_recordings` | 1:N | 올린 사람 |
+| `practice_recordings` | `practice_feedbacks` | 1:N |  |
 
 `created_by` · `author_id` · `decided_by` · `user_id`(join_requests) · `inviter_id` 는 모두 `users` 를 참조하지만 선이 얽혀 도면에서는 컬럼 주석으로만 표기했다.
 
