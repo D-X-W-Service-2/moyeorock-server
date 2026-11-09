@@ -45,16 +45,21 @@ kakao:
   user-info-uri: https://kapi.kakao.com/v2/user/me
 
 # file.storage.type을 안 정하면 local이 기본값이다(FileStorageClient 구현체들의
-# @ConditionalOnProperty matchIfMissing=true). S3로 전환할 땐 FILE_STORAGE_TYPE=s3 +
-# file.storage.s3.bucket/region/upload-url-expiry-seconds를 설정한다. upload-url-expiry-seconds를
-# 빠뜨리면 0으로 바인딩돼 발급한 URL이 바로 만료된다. 프론트는 업로드 PUT에서 Authorization 헤더를
-# 빼야 한다(docs/specs/api-spec.md §10 file "업로드 PUT 규칙").
+# @ConditionalOnProperty matchIfMissing=true). S3는 FILE_STORAGE_TYPE=s3 + FILE_STORAGE_S3_BUCKET을 준다 —
+# 변수 이름을 Spring 기본 변환 이름(file.storage.s3.bucket ↔ FILE_STORAGE_S3_BUCKET)에 맞춰서, 서버 환경 파일에
+# 이 이름으로 넣어 뒀다면 yml이 없어도 같은 값이 들어간다. upload-url-expiry-seconds는 고정값으로 둔다 — 빠뜨리면
+# 0으로 바인딩돼 발급한 URL이 바로 만료된다. 프론트는 S3 업로드 PUT에서 Authorization 헤더를 빼야 한다
+# (docs/specs/api-spec.md §10 file "업로드 PUT 규칙").
 file:
   storage:
     type: ${FILE_STORAGE_TYPE:local}
     local:
       base-path: ${FILE_LOCAL_BASE_PATH:./uploads}
       base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
+      upload-url-expiry-seconds: 600
+    s3:
+      bucket: ${FILE_STORAGE_S3_BUCKET:}
+      region: ${FILE_STORAGE_S3_REGION:ap-northeast-2}
       upload-url-expiry-seconds: 600
 
 # 문서(/v3/api-docs, /swagger-ui.html)는 SWAGGER_ENABLED=true일 때만 열린다. 값이 없으면 닫힌다 — 운영 배포에서
