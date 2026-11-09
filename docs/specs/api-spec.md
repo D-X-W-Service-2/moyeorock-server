@@ -305,9 +305,13 @@
 |---|---|---|
 | `Authorization` 헤더 | **필수** (`Bearer {token}`). 업로더 본인만 올릴 수 있다 | **넣으면 안 된다.** presigned URL 서명과 충돌해 S3가 거부한다 |
 | `Content-Type` 헤더 | 발급 때 보낸 `contentType`과 같아야 한다(대소문자 무시). 다르거나 없으면 415 `UNSUPPORTED_MEDIA_TYPE` | 같아야 한다. 다르면 S3가 403 |
-| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 10MB 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw) |
+| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 도메인별 한도(이미지 10MB·연습 녹음 100MB) 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw). **크기 한도가 걸리지 않는다** — 서버를 거치지 않고 S3에 바로 올라가기 때문이다(아래 ※) |
 | 만료 | `expiresAt`(발급 후 10분)이 지나면 403 `UPLOAD_URL_EXPIRED` | 만료되면 S3가 403 |
 | 재업로드 | 만료 전엔 같은 `uploadUrl`로 다시 올리면 덮어쓴다 | 같음 |
+
+> ※ **도메인별 형식·크기**(2026-11-09, 이슈 #154): 이미지 3개 도메인은 `jpg` `jpeg` `png` `webp`·10MB, 연습 녹음 `PRACTICE_AUDIO`(폴더 `practice/`)는 `mp3` `m4a` `wav`·100MB다. 표 전체는 `dto-spec.md` `PresignedUrlResponse`. S3는 presigned PUT이 크기를 제한하지 않아 업로드 때 한도가 걸리지 않는다 — 연습 녹음은 분석 요청 때 서버가 실제 크기를 확인한다(`FileService.findSize`·`maxUploadBytes`). 업로드 자체를 막으려면 발급 요청에 `fileSize`를 받아 서명에 넣어야 해서 후속으로 논의한다.
+>
+> `PRACTICE_AUDIO`는 **비공개**다. `fileUrl`로 바로 열리지 않고, 다른 도메인이 `FileService.findOwnedFileKey`로 "내가 올린 그 도메인 파일인지" 확인해 key를 저장한 뒤 읽을 때마다 `FileService.issueReadUrl`로 임시 URL(S3 presigned GET)을 만든다. 로컬 저장에서는 임시 URL 대신 공개 서빙 경로가 나간다(개발용).
 
 > ⚠️ **S3 전환 예정(조만간).** 전환해도 `PresignedUrlResponse` 구조(`fileId`·`uploadUrl`·`fileUrl`·`expiresAt`)는 그대로지만, **업로드 PUT에서 `Authorization` 헤더를 빼야 한다** — 프론트가 바꿔야 하는 유일한 지점이다. 지금부터 "`uploadUrl`이 이 서버의 `/v1/files/local-upload/`를 가리킬 때만 Bearer를 붙인다"로 분기해 두면 전환 때 프론트 코드 변경이 없다. 전환 시 위 로컬 임시 엔드포인트 2개는 제거된다.
 

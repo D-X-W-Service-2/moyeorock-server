@@ -371,13 +371,13 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 ### 17. `files`
 
-업로드된 파일 메타데이터 (`global/file` — 도메인 아님, 1팀 담당. 1팀 프로필·4팀 커버·포스터가 같이 씀)
+업로드된 파일 메타데이터 (`global/file` — 도메인 아님, 1팀 담당. 1팀 프로필·4팀 커버·포스터·연습 녹음이 같이 씀)
 
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 |  | `file_key` | `VARCHAR(255) NOT NULL` | 스토리지 상 실제 경로(`{도메인}/{uuid}.{확장자}`) |
-|  | `domain` | `VARCHAR(20) NOT NULL` | PROFILE_IMAGE\|GROUP_COVER\|PERFORMANCE_POSTER |
+|  | `domain` | `VARCHAR(20) NOT NULL` | PROFILE_IMAGE\|GROUP_COVER\|PERFORMANCE_POSTER\|PRACTICE_AUDIO (`PRACTICE_AUDIO`는 2026-11-09 추가, 이슈 #154 — 값만 늘어 마이그레이션 없음) |
 |  | `original_name` | `VARCHAR(255) NOT NULL` |  |
 |  | `content_type` | `VARCHAR(100) NOT NULL` |  |
 |  | `uploader_id` | `BIGINT NOT NULL` | → users · FK 아님, 인덱스만(CLAUDE.md 절대 규칙 6) |
@@ -386,6 +386,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 - **인덱스** `(uploader_id)`
 
 > 2026-09-30 신규. `users.profile_image`·`groups_.cover_image`·`performances.poster_image`는 이 테이블을 참조하지 않고 여전히 URL 문자열을 직접 저장한다 — `files`는 발급·삭제 이력 관리용이고, 실제 참조는 URL 문자열로 한다(각 도메인이 `fileId`를 몰라도 되게). 상세: `docs/plans/file-upload-presigned-url.md`.
+>
+> 2026-11-09: 연습 녹음(`PRACTICE_AUDIO`)은 비공개라 예외다 — 연습 도메인이 URL이 아니라 `file_key`를 저장하고, 저장 전에 이 테이블로 업로더·도메인을 확인한다(이슈 #154).
 
 ---
 

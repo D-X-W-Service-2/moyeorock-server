@@ -1033,7 +1033,14 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
 - `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
-- 허용 확장자는 `jpg` · `jpeg` · `png` · `webp`뿐이고, `contentType`도 `image/jpeg` · `image/png` · `image/webp`만 받는다. 둘 중 하나라도 어긋나면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+- 허용 형식·크기는 `domain`마다 다르다(노션 `Presigned URL 발급` 표, 2026-11-09 대조). 확장자와 `contentType` 중 하나라도 그 도메인 목록에 없으면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+
+  | `domain` | 확장자 | `contentType` | 최대 크기 |
+  |---|---|---|---|
+  | `PROFILE_IMAGE` `GROUP_COVER` `PERFORMANCE_POSTER` | `jpg` `jpeg` `png` `webp` | `image/jpeg` `image/png` `image/webp` | 10MB |
+  | `PRACTICE_AUDIO` | `mp3` `m4a` `wav` | `audio/mpeg` `audio/mp4` `audio/x-m4a` `audio/wav` `audio/x-wav` | 100MB |
+
+- `PRACTICE_AUDIO`(개인 연습 녹음)는 **비공개**다. S3 `practice/`는 공개 읽기가 아니라서 `fileUrl`로 바로 열리지 않는다 — 연습 녹음 분석 요청의 `audioUrl`로 보내는 식별자로만 쓰고, 재생은 연습 녹음 상세가 주는 임시 URL로 한다(이슈 #154)
 - 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
 
 ### DashboardResponse
