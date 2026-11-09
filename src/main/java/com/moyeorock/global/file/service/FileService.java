@@ -28,7 +28,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class FileService {
 
-    // 도메인별 허용 형식은 노션 API 초안 "Presigned URL 발급"의 표(2026-11-09)를 따른다.
+    // 도메인별 허용 형식·크기는 노션 API 초안 "Presigned URL 발급"의 표(2026-11-09)를 따른다.
     // 이미지 3개 도메인은 같은 규칙이고, 연습 녹음만 오디오다. 새 형식이 필요하면 해당 목록에 추가만 하면 된다.
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
     private static final Set<String> AUDIO_EXTENSIONS = Set.of("mp3", "m4a", "wav");
@@ -40,9 +40,11 @@ public class FileService {
     private static final Set<String> AUDIO_CONTENT_TYPES =
             Set.of("audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/wav", "audio/x-wav");
 
-    // receiveUpload는 raw PUT body를 그대로 디스크에 써서 spring.servlet.multipart.max-file-size가
-    // 적용되지 않는다 — 로컬 디스크 고갈을 막기 위한 임시 상한(S3 전환 시 이 제약 자체가 사라진다).
-    private static final long MAX_UPLOAD_SIZE_BYTES = 10L * 1024 * 1024;
+    // 로컬 저장의 receiveUpload는 raw PUT body를 그대로 디스크에 써서 spring.servlet.multipart.max-file-size가
+    // 적용되지 않아 여기서 막는다. S3는 클라이언트가 S3에 직접 올려 서버가 업로드 때 막을 수 없다 — 크기가
+    // 중요한 쪽(연습 녹음)은 findSize·maxUploadBytes로 사후에 확인한다.
+    private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
+    private static final long AUDIO_MAX_BYTES = 100L * 1024 * 1024;
 
     private final UploadedFileRepository uploadedFileRepository;
     private final FileStorageClient fileStorageClient;
@@ -94,7 +96,7 @@ public class FileService {
         }
         InputStream body = requireNonEmpty(content);
         try {
-            fileStorageClient.write(fileKey, new SizeLimitedInputStream(body, MAX_UPLOAD_SIZE_BYTES));
+            fileStorageClient.write(fileKey, new SizeLimitedInputStream(body, ruleOf(file.getDomain()).maxBytes()));
         } catch (UncheckedIOException e) {
             if (e.getCause() instanceof UploadSizeExceededException) {
                 throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
@@ -175,11 +177,11 @@ public class FileService {
     // default 없는 switch라 UploadDomain에 값이 늘면 규칙을 정하기 전까지 컴파일되지 않는다.
     private static UploadRule ruleOf(UploadDomain domain) {
         return switch (domain) {
-            case PROFILE_IMAGE -> new UploadRule("profile", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES);
-            case GROUP_COVER -> new UploadRule("group", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES);
+            case PROFILE_IMAGE -> new UploadRule("profile", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
+            case GROUP_COVER -> new UploadRule("group", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
             case PERFORMANCE_POSTER ->
-                    new UploadRule("performance", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES);
-            case PRACTICE_AUDIO -> new UploadRule("practice", AUDIO_EXTENSIONS, AUDIO_CONTENT_TYPES);
+                    new UploadRule("performance", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
+            case PRACTICE_AUDIO -> new UploadRule("practice", AUDIO_EXTENSIONS, AUDIO_CONTENT_TYPES, AUDIO_MAX_BYTES);
         };
     }
 
@@ -196,8 +198,8 @@ public class FileService {
     public record FileContent(InputStream content, String contentType) {
     }
 
-    // 업로드 도메인 하나의 저장 폴더·허용 형식.
-    private record UploadRule(String folder, Set<String> extensions, Set<String> contentTypes) {
+    // 업로드 도메인 하나의 저장 폴더·허용 형식·크기 한도.
+    private record UploadRule(String folder, Set<String> extensions, Set<String> contentTypes, long maxBytes) {
 
         boolean allowsContentType(String contentType) {
             return contentTypes.contains(contentType.toLowerCase(Locale.ROOT));
