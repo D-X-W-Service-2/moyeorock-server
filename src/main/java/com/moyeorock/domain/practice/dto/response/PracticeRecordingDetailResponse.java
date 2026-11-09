@@ -14,6 +14,7 @@ import java.util.List;
 public record PracticeRecordingDetailResponse(
         Long id,
         String title,
+        Instrument part,
         String audioUrl,
         PracticeRecordingStatus status,
         String failureReason,
@@ -24,7 +25,7 @@ public record PracticeRecordingDetailResponse(
 
     public static PracticeRecordingDetailResponse of(PracticeRecording recording, String audioUrl,
             List<PracticeFeedback> feedbacks) {
-        return new PracticeRecordingDetailResponse(recording.getId(), recording.getTitle(), audioUrl,
+        return new PracticeRecordingDetailResponse(recording.getId(), recording.getTitle(), recording.getPart(), audioUrl,
                 recording.getStatus(), recording.getFailureReason(), recording.getCreatedAt(),
                 recording.getAnalyzedAt(), feedbacks.stream().map(Feedback::from).toList());
     }

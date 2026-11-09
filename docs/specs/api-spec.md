@@ -367,7 +367,7 @@
 | POST | `/v1/practice-recordings/{id}/retry` | 분석&nbsp;다시&nbsp;요청 (**202**) | | `PracticeRecordingSummaryResponse` |
 | DELETE | `/v1/practice-recordings/{id}` | 삭제 | | — (`data: null`) |
 
-**흐름** — ① 업로드 URL 발급(`domain: PRACTICE_AUDIO`) → 파일 PUT → ② 받은 `fileUrl`을 `audioUrl`로 분석 요청 → 202 `SUBMITTED` → ③ 서버가 AI에 보내면 `ANALYZING`, 끝나면 `DONE`(실패 `FAILED`) → ④ 프론트는 상세를 5초쯤 간격으로 조회하다 `DONE`·`FAILED`면 멈춘다. 진행률은 없다.
+**흐름** — ① 업로드 URL 발급(`domain: PRACTICE_AUDIO`) → 녹음 파일 PUT → ② 받은 `fileUrl`을 `audioUrl`로, 녹음한 세션을 `part`로 분석 요청 → 202 `SUBMITTED` → ③ 서버가 AI에 보내면 `ANALYZING`, 끝나면 `DONE`(실패 `FAILED`) → ④ 프론트는 상세를 5초쯤 간격으로 조회하다 `DONE`·`FAILED`면 멈춘다. 진행률은 없다.
 
 - **분석은 비동기다.** 요청이 커밋된 뒤 서버 안의 전용 실행기가 하나씩 처리한다 — 서버 전체에서 한 번에 하나, **한 사람당 진행 중(`SUBMITTED`·`ANALYZING`) 분석도 하나**다(다시 요청 포함)
 - **AI 서버가 아직 없어 가짜 AI(고정 결과)로 동작한다**(`practice.ai.type=fake`). 결과 내용 앞에 "(테스트)"가 붙는다. AI 응답 형식이 정해지면 실제 호출로 바뀐다
@@ -375,12 +375,13 @@
 - **서버가 재시작(배포)하면 대기·분석 중이던 건은 `FAILED`**("서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")가 된다 — 다시 요청하면 된다
 - **분석 중에도 지울 수 있다.** 나중에 도착한 결과는 버린다. 녹음 파일(S3)은 지워지지 않는다 — 필요하면 `DELETE /v1/files/{fileId}`
 - 다시 요청은 `FAILED`만 된다. 실패 사유는 비우고, `createdAt`(요청 시각)은 처음 그대로다
+- **녹음은 혼자 연습한 세션 하나의 녹음이다.** 사용자가 녹음 파일을 올리고(서비스 안에서 녹음하지 않는다) 세션(`part`)을 고른다. 세션은 AI에 힌트로 넘기고 목록·상세에도 내려준다(2026-11-09 추가)
 
 **에러**
 
 | 코드 | 상태 | 상황 |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | 제목 빈칸·100자 초과, `audioUrl` 빈칸 / `audioUrl`이 내가 올린 `PRACTICE_AUDIO` 파일이 아님·업로드가 끝나지 않음·100MB 초과 — `message`가 `"audioUrl: …"`로 사유를 준다 |
+| `VALIDATION_FAILED` | 400 | 제목 빈칸·100자 초과, `audioUrl` 빈칸, `part` 없음·없는 세션 값 / `audioUrl`이 내가 올린 `PRACTICE_AUDIO` 파일이 아님·업로드가 끝나지 않음·100MB 초과 — `message`가 `"audioUrl: …"`로 사유를 준다 |
 | `PRACTICE_RECORDING_NOT_FOUND` | 404 | 없는 녹음이거나 남의 녹음 (상세·다시 요청·삭제) |
 | `INVALID_STATE` | 409 | 다시 요청인데 실패한 녹음이 아님 |
 | `PRACTICE_ANALYSIS_IN_PROGRESS` | 409 | 진행 중인 내 녹음이 이미 있음 (분석 요청·다시 요청) |

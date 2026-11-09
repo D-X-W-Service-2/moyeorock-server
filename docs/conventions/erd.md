@@ -404,6 +404,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 |  | `user_id` | `BIGINT NOT NULL` | → users · 올린 사람. FK 아님(CLAUDE.md 절대 규칙 6) |
 |  | `title` | `VARCHAR(100) NOT NULL` | 100자 이하 |
+|  | `part` | `VARCHAR(20) NOT NULL` | 녹음한 세션 — 공용 `Instrument`. 혼자 연습한 세션 하나의 녹음이라 올릴 때 고른다. AI에 세션 힌트로 넘긴다 |
 |  | `audio_file_key` | `VARCHAR(255) NOT NULL` | 스토리지 key `practice/{uuid}.{확장자}` — URL이 아니다(녹음은 비공개, 읽을 때마다 임시 URL). `files.file_key`와 같은 값 |
 |  | `status` | `VARCHAR(10) NOT NULL` | SUBMITTED\|ANALYZING\|DONE\|FAILED |
 |  | `failure_reason` | `VARCHAR(255)` | 화면에 그대로 보여 줄 실패 사유. FAILED일 때만 값 |

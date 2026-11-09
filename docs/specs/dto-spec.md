@@ -1172,11 +1172,13 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 ```json
 {
   "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
   "audioUrl": "https://moyeorock-dev-files.s3.ap-northeast-2.amazonaws.com/practice/550e8400-e29b-41d4-a716-446655440000.m4a"
 }
 ```
 
 - `title` 필수, 100자 이하
+- `part` 필수. 녹음한 세션(`VOCAL` `EL_GT` `AC_GT` `BASS` `DRUM` `KEY`) — 혼자 연습한 세션 하나의 녹음이다. AI에 세션 힌트로 넘긴다
 - `audioUrl` 필수. 업로드 API(`domain: PRACTICE_AUDIO`)가 준 `fileUrl` 그대로. 내가 올린 연습 녹음 파일이어야 하고, 실제로 업로드돼 있어야 하며 100MB 이하여야 한다 — 아니면 400 `VALIDATION_FAILED`(`message`에 `"audioUrl: …"` 사유)
 
 ### PracticeRecordingSummaryResponse
@@ -1187,6 +1189,7 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 {
   "id": 12,
   "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
   "status": "SUBMITTED",
   "createdAt": "2026-11-09T14:30:00",
   "analyzedAt": null
@@ -1203,6 +1206,7 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 {
   "id": 12,
   "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
   "audioUrl": "https://moyeorock-dev-files.s3.ap-northeast-2.amazonaws.com/practice/550e8400-e29b-41d4-a716-446655440000.m4a?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=1800&...",
   "status": "DONE",
   "failureReason": null,
@@ -1218,4 +1222,4 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 - `audioUrl`: 재생용 **임시 URL**(30분). 조회할 때마다 새로 만들어 값이 달라진다 — 녹음은 비공개라 DB에는 URL이 아니라 스토리지 key가 있다. 로컬 저장(개발용)에서는 서빙 경로(`/v1/files/local/practice/...`)가 나간다
 - `failureReason`: `FAILED`일 때만 값. 화면에 그대로 보여 주는 문장이다(예: "서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")
 - `feedbacks`: `DONE`이 아니면 빈 배열. 구간 시작 순. `startSec`·`endSec`는 초(1:20:03 → 4803), `part`는 공용 `Instrument`(`VOCAL` `EL_GT` `AC_GT` `BASS` `DRUM` `KEY`)
-- 결과 형식(구간·세션·내용)은 AI 파트와 확정 전이다. 지금은 가짜 AI가 "(테스트) …" 문장 3줄을 준다
+- 결과 형식(구간·세션·내용)은 AI 파트와 확정 전이다. 지금은 가짜 AI가 녹음한 세션(`part`)으로 "(테스트) …" 문장 3줄을 준다

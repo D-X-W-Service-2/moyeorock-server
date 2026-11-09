@@ -46,8 +46,8 @@ class PracticeRecordingRepositoryTest {
         Thread.sleep(5);
         PracticeRecording middle = recordingRepository.saveAndFlush(finished(ME, "2번", PracticeRecordingStatus.FAILED));
         Thread.sleep(5);
-        PracticeRecording newest = recordingRepository.saveAndFlush(PracticeRecording.create(ME, "3번", "practice/c.m4a"));
-        recordingRepository.saveAndFlush(PracticeRecording.create(OTHER, "남의 것", "practice/x.m4a"));
+        PracticeRecording newest = recordingRepository.saveAndFlush(PracticeRecording.create(ME, "3번", Instrument.VOCAL, "practice/c.m4a"));
+        recordingRepository.saveAndFlush(PracticeRecording.create(OTHER, "남의 것", Instrument.VOCAL, "practice/x.m4a"));
 
         Page<PracticeRecording> first = recordingRepository.findByUserId(ME, PageRequest.of(0, 2, LATEST_FIRST));
         Page<PracticeRecording> second = recordingRepository.findByUserId(ME, PageRequest.of(1, 2, LATEST_FIRST));
@@ -64,7 +64,7 @@ class PracticeRecordingRepositoryTest {
         recordingRepository.saveAndFlush(finished(ME, "실패", PracticeRecordingStatus.FAILED));
         assertThat(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).isFalse();
 
-        PracticeRecording analyzing = PracticeRecording.create(ME, "분석 중", "practice/a.m4a");
+        PracticeRecording analyzing = PracticeRecording.create(ME, "분석 중", Instrument.VOCAL, "practice/a.m4a");
         analyzing.startAnalysis();
         recordingRepository.saveAndFlush(analyzing);
         assertThat(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).isTrue();
@@ -74,10 +74,10 @@ class PracticeRecordingRepositoryTest {
     @Test
     @DisplayName("같은 사람의 진행 중 녹음이 둘이 되면 DB 유니크가 막는다")
     void activeUserUnique_blocksSecondInProgress() {
-        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "첫 번째", "practice/a.m4a"));
+        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "첫 번째", Instrument.VOCAL, "practice/a.m4a"));
 
         assertThatThrownBy(() -> recordingRepository.saveAndFlush(
-                PracticeRecording.create(ME, "두 번째", "practice/b.m4a")))
+                PracticeRecording.create(ME, "두 번째", Instrument.VOCAL, "practice/b.m4a")))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("uk_practice_recordings_active_user_id");
     }
@@ -88,8 +88,8 @@ class PracticeRecordingRepositoryTest {
         recordingRepository.saveAndFlush(finished(ME, "끝남 1", PracticeRecordingStatus.DONE));
         recordingRepository.saveAndFlush(finished(ME, "끝남 2", PracticeRecordingStatus.DONE));
         recordingRepository.saveAndFlush(finished(ME, "실패", PracticeRecordingStatus.FAILED));
-        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "진행 중", "practice/a.m4a"));
-        recordingRepository.saveAndFlush(PracticeRecording.create(OTHER, "남의 진행 중", "practice/b.m4a"));
+        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "진행 중", Instrument.VOCAL, "practice/a.m4a"));
+        recordingRepository.saveAndFlush(PracticeRecording.create(OTHER, "남의 진행 중", Instrument.VOCAL, "practice/b.m4a"));
 
         assertThat(recordingRepository.count()).isEqualTo(5);
     }
@@ -98,7 +98,7 @@ class PracticeRecordingRepositoryTest {
     @DisplayName("실패한 녹음을 다시 요청(SUBMITTED)할 때도 다른 진행 중 녹음이 있으면 유니크가 막는다")
     void activeUserUnique_blocksRetryWhileAnotherInProgress() {
         PracticeRecording failed = recordingRepository.saveAndFlush(finished(ME, "실패", PracticeRecordingStatus.FAILED));
-        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "진행 중", "practice/b.m4a"));
+        recordingRepository.saveAndFlush(PracticeRecording.create(ME, "진행 중", Instrument.VOCAL, "practice/b.m4a"));
 
         failed.retry();
 
@@ -110,15 +110,15 @@ class PracticeRecordingRepositoryTest {
     @Test
     @DisplayName("부팅 정리는 부팅 전에 바뀐 진행 중 녹음만 실패로 바꾸고, 부팅 뒤 요청·끝난 녹음은 그대로 둔다")
     void failUnfinishedBefore_onlyTouchesInProgressBeforeBoot() throws InterruptedException {
-        PracticeRecording submitted = recordingRepository.saveAndFlush(PracticeRecording.create(ME, "대기", "practice/a.m4a"));
-        PracticeRecording analyzingBefore = PracticeRecording.create(OTHER, "분석 중", "practice/b.m4a");
+        PracticeRecording submitted = recordingRepository.saveAndFlush(PracticeRecording.create(ME, "대기", Instrument.VOCAL, "practice/a.m4a"));
+        PracticeRecording analyzingBefore = PracticeRecording.create(OTHER, "분석 중", Instrument.VOCAL, "practice/b.m4a");
         analyzingBefore.startAnalysis();
         recordingRepository.saveAndFlush(analyzingBefore);
         PracticeRecording done = recordingRepository.saveAndFlush(finished(ME, "끝남", PracticeRecordingStatus.DONE));
         Thread.sleep(5);
         LocalDateTime bootedAt = LocalDateTime.now();
         Thread.sleep(5);
-        PracticeRecording afterBoot = recordingRepository.saveAndFlush(PracticeRecording.create(3L, "부팅 뒤", "practice/c.m4a"));
+        PracticeRecording afterBoot = recordingRepository.saveAndFlush(PracticeRecording.create(3L, "부팅 뒤", Instrument.VOCAL, "practice/c.m4a"));
 
         int count = recordingRepository.failUnfinishedBefore(bootedAt, "재시작", LocalDateTime.now(),
                 PracticeRecordingStatus.FAILED, PracticeRecordingStatus.IN_PROGRESS);
@@ -156,7 +156,7 @@ class PracticeRecordingRepositoryTest {
     }
 
     private static PracticeRecording finished(Long userId, String title, PracticeRecordingStatus status) {
-        PracticeRecording recording = PracticeRecording.create(userId, title, "practice/" + title + ".m4a");
+        PracticeRecording recording = PracticeRecording.create(userId, title, Instrument.VOCAL, "practice/" + title + ".m4a");
         recording.startAnalysis();
         if (status == PracticeRecordingStatus.DONE) {
             recording.complete(LocalDateTime.now());

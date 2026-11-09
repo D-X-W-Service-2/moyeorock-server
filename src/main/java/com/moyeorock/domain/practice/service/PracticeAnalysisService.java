@@ -47,16 +47,16 @@ public class PracticeAnalysisService {
     }
 
     /**
-     * 대기 중(SUBMITTED)인 녹음을 분석 중으로 바꾸고 녹음 파일 key를 돌려준다. 그새 지워졌거나 대기 중이 아니면(부팅 정리로
-     * 실패 처리된 경우 등) 빈 값 — 분석하지 않는다.
+     * 대기 중(SUBMITTED)인 녹음을 분석 중으로 바꾸고 돌려준다(AI 요청에 녹음 파일 key와 세션을 쓴다 — 트랜잭션이 끝난
+     * 엔티티라 단순 필드만 읽는다). 그새 지워졌거나 대기 중이 아니면(부팅 정리로 실패 처리된 경우 등) 빈 값 — 분석하지 않는다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Optional<String> start(Long recordingId) {
+    public Optional<PracticeRecording> start(Long recordingId) {
         return recordingRepository.findByIdForUpdate(recordingId)
                 .filter(PracticeRecording::isSubmitted)
                 .map(recording -> {
                     recording.startAnalysis();
-                    return recording.getAudioFileKey();
+                    return recording;
                 });
     }
 

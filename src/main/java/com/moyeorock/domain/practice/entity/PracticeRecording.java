@@ -2,6 +2,7 @@ package com.moyeorock.domain.practice.entity;
 
 import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import com.moyeorock.global.common.entity.BaseEntity;
+import com.moyeorock.global.common.enums.Instrument;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -34,6 +35,11 @@ public class PracticeRecording extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String title;
 
+    // 녹음한 세션. 혼자 연습한 세션 하나의 녹음이라 올릴 때 고른다(계획 D-10). AI에 세션 힌트로 넘긴다.
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20, nullable = false)
+    private Instrument part;
+
     // URL이 아니라 스토리지 key다 — 녹음은 비공개라 읽을 때마다 임시 URL을 만든다(FileService.issueReadUrl).
     @Column(name = "audio_file_key", nullable = false)
     private String audioFileKey;
@@ -48,10 +54,11 @@ public class PracticeRecording extends BaseEntity {
     @Column(name = "analyzed_at")
     private LocalDateTime analyzedAt;
 
-    public static PracticeRecording create(Long userId, String title, String audioFileKey) {
+    public static PracticeRecording create(Long userId, String title, Instrument part, String audioFileKey) {
         PracticeRecording recording = new PracticeRecording();
         recording.userId = userId;
         recording.title = title;
+        recording.part = part;
         recording.audioFileKey = audioFileKey;
         recording.status = PracticeRecordingStatus.SUBMITTED;
         return recording;

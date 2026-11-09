@@ -463,9 +463,9 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 | 클래스 | 설명 |
 |---|---|
-| `PracticeRecordingCreateRequest` | `(String title, String audioUrl)` — `audioUrl`은 업로드 API(`PRACTICE_AUDIO`)가 준 `fileUrl`. 서버가 "내가 올린 연습 녹음 파일"인지 확인하고 스토리지 key로 바꿔 저장한다 |
-| `PracticeRecordingSummaryResponse` | `(Long id, String title, PracticeRecordingStatus status, LocalDateTime createdAt, LocalDateTime analyzedAt)` — 요청·다시 요청 응답과 목록 항목 공용(규칙 3) |
-| `PracticeRecordingDetailResponse` | `(Long id, String title, String audioUrl, PracticeRecordingStatus status, String failureReason, LocalDateTime createdAt, LocalDateTime analyzedAt, List<Feedback> feedbacks)` |
+| `PracticeRecordingCreateRequest` | `(String title, Instrument part, String audioUrl)` — `part`는 녹음한 세션(필수, 혼자 연습한 세션 하나의 녹음).  `audioUrl`은 업로드 API(`PRACTICE_AUDIO`)가 준 `fileUrl`. 서버가 "내가 올린 연습 녹음 파일"인지 확인하고 스토리지 key로 바꿔 저장한다 |
+| `PracticeRecordingSummaryResponse` | `(Long id, String title, Instrument part, PracticeRecordingStatus status, LocalDateTime createdAt, LocalDateTime analyzedAt)` — 요청·다시 요청 응답과 목록 항목 공용(규칙 3) |
+| `PracticeRecordingDetailResponse` | `(Long id, String title, Instrument part, String audioUrl, PracticeRecordingStatus status, String failureReason, LocalDateTime createdAt, LocalDateTime analyzedAt, List<Feedback> feedbacks)` |
 | `PracticeRecordingDetailResponse.Feedback` | `(int startSec, int endSec, Instrument part, String content)` — 상세에서만 쓰는 중첩 record(규칙 6). 세션은 공용 `Instrument` |
 
 `audioUrl`(상세)은 저장된 값이 아니라 조회할 때마다 만드는 **임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 DB에는 URL 대신 스토리지 key가 있다. `PracticeRecordingStatus`(`SUBMITTED|ANALYZING|DONE|FAILED`)는 practice만 쓰는 도메인 enum이다. 삭제 응답은 노션대로 `data: null`이라 `DeleteResponse`를 쓰지 않는다(공지 삭제와 같은 예외).

@@ -45,12 +45,12 @@ class PracticeAnalysisServiceTest {
     }
 
     @Test
-    @DisplayName("대기 중인 녹음은 분석 중으로 바꾸고 녹음 파일 key를 돌려준다")
+    @DisplayName("대기 중인 녹음은 분석 중으로 바꾸고 그 녹음을 돌려준다(AI 요청에 파일 key·세션을 쓴다)")
     void start_movesSubmittedToAnalyzing() {
-        PracticeRecording recording = PracticeRecording.create(1L, "연습", "practice/a.m4a");
+        PracticeRecording recording = PracticeRecording.create(1L, "연습", Instrument.VOCAL, "practice/a.m4a");
         when(recordingRepository.findByIdForUpdate(RECORDING_ID)).thenReturn(Optional.of(recording));
 
-        assertThat(analysisService.start(RECORDING_ID)).contains("practice/a.m4a");
+        assertThat(analysisService.start(RECORDING_ID)).containsSame(recording);
         assertThat(recording.getStatus()).isEqualTo(PracticeRecordingStatus.ANALYZING);
     }
 
@@ -133,7 +133,7 @@ class PracticeAnalysisServiceTest {
     @Test
     @DisplayName("진행 중인 녹음은 실패와 사유로 바꾸고, 이미 끝났거나 지워졌으면 그대로 둔다")
     void fail_onlyInProgress() {
-        PracticeRecording submitted = PracticeRecording.create(1L, "대기", "practice/a.m4a");
+        PracticeRecording submitted = PracticeRecording.create(1L, "대기", Instrument.VOCAL, "practice/a.m4a");
         PracticeRecording done = inStatus(PracticeRecordingStatus.DONE);
         when(recordingRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(submitted));
         when(recordingRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(done));
@@ -171,7 +171,7 @@ class PracticeAnalysisServiceTest {
     }
 
     private static PracticeRecording inStatus(PracticeRecordingStatus status) {
-        PracticeRecording recording = PracticeRecording.create(1L, "연습", "practice/a.m4a");
+        PracticeRecording recording = PracticeRecording.create(1L, "연습", Instrument.VOCAL, "practice/a.m4a");
         if (status == PracticeRecordingStatus.SUBMITTED) {
             return recording;
         }

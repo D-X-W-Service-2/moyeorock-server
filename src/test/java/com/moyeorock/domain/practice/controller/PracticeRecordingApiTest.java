@@ -75,13 +75,14 @@ class PracticeRecordingApiTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.id").isNumber())
                 .andExpect(jsonPath("$.data.title").value("11/9 보컬 연습 - 너의 의미"))
+                .andExpect(jsonPath("$.data.part").value("VOCAL"))
                 .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.data.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.data.analyzedAt").value(nullValue()));
     }
 
     @Test
-    @DisplayName("분석 요청: 제목 빈칸·101자, audioUrl 빈칸이면 400 VALIDATION_FAILED")
+    @DisplayName("분석 요청: 제목 빈칸·101자, audioUrl 빈칸, 세션 없음·없는 세션 값이면 400 VALIDATION_FAILED")
     void create_returns400_forInvalidInput() throws Exception {
         String audioUrl = uploadAudio(ME);
         create(ME, " ", audioUrl).andExpect(status().isBadRequest())
@@ -89,6 +90,12 @@ class PracticeRecordingApiTest {
         create(ME, "가".repeat(101), audioUrl).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         create(ME, "연습", "").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        createRaw(ME, "{\"title\":\"연습\",\"audioUrl\":\"" + audioUrl + "\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("part: 세션은 필수입니다."));
+        createRaw(ME, "{\"title\":\"연습\",\"part\":\"SAXOPHONE\",\"audioUrl\":\"" + audioUrl + "\"}")
+                .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
@@ -122,6 +129,7 @@ class PracticeRecordingApiTest {
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].id").value(id))
                 .andExpect(jsonPath("$.data.content[0].status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.data.content[0].part").value("VOCAL"))
                 .andExpect(jsonPath("$.data.page").value(0))
                 .andExpect(jsonPath("$.data.size").value(20))
                 .andExpect(jsonPath("$.data.totalElements").value(1))
@@ -136,6 +144,7 @@ class PracticeRecordingApiTest {
         mockMvc.perform(get(BASE + "/" + id).header("Authorization", bearer(ME)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(id))
+                .andExpect(jsonPath("$.data.part").value("VOCAL"))
                 .andExpect(jsonPath("$.data.audioUrl").value(containsString("/practice/")))
                 .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.data.failureReason").value(nullValue()))
@@ -180,7 +189,13 @@ class PracticeRecordingApiTest {
     private ResultActions create(long userId, String title, String audioUrl) throws Exception {
         return mockMvc.perform(post(BASE).header("Authorization", bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"" + title + "\",\"audioUrl\":\"" + audioUrl + "\"}"));
+                .content("{\"title\":\"" + title + "\",\"part\":\"VOCAL\",\"audioUrl\":\"" + audioUrl + "\"}"));
+    }
+
+    private ResultActions createRaw(long userId, String json) throws Exception {
+        return mockMvc.perform(post(BASE).header("Authorization", bearer(userId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json));
     }
 
     private ResultActions retry(long userId, long id) throws Exception {

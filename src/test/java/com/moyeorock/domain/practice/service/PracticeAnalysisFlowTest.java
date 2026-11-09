@@ -16,6 +16,7 @@ import com.moyeorock.domain.practice.entity.PracticeRecording;
 import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import com.moyeorock.domain.practice.repository.PracticeFeedbackRepository;
 import com.moyeorock.domain.practice.repository.PracticeRecordingRepository;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.file.client.FileStorageClient;
@@ -104,6 +105,7 @@ class PracticeAnalysisFlowTest {
         verify(analysisClient).analyze(captor.capture());
         assertThat(captor.getValue().audioUrl()).contains("/practice/");
         assertThat(captor.getValue().fileExtension()).isEqualTo("m4a");
+        assertThat(captor.getValue().part()).isEqualTo(Instrument.VOCAL);
     }
 
     @Test
@@ -188,7 +190,7 @@ class PracticeAnalysisFlowTest {
     }
 
     private static PracticeRecordingCreateRequest request(String audioUrl) {
-        return new PracticeRecordingCreateRequest("연습 녹음", audioUrl);
+        return new PracticeRecordingCreateRequest("연습 녹음", Instrument.VOCAL, audioUrl);
     }
 
     // 업로드 URL을 발급받고 실제로 파일을 올린 것처럼 저장소에 써 둔다(테스트 설정은 로컬 저장).

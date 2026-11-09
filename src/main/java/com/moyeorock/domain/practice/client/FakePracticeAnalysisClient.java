@@ -16,10 +16,11 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class FakePracticeAnalysisClient implements PracticeAnalysisClient {
 
-    static final List<AnalysisFeedback> FIXED_RESULT = List.of(
-            new AnalysisFeedback(12, 20, "VOCAL", "(테스트) 음정이 2도 플랫되었습니다"),
-            new AnalysisFeedback(45, 58, "EL_GT", "(테스트) 박자가 조금 빠릅니다"),
-            new AnalysisFeedback(80, 95, "VOCAL", "(테스트) 고음 구간에서 호흡이 짧습니다"));
+    // 구간과 문장만 고정이고 세션은 요청한 세션 그대로 준다 — 혼자 연습한 세션 하나의 녹음이라서.
+    private static final List<String> FIXED_LINES = List.of(
+            "12,20,(테스트) 음정이 2도 플랫되었습니다",
+            "45,58,(테스트) 박자가 조금 빠릅니다",
+            "80,95,(테스트) 고음 구간에서 호흡이 짧습니다");
 
     private final PracticeProperties properties;
 
@@ -31,6 +32,10 @@ public class FakePracticeAnalysisClient implements PracticeAnalysisClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("가짜 AI 분석 대기 중 중단됨", e);
         }
-        return FIXED_RESULT;
+        return FIXED_LINES.stream()
+                .map(line -> line.split(",", 3))
+                .map(cols -> new AnalysisFeedback(Integer.parseInt(cols[0]), Integer.parseInt(cols[1]),
+                        request.part().name(), cols[2]))
+                .toList();
     }
 }

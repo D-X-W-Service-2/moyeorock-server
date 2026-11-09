@@ -88,7 +88,8 @@ public class PracticeRecordingService {
         ensureNoAnalysisInProgress(userId);
 
         PracticeRecording saved = flushOrConflict(
-                () -> recordingRepository.saveAndFlush(PracticeRecording.create(userId, request.title(), fileKey)));
+                () -> recordingRepository.saveAndFlush(
+                        PracticeRecording.create(userId, request.title(), request.part(), fileKey)));
         submitAfterCommit(saved.getId());
         return PracticeRecordingSummaryResponse.from(saved);
     }
@@ -147,23 +148,24 @@ public class PracticeRecordingService {
      * 상태 전이는 짧은 트랜잭션 3개(시작·완료·실패)로 PracticeAnalysisService가 한다.
      */
     void runAnalysis(Long recordingId) {
-        Optional<String> fileKey;
+        Optional<PracticeRecording> started;
         try {
-            fileKey = analysisService.start(recordingId);
+            started = analysisService.start(recordingId);
         } catch (RuntimeException e) {
             log.error("연습 녹음 분석을 시작하지 못했습니다. recordingId={}", recordingId, e);
             failQuietly(recordingId, REASON_ANALYSIS_FAILED);
             return;
         }
-        if (fileKey.isEmpty()) {
+        if (started.isEmpty()) {
             log.info("분석 시작 전에 지워졌거나 이미 처리된 연습 녹음입니다. recordingId={}", recordingId);
             return;
         }
 
+        PracticeRecording recording = started.get();
         try {
-            String audioUrl = fileService.issueReadUrl(fileKey.get(), audioUrlExpiry());
-            List<AnalysisFeedback> results = analysisClient.analyze(
-                    new AnalysisRequest(audioUrl, extensionOf(fileKey.get())));
+            String audioUrl = fileService.issueReadUrl(recording.getAudioFileKey(), audioUrlExpiry());
+            List<AnalysisFeedback> results = analysisClient.analyze(new AnalysisRequest(
+                    audioUrl, extensionOf(recording.getAudioFileKey()), recording.getPart()));
             analysisService.complete(recordingId, results);
         } catch (RuntimeException e) {
             log.warn("연습 녹음 분석에 실패했습니다. recordingId={}", recordingId, e);
