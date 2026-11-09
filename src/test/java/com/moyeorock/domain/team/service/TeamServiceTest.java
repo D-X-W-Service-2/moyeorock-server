@@ -778,6 +778,75 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("공연 팀 강퇴: 팀장이면 팀장을 뺀 가장 오래된 ACTIVE 팀원에게 팀장을 넘기고 본인은 LEFT가 된다")
+    void removeFromPerformanceTeams_leader_passesLeadershipToOldestMember() {
+        Team team = performanceTeam(TEAM_ID, 7L);
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of(team));
+        TeamMember leaving = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        TeamMember oldest = member(3L, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        TeamMember newer = member(4L, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(LEADER_ID, List.of(TEAM_ID)))
+                .willReturn(List.of(leaving));
+        // 강퇴되는 팀장 본인이 합류 순으로 가장 앞이어도 건너뛴다
+        given(teamMemberRepository.findActiveMembersForUpdate(TEAM_ID)).willReturn(List.of(leaving, oldest, newer));
+
+        teamService.removeFromPerformanceTeams(LEADER_ID, List.of(7L));
+
+        assertThat(leaving.getStatus()).isEqualTo(MemberStatus.LEFT);
+        assertThat(leaving.getRole()).isEqualTo(TeamRole.MEMBER);
+        assertThat(oldest.getRole()).isEqualTo(TeamRole.LEADER);
+        assertThat(newer.getRole()).isEqualTo(TeamRole.MEMBER);
+        assertThat(team.getStatus()).isEqualTo(TeamStatus.ACTIVE);
+        verify(setlistService, never()).deleteByTeam(any());
+    }
+
+    @Test
+    @DisplayName("공연 팀 강퇴: 팀장인데 넘길 팀원이 없으면 팀을 해체하고 선택곡·셋리스트를 지운다")
+    void removeFromPerformanceTeams_leaderAlone_disbandsTeam() {
+        Team team = performanceTeam(TEAM_ID, 7L);
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of(team));
+        TeamMember leaving = member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(LEADER_ID, List.of(TEAM_ID)))
+                .willReturn(List.of(leaving));
+        given(teamMemberRepository.findActiveMembersForUpdate(TEAM_ID)).willReturn(List.of(leaving));
+
+        teamService.removeFromPerformanceTeams(LEADER_ID, List.of(7L));
+
+        assertThat(team.getStatus()).isEqualTo(TeamStatus.DISBANDED);
+        assertThat(leaving.getStatus()).isEqualTo(MemberStatus.LEFT);
+        verify(setlistService).deleteByTeam(TEAM_ID);
+    }
+
+    @Test
+    @DisplayName("공연 팀 강퇴: 일반 팀원인 팀은 LEFT로만 바꾸고 팀장 위임·해체를 하지 않는다")
+    void removeFromPerformanceTeams_member_marksLeftOnly() {
+        Team team = performanceTeam(TEAM_ID, 7L);
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of(team));
+        TeamMember leaving = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);
+        given(teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(MEMBER_ID, List.of(TEAM_ID)))
+                .willReturn(List.of(leaving));
+
+        teamService.removeFromPerformanceTeams(MEMBER_ID, List.of(7L));
+
+        assertThat(leaving.getStatus()).isEqualTo(MemberStatus.LEFT);
+        assertThat(team.getStatus()).isEqualTo(TeamStatus.ACTIVE);
+        verify(teamMemberRepository, never()).findActiveMembersForUpdate(any());
+        verify(setlistService, never()).deleteByTeam(any());
+    }
+
+    @Test
+    @DisplayName("공연 팀 강퇴: 공연 id가 없거나 활동 중인 팀이 없으면 팀원 행을 조회하지 않는다")
+    void removeFromPerformanceTeams_withoutTeams_doesNothing() {
+        given(teamRepository.findActiveByPerformanceIdInForUpdate(List.of(7L))).willReturn(List.of());
+
+        teamService.removeFromPerformanceTeams(MEMBER_ID, null);
+        teamService.removeFromPerformanceTeams(MEMBER_ID, List.of());
+        teamService.removeFromPerformanceTeams(MEMBER_ID, List.of(7L));
+
+        verify(teamMemberRepository, never()).findActiveByUserIdAndTeamIdInForUpdate(any(), any());
+    }
+
+    @Test
     @DisplayName("회원 탈퇴 나가기: 속한 활동 팀(공연 팀·독립 팀)의 내 팀원 행이 모두 LEFT가 된다")
     void leaveAllTeams_marksAllMembershipsLeft() {
         TeamMember inIndependent = member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE);

@@ -103,17 +103,21 @@ public class GroupService {
      *
      * <p>모임원 상태를 먼저 바꾼다 — changeStatus의 모임 행 잠금이 트랜잭션의 첫 조회여야 하고, 권한 없는 요청이 팀 쪽
      * 오류를 먼저 보지 않게 하려는 것이다. 잠그는 순서(모임 → 팀)는 회원 탈퇴({@code leaveAllGroups → leaveAllTeams})와 같다.
-     * 대상이 공연 팀 팀장이면 {@code LEADER_MUST_DELEGATE_FIRST}로 모임원 상태 변경까지 롤백된다. 강퇴여도 기본 문구 그대로다 —
-     * 메시지를 직접 지정하는 것은 상황 값을 담을 때만이라(api-conventions.md §3) 프론트가 {@code code}로 분기해 화면 문구를 정한다(PR #144 리뷰).
-     * 강퇴로 빠져도 팀원 상태는 {@code LEFT}다(팀 강퇴의 {@code REMOVED}가 아니다).
+     * 본인 탈퇴인데 공연 팀 팀장이면 {@code LEADER_MUST_DELEGATE_FIRST}로 모임원 상태 변경까지 롤백된다(기본 문구 그대로 —
+     * 메시지를 직접 지정하는 것은 상황 값을 담을 때만이라 api-conventions.md §3, 프론트가 {@code code}로 분기한다).
+     * 강퇴는 팀장이어도 막지 않는다 — 팀장을 뺀 가장 오래된 팀원에게 팀장을 넘기고, 넘길 팀원이 없으면 그 팀을 해체한다(#152).
+     * 어느 쪽이든 팀원 상태는 {@code LEFT}다(팀 강퇴의 {@code REMOVED}가 아니다).
      * 강퇴면 대상에게 알림을 보낸다 — 트랜잭션 안에서 발행해 롤백되면 알림도 남지 않는다. 본인 탈퇴는 알리지 않는다.
      * 잠금 범위와 남는 대기 신청·초대는 architecture.md §7(알려진 한계).
      */
     @Transactional
     public void changeMemberStatus(Long userId, Long groupId, Long targetUserId) {
         groupMemberService.changeStatus(userId, groupId, targetUserId);
-        teamService.leavePerformanceTeams(targetUserId, performanceService.findIdsByGroupId(groupId));
-        if (!userId.equals(targetUserId)) {
+        List<Long> performanceIds = performanceService.findIdsByGroupId(groupId);
+        if (userId.equals(targetUserId)) {
+            teamService.leavePerformanceTeams(targetUserId, performanceIds);
+        } else {
+            teamService.removeFromPerformanceTeams(targetUserId, performanceIds);
             String groupName = getGroupOrThrow(groupId).getName();
             eventPublisher.publishEvent(new NotificationEvent(targetUserId, NotificationType.GROUP_MEMBER_REMOVED,
                     groupName + "에서 내보내졌습니다.", NotificationTargetType.GROUP, groupId));

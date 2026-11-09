@@ -49,6 +49,23 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     List<TeamMember> findAllByUserIdAndTeamIdInAndStatusOrderByIdAsc(Long userId, Collection<Long> teamIds,
             MemberStatus status);
 
+    /**
+     * 팀의 ACTIVE 팀원을 잠그고 합류 순(오래된 순)으로 읽는다(팀장이 강퇴될 때 다음 팀장을 고르는 용도).
+     * 잠금 읽기라 트랜잭션 시작 이후의 낡은 화면이 아니라 가장 최근에 커밋된 값을 읽는다.
+     */
+    default List<TeamMember> findActiveMembersForUpdate(Long teamId) {
+        return findByTeamIdAndStatusOrderByJoinedAtAscIdAscForUpdate(teamId, MemberStatus.ACTIVE);
+    }
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT m FROM TeamMember m
+            WHERE m.teamId = :teamId AND m.status = :status
+            ORDER BY m.joinedAt ASC, m.id ASC
+            """)
+    List<TeamMember> findByTeamIdAndStatusOrderByJoinedAtAscIdAscForUpdate(@Param("teamId") Long teamId,
+            @Param("status") MemberStatus status);
+
     /** 팀 목록의 memberCount. 팀마다 count를 날리지 않고 GROUP BY 한 번으로 모은다. */
     default List<TeamMemberCount> countActiveByTeamIds(Collection<Long> teamIds) {
         return countByTeamIds(teamIds, MemberStatus.ACTIVE);
