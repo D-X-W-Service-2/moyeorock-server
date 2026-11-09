@@ -355,6 +355,40 @@
 
 ---
 
+## §12. 연습 (practice) — 4팀
+
+개인 연습 녹음을 올려 AI 분석을 받는다(2026-11-09 신규, 이슈 #155 · Notion `Backend (1) > API 명세서 > API 초안` 도메인 "연습" 2026-11-09 대조). 녹음과 분석 결과는 **올린 본인만** 본다 — 남의 녹음은 없는 녹음과 같게 404다.
+
+| 메서드 | 경로 | 기능 | Request | Response |
+|---|---|---|---|---|
+| POST | `/v1/practice-recordings` | 분석&nbsp;요청 (**202**) | `PracticeRecordingCreateRequest` | `PracticeRecordingSummaryResponse` |
+| GET | `/v1/users/me/practice-recordings?page=&size=` | 내&nbsp;연습&nbsp;녹음&nbsp;목록 | | `PageResponse<PracticeRecordingSummaryResponse>` |
+| GET | `/v1/practice-recordings/{id}` | 상세&nbsp;(분석&nbsp;결과) | | `PracticeRecordingDetailResponse` |
+| POST | `/v1/practice-recordings/{id}/retry` | 분석&nbsp;다시&nbsp;요청 (**202**) | | `PracticeRecordingSummaryResponse` |
+| DELETE | `/v1/practice-recordings/{id}` | 삭제 | | — (`data: null`) |
+
+**흐름** — ① 업로드 URL 발급(`domain: PRACTICE_AUDIO`) → 파일 PUT → ② 받은 `fileUrl`을 `audioUrl`로 분석 요청 → 202 `SUBMITTED` → ③ 서버가 AI에 보내면 `ANALYZING`, 끝나면 `DONE`(실패 `FAILED`) → ④ 프론트는 상세를 5초쯤 간격으로 조회하다 `DONE`·`FAILED`면 멈춘다. 진행률은 없다.
+
+- **분석은 비동기다.** 요청이 커밋된 뒤 서버 안의 전용 실행기가 하나씩 처리한다 — 서버 전체에서 한 번에 하나, **한 사람당 진행 중(`SUBMITTED`·`ANALYZING`) 분석도 하나**다(다시 요청 포함)
+- **AI 서버가 아직 없어 가짜 AI(고정 결과)로 동작한다**(`practice.ai.type=fake`). 결과 내용 앞에 "(테스트)"가 붙는다. AI 응답 형식이 정해지면 실제 호출로 바뀐다
+- **`audioUrl`(상세)은 조회할 때마다 새로 만드는 임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 업로드 때 받은 `fileUrl`로는 재생되지 않는다. 폴링 중에도 매번 달라지므로 재생 중인 `<audio>`의 `src`를 바꾸지 말고, 재생이 403으로 끊길 때만 다시 받는다
+- **서버가 재시작(배포)하면 대기·분석 중이던 건은 `FAILED`**("서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")가 된다 — 다시 요청하면 된다
+- **분석 중에도 지울 수 있다.** 나중에 도착한 결과는 버린다. 녹음 파일(S3)은 지워지지 않는다 — 필요하면 `DELETE /v1/files/{fileId}`
+- 다시 요청은 `FAILED`만 된다. 실패 사유는 비우고, `createdAt`(요청 시각)은 처음 그대로다
+
+**에러**
+
+| 코드 | 상태 | 상황 |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | 제목 빈칸·100자 초과, `audioUrl` 빈칸 / `audioUrl`이 내가 올린 `PRACTICE_AUDIO` 파일이 아님·업로드가 끝나지 않음·100MB 초과 — `message`가 `"audioUrl: …"`로 사유를 준다 |
+| `PRACTICE_RECORDING_NOT_FOUND` | 404 | 없는 녹음이거나 남의 녹음 (상세·다시 요청·삭제) |
+| `INVALID_STATE` | 409 | 다시 요청인데 실패한 녹음이 아님 |
+| `PRACTICE_ANALYSIS_IN_PROGRESS` | 409 | 진행 중인 내 녹음이 이미 있음 (분석 요청·다시 요청) |
+
+> 노션 분석 요청 400 칸에는 "업로드가 끝나지 않음·100MB 초과"가 아직 없다 — S3는 업로드(PUT) 때 크기를 막지 못해 분석 요청 때 서버가 확인하기로 했다(이슈 #154·#155). 노션 반영 필요.
+
+---
+
 ## 알려진 공백 · 검토 필요
 
 | # | 항목 | 내용 |
