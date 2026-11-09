@@ -13,7 +13,10 @@ import java.io.InputStream;
 import java.io.PushbackInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
+import java.time.Duration;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -112,6 +115,36 @@ public class FileService {
     public FileContent readLocalFile(String fileKey) {
         UploadedFile file = getByFileKeyOrThrow(fileKey);
         return new FileContent(openOrThrow(fileKey), file.getContentType());
+    }
+
+    /**
+     * 다른 도메인이 요청으로 받은 {@code fileUrl}이 이 사용자가 {@code domain}으로 올린 파일인지 확인하고 스토리지
+     * key를 돌려준다. 비공개 파일(연습 녹음)은 URL이 아니라 이 key를 저장해 두고, 읽을 때마다
+     * {@link #issueReadUrl}로 임시 URL을 만든다.
+     *
+     * <p>이 저장소가 만든 URL이 아니거나, 발급 이력(files 행)이 없거나, 업로더·도메인이 다르면 빈 값이다 —
+     * 어느 경우인지는 구분해 알려주지 않는다(남의 파일이 있는지 드러내지 않으려고). 쿼리 1번이라 트랜잭션은 열지 않는다.
+     */
+    public Optional<String> findOwnedFileKey(String fileUrl, UploadDomain domain, Long userId) {
+        return fileStorageClient.toFileKey(fileUrl)
+                .flatMap(uploadedFileRepository::findByFileKey)
+                .filter(file -> file.isUploadedBy(userId) && file.getDomain() == domain)
+                .map(UploadedFile::getFileKey);
+    }
+
+    /** 비공개 파일을 읽을 임시 URL. 권한 확인은 부르는 도메인이 key를 저장할 때(findOwnedFileKey) 끝낸 것으로 본다. */
+    public String issueReadUrl(String fileKey, Duration expiry) {
+        return fileStorageClient.issueReadUrl(fileKey, expiry);
+    }
+
+    /** 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값. */
+    public OptionalLong findSize(String fileKey) {
+        return fileStorageClient.size(fileKey);
+    }
+
+    /** 도메인별 업로드 크기 한도. S3는 업로드 때 막지 못해 부르는 쪽이 findSize와 비교한다. */
+    public long maxUploadBytes(UploadDomain domain) {
+        return ruleOf(domain).maxBytes();
     }
 
     @Transactional
