@@ -271,6 +271,108 @@ class FileServiceTest {
         verify(fileStorageClient, never()).write(anyString(), any());
     }
 
+    @Test
+    @DisplayName("연습 녹음은 mp3·m4a·wav를 받고 practice/ 폴더에 저장할 key를 만든다")
+    void issuePresignedUrl_practiceAudio_usesPracticeFolder() {
+        when(fileStorageClient.issuePresignedUrl(any(), any())).thenReturn(
+                new UploadUrl("https://example.com/upload", "https://example.com/file", LocalDateTime.now()));
+        when(uploadedFileRepository.save(any())).thenAnswer(invocation -> withId(invocation.getArgument(0), 10L));
+
+        fileService.issuePresignedUrl(UploadDomain.PRACTICE_AUDIO, "a.mp3", "audio/mpeg", UPLOADER_ID);
+        fileService.issuePresignedUrl(UploadDomain.PRACTICE_AUDIO, "b.M4A", "audio/x-m4a", UPLOADER_ID);
+        fileService.issuePresignedUrl(UploadDomain.PRACTICE_AUDIO, "c.wav", "audio/wav", UPLOADER_ID);
+
+        var keyCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(fileStorageClient, times(3)).issuePresignedUrl(keyCaptor.capture(), any());
+        assertThat(keyCaptor.getAllValues())
+                .allMatch(key -> key.startsWith("practice/"))
+                .extracting(key -> key.substring(key.lastIndexOf('.') + 1))
+                .containsExactly("mp3", "m4a", "wav");
+    }
+
+    @Test
+    @DisplayName("도메인과 형식이 안 맞으면(녹음에 이미지, 이미지에 녹음) UNSUPPORTED_FILE_TYPE")
+    void issuePresignedUrl_throws_whenTypeDoesNotMatchDomain() {
+        assertUnsupportedFileType(UploadDomain.PRACTICE_AUDIO, "cover.png", "image/png");
+        assertUnsupportedFileType(UploadDomain.PROFILE_IMAGE, "song.mp3", "audio/mpeg");
+        // 확장자는 맞는데 contentType이 다른 도메인 것이면 막는다 — 로컬 서빙이 contentType을 그대로 내보낸다
+        assertUnsupportedFileType(UploadDomain.PRACTICE_AUDIO, "song.mp3", "image/png");
+        assertUnsupportedFileType(UploadDomain.GROUP_COVER, "cover.png", "audio/mpeg");
+        verifyNoInteractions(fileStorageClient);
+    }
+
+    @Test
+    @DisplayName("연습 녹음은 100MB까지 받는다")
+    void receiveUpload_practiceAudio_acceptsUpTo100MB() {
+        stubPracticeAudioUpload();
+
+        fileService.receiveUpload("practice/key.m4a", "audio/mp4", zeros(100L * 1024 * 1024), UPLOADER_ID);
+
+        verify(fileStorageClient).write(org.mockito.ArgumentMatchers.eq("practice/key.m4a"), any());
+    }
+
+    @Test
+    @DisplayName("연습 녹음이 100MB를 넘으면 FILE_SIZE_EXCEEDED")
+    void receiveUpload_practiceAudio_throws_whenOver100MB() {
+        stubPracticeAudioUpload();
+
+        assertThatThrownBy(() -> fileService.receiveUpload("practice/key.m4a", "audio/mp4",
+                zeros(100L * 1024 * 1024 + 1), UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("내가 그 도메인으로 올린 파일의 fileUrl이면 스토리지 key를 돌려준다")
+    void findOwnedFileKey_returnsKey_forOwnFileInDomain() {
+        when(fileStorageClient.toFileKey("https://files/practice/key.m4a")).thenReturn(Optional.of("practice/key.m4a"));
+        when(uploadedFileRepository.findByFileKey("practice/key.m4a")).thenReturn(Optional.of(
+                UploadedFile.create("practice/key.m4a", UploadDomain.PRACTICE_AUDIO, "a.m4a", "audio/mp4", UPLOADER_ID)));
+
+        assertThat(fileService.findOwnedFileKey("https://files/practice/key.m4a", UploadDomain.PRACTICE_AUDIO,
+                UPLOADER_ID)).contains("practice/key.m4a");
+    }
+
+    @Test
+    @DisplayName("남이 올렸거나 다른 도메인 파일이면 빈 값이다")
+    void findOwnedFileKey_returnsEmpty_forOthersFileOrOtherDomain() {
+        when(fileStorageClient.toFileKey("https://files/practice/key.m4a")).thenReturn(Optional.of("practice/key.m4a"));
+        when(uploadedFileRepository.findByFileKey("practice/key.m4a")).thenReturn(Optional.of(
+                UploadedFile.create("practice/key.m4a", UploadDomain.PRACTICE_AUDIO, "a.m4a", "audio/mp4", UPLOADER_ID)));
+        when(fileStorageClient.toFileKey("https://files/profile/me.png")).thenReturn(Optional.of("profile/me.png"));
+        when(uploadedFileRepository.findByFileKey("profile/me.png")).thenReturn(Optional.of(
+                UploadedFile.create("profile/me.png", UploadDomain.PROFILE_IMAGE, "me.png", "image/png", UPLOADER_ID)));
+
+        assertThat(fileService.findOwnedFileKey("https://files/practice/key.m4a", UploadDomain.PRACTICE_AUDIO,
+                OTHER_USER_ID)).isEmpty();
+        assertThat(fileService.findOwnedFileKey("https://files/profile/me.png", UploadDomain.PRACTICE_AUDIO,
+                UPLOADER_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("이 저장소의 URL이 아니거나 발급 이력이 없으면 빈 값이다")
+    void findOwnedFileKey_returnsEmpty_forForeignUrlOrUnknownKey() {
+        when(fileStorageClient.toFileKey("https://evil.example.com/a.m4a")).thenReturn(Optional.empty());
+        when(fileStorageClient.toFileKey("https://files/practice/none.m4a")).thenReturn(Optional.of("practice/none.m4a"));
+        when(uploadedFileRepository.findByFileKey("practice/none.m4a")).thenReturn(Optional.empty());
+
+        assertThat(fileService.findOwnedFileKey("https://evil.example.com/a.m4a", UploadDomain.PRACTICE_AUDIO,
+                UPLOADER_ID)).isEmpty();
+        assertThat(fileService.findOwnedFileKey("https://files/practice/none.m4a", UploadDomain.PRACTICE_AUDIO,
+                UPLOADER_ID)).isEmpty();
+        verify(uploadedFileRepository, never()).findByFileKey("https://evil.example.com/a.m4a");
+    }
+
+    @Test
+    @DisplayName("업로드 크기 한도는 이미지 10MB, 연습 녹음 100MB다")
+    void maxUploadBytes_perDomain() {
+        assertThat(fileService.maxUploadBytes(UploadDomain.PROFILE_IMAGE)).isEqualTo(10L * 1024 * 1024);
+        assertThat(fileService.maxUploadBytes(UploadDomain.GROUP_COVER)).isEqualTo(10L * 1024 * 1024);
+        assertThat(fileService.maxUploadBytes(UploadDomain.PERFORMANCE_POSTER)).isEqualTo(10L * 1024 * 1024);
+        assertThat(fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO)).isEqualTo(100L * 1024 * 1024);
+    }
+
     // 삭제 성공 경로는 스토리지 삭제가 커밋 이후(afterCommit)에 일어나서 트랜잭션 없는 단위 테스트로는
     // 검증할 수 없다 — FileServiceDeleteTest(실제 트랜잭션)에서 커밋·롤백 양쪽을 본다.
 
@@ -326,6 +428,61 @@ class FileServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
         verify(fileStorageClient, never()).write(anyString(), any());
+    }
+
+    private void assertUnsupportedFileType(UploadDomain domain, String fileName, String contentType) {
+        assertThatThrownBy(() -> fileService.issuePresignedUrl(domain, fileName, contentType, UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.UNSUPPORTED_FILE_TYPE);
+    }
+
+    // 연습 녹음 업로드 수신 준비. write()는 LocalFileStorageClient처럼 스트림을 끝까지 소비해야 크기 한도가 걸린다 —
+    // 100MB를 메모리에 올리지 않도록 작은 버퍼로 읽고 버린다.
+    private void stubPracticeAudioUpload() {
+        UploadedFile file = issuedAt(UploadedFile.create("practice/key.m4a", UploadDomain.PRACTICE_AUDIO, "a.m4a",
+                "audio/mp4", UPLOADER_ID), LocalDateTime.now());
+        when(uploadedFileRepository.findByFileKey("practice/key.m4a")).thenReturn(Optional.of(file));
+        when(fileStorageClient.uploadUrlExpiry()).thenReturn(EXPIRY);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            InputStream stream = invocation.getArgument(1);
+            byte[] buffer = new byte[64 * 1024];
+            try {
+                while (stream.read(buffer) != -1) {
+                    // 버린다
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            return null;
+        }).when(fileStorageClient).write(anyString(), any());
+    }
+
+    // 지정한 바이트 수만큼 0을 내는 스트림. 큰 파일 업로드를 메모리 할당 없이 흉내 낸다.
+    private static InputStream zeros(long size) {
+        return new InputStream() {
+            private long remaining = size;
+
+            @Override
+            public int read() {
+                if (remaining <= 0) {
+                    return -1;
+                }
+                remaining--;
+                return 0;
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) {
+                if (remaining <= 0) {
+                    return -1;
+                }
+                int n = (int) Math.min(len, remaining);
+                java.util.Arrays.fill(b, off, off + n, (byte) 0);
+                remaining -= n;
+                return n;
+            }
+        };
     }
 
     // UploadedFile.id는 GeneratedValue라 create()로는 못 채운다 — 리플렉션으로 저장 후 채워지는 것처럼 흉내낸다.
