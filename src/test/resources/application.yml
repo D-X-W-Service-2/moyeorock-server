@@ -51,6 +51,15 @@ file:
       base-url: http://localhost:8080
       upload-url-expiry-seconds: 600
 
+# AI 곡 동기화 — 테스트에서는 스케줄을 끄고 AI 서버 주소도 비워 둔다(이슈 #147)
+ai:
+  server:
+    base-url: ""
+    api-key: ""
+  song-sync:
+    enabled: false
+    cron: "0 0 4 * * *"
+
 # main application.yml의 cors.allowed-origins 기본값과 같게 둔다(CorsConfigTest가 이 목록으로 검증, #123).
 cors:
   allowed-origins: "http://localhost:*,https://moyeorock.kro.kr,https://moyeorak.pages.dev,https://moyeorock-client-test-alpha.vercel.app"
