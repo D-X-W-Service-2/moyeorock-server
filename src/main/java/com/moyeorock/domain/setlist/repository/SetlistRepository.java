@@ -13,8 +13,9 @@ public interface SetlistRepository extends JpaRepository<Setlist, Long> {
     // 확정 전 셋리스트 — 팀별(팀 id 순), 팀 안에서는 넘긴 순
     List<Setlist> findAllByPerformanceIdOrderByTeamIdAscIdAsc(Long performanceId);
 
-    // 확정 후 셋리스트 — 모임장이 정한 순서
-    List<Setlist> findAllByPerformanceIdOrderBySortOrderAscIdAsc(Long performanceId);
+    // 확정 후 셋리스트 — 모임장이 정한 순서. 순서가 매겨진 행만 준다: 확정 여부를 읽은 뒤 이 조회 전에 확정 해제·다시 넘기기가
+    // 끼어들면 sort_order가 NULL인 행이 생기는데, 그 행이 확정곡처럼(MySQL은 NULL을 맨 앞에 정렬) 섞이지 않게(PR #146 리뷰)
+    List<Setlist> findAllByPerformanceIdAndSortOrderIsNotNullOrderBySortOrderAscIdAsc(Long performanceId);
 
     // 확정·확정 해제 — 순서와 상관없이 그 공연의 행 전부
     List<Setlist> findAllByPerformanceId(Long performanceId);

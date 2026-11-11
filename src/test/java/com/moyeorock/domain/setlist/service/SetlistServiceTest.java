@@ -178,7 +178,8 @@ class SetlistServiceTest {
     void getSetlist_confirmed_usesSortOrder() {
         Setlist confirmed = Setlist.create(PERFORMANCE_ID, TEAM_ID, 88L);
         ReflectionTestUtils.setField(confirmed, "sortOrder", 1);
-        when(setlistRepository.findAllByPerformanceIdOrderBySortOrderAscIdAsc(PERFORMANCE_ID)).thenReturn(List.of(confirmed));
+        when(setlistRepository.findAllByPerformanceIdAndSortOrderIsNotNullOrderBySortOrderAscIdAsc(PERFORMANCE_ID))
+                .thenReturn(List.of(confirmed));
         when(teamMemberService.getNames(List.of(TEAM_ID))).thenReturn(Map.of(TEAM_ID, "무명밴드"));
         when(songService.getSummaries(List.of(88L))).thenReturn(Map.of(88L, BOHEMIAN));
 
