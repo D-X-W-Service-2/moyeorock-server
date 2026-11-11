@@ -38,7 +38,7 @@ public class TeamMemberController {
             팀에 필요한 세션(악기)에 맞는 팀원 후보를 AI 서버로 추천받는다.
 
             **호출 조건**
-            - 팀장만 호출할 수 있다. 해체된 팀은 호출할 수 없다.
+            - 팀장만 호출할 수 있다. **독립 팀에서만** 쓸 수 있고, 공연 팀(공연에 속한 팀)과 해체된 팀은 호출할 수 없다(공연 팀은 모임 안에서 팀원을 정한다).
             - `instrument`(필수)는 찾는 세션(악기)이다.
 
             **동작**
@@ -52,7 +52,7 @@ public class TeamMemberController {
             - 401 `UNAUTHORIZED`: 인증 필요
             - 403 `NOT_TEAM_LEADER`: 팀장이 아님
             - 404 `TEAM_NOT_FOUND`: 없는 팀
-            - 409 `INVALID_STATE`: 해체된 팀
+            - 409 `INVALID_STATE`: 해체된 팀이거나 공연 팀
             - 503 `RECOMMENDATION_UNAVAILABLE`: AI 서버 호출 실패·시간 초과·주소 미설정
 
             **백엔드 → AI 서버 호출 형식** (AI 팀 참고 · 잠정, 바뀌면 이 설명과 `api-spec.md` §12를 함께 고친다)
