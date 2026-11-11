@@ -1,5 +1,6 @@
 package com.moyeorock.global.file.service;
 
+import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.file.client.FileStorageClient;
@@ -147,15 +148,24 @@ public class FileService {
         return ruleOf(domain).maxBytes();
     }
 
+    /**
+     * 업로드 URL 발급 때 받은 {@code fileUrl}로 파일을 지운다(이슈 #164). 프로필·커버·포스터는 fileUrl만 저장하고 조회 응답에도
+     * URL만 주므로, fileId로 지우게 하면 저장한 뒤에는 프론트가 삭제를 부를 수 없었다.
+     *
+     * <p>이 저장소가 만든 URL이 아니거나 발급 이력(files 행)이 없으면 FILE_NOT_FOUND, 업로더가 아니면 NO_PERMISSION이다.
+     * 연습 녹음 상세의 {@code audioUrl}은 조회 때마다 만드는 임시 URL이라 fileUrl이 아니다 — FILE_NOT_FOUND가 난다.
+     */
     @Transactional
-    public void delete(Long fileId, Long userId) {
-        UploadedFile file = uploadedFileRepository.findById(fileId)
+    public DeleteResponse delete(String fileUrl, Long userId) {
+        UploadedFile file = fileStorageClient.toFileKey(fileUrl)
+                .flatMap(uploadedFileRepository::findByFileKey)
                 .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
         if (!file.isUploadedBy(userId)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION);
         }
         uploadedFileRepository.delete(file);
         deleteFromStorageAfterCommit(file.getFileKey());
+        return DeleteResponse.of(file.getId());
     }
 
     // repository.delete()는 삭제를 예약만 하고 실제 DELETE는 커밋 때 나간다 — 그 전에 스토리지(비가역)를
