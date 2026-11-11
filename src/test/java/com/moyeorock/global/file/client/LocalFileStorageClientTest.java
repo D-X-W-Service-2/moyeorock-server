@@ -108,6 +108,26 @@ class LocalFileStorageClientTest {
         assertThat(Files.exists(tempDir.resolveSibling("outside.png"))).isFalse();
     }
 
+    @Test
+    @DisplayName("발급 때 준 fileUrl을 fileKey로 되돌린다(파일 삭제가 fileUrl로 받는다, 이슈 #164)")
+    void toFileKey_returnsKey_forIssuedFileUrl() {
+        LocalFileStorageClient client = client(tempDir);
+        String fileUrl = client.issuePresignedUrl("profile/abc.png", "image/png").fileUrl();
+
+        assertThat(client.toFileKey(fileUrl)).contains("profile/abc.png");
+    }
+
+    @Test
+    @DisplayName("이 서버의 로컬 서빙 경로가 아닌 URL은 fileKey로 바꾸지 않는다")
+    void toFileKey_returnsEmpty_forForeignUrl() {
+        LocalFileStorageClient client = client(tempDir);
+
+        assertThat(client.toFileKey("https://evil.example.com/v1/files/local/profile/abc.png")).isEmpty();
+        assertThat(client.toFileKey("http://localhost:8080/v1/files/local-upload/profile/abc.png")).isEmpty();
+        assertThat(client.toFileKey("http://localhost:8080/v1/files/local/")).isEmpty();
+        assertThat(client.toFileKey(null)).isEmpty();
+    }
+
     // 용량 초과·연결 끊김처럼 일부를 흘려보낸 뒤 예외가 나는 업로드 스트림
     private static InputStream failingAfter(int bytes) {
         return new FilterInputStream(new ByteArrayInputStream(new byte[bytes * 2])) {

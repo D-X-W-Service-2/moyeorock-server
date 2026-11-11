@@ -4,8 +4,8 @@ import com.moyeorock.global.file.client.UploadUrl;
 import com.moyeorock.global.file.entity.UploadedFile;
 import java.time.LocalDateTime;
 
-// dto-spec.md §10 예시엔 fileId가 없지만, DELETE /v1/files/{fileId}가 이 값을 요구하므로
-// 넣지 않으면 클라이언트가 삭제를 호출할 방법이 없다 — 예시가 갱신 안 된 것으로 보고 추가했다.
+// fileId는 처음에 DELETE /v1/files/{fileId}를 부르려고 넣었다. 삭제가 fileUrl 기준으로 바뀌어(이슈 #164) 지금은
+// 삭제에 쓰지 않지만, 이미 이 값을 읽는 프론트 코드가 깨지지 않게 남겨 둔다. 삭제 응답의 id와 같은 값이다.
 public record PresignedUrlResponse(Long fileId, String uploadUrl, String fileUrl, LocalDateTime expiresAt) {
 
     public static PresignedUrlResponse of(UploadedFile file, UploadUrl uploadUrl) {
