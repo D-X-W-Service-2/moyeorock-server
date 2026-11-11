@@ -3,6 +3,7 @@ package com.moyeorock.domain.user.service;
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.join.service.JoinRequestService;
+import com.moyeorock.domain.practice.service.PracticeRecordingService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserWithdrawResponse;
@@ -28,6 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>대기 중인 가입 신청·초대는 사용자 행을 잠근 직후 닫고(3팀 cancelPendingOf), 직책 확인을 통과하면 모임원 행(4팀 leaveAllGroups, #112)과 팀원 행(2팀 leaveAllTeams, #97)을 전부 LEFT로 바꾼다. 그대로 두면 탈퇴 회원이
  * memberCount에는 세어지는데 목록에서는 빠져 둘이 어긋난다.
+ *
+ * <p>마지막으로 개인 연습 녹음을 전부 지운다(4팀 PracticeRecordingService.deleteAllOf, PR #157 리뷰) — 본인만 보는 데이터라
+ * 탈퇴 뒤에 남길 이유가 없고, 탈퇴하면 녹음 파일을 지울 길도 없어진다. PracticeRecordingService는 user 도메인을 주입받지 않아 순환이 없다.
  */
 @Service
 @RequiredArgsConstructor
@@ -37,6 +41,7 @@ public class UserWithdrawService {
     private final TeamService teamService;
     private final GroupMemberService groupMemberService;
     private final JoinRequestService joinRequestService;
+    private final PracticeRecordingService practiceRecordingService;
 
     /**
      * 사용자 행을 잠근 뒤 직책을 확인한다(잠금 없이 읽으면 동시 요청의 탈퇴가 커밋된 뒤 이 트랜잭션의 flush가 되돌린다, PR #57 리뷰).
@@ -60,6 +65,8 @@ public class UserWithdrawService {
         }
         groupMemberService.leaveAllGroups(userId);
         teamService.leaveAllTeams(userId);
+        // 직책 확인과 모임·팀 정리를 통과한 뒤에 지운다. 녹음 파일(저장소 객체)은 커밋 뒤에 지우므로 그 전에 막히면 아무것도 지워지지 않는다.
+        practiceRecordingService.deleteAllOf(userId);
         user.withdraw();
         return new UserWithdrawResponse(user.getWithdrawnAt());
     }

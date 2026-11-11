@@ -5,6 +5,7 @@ import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +29,11 @@ public interface PracticeRecordingRepository extends JpaRepository<PracticeRecor
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM PracticeRecording r WHERE r.id = :id")
     Optional<PracticeRecording> findByIdForUpdate(@Param("id") Long id);
+
+    // 회원 탈퇴 때 이 사람 녹음 전부를 잠금 조회한다 — findByIdForUpdate와 같은 이유로, 겹친 분석 완료가 탈퇴 커밋 뒤 빈 결과를 보고 버린다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM PracticeRecording r WHERE r.userId = :userId")
+    List<PracticeRecording> findAllByUserIdForUpdate(@Param("userId") Long userId);
 
     /**
      * 부팅 전에 마지막으로 바뀐 진행 중 녹음을 실패로 바꾼다(서버 재시작 정리). 웹 서버가 부팅 정리보다 먼저 요청을 받기 시작해서,

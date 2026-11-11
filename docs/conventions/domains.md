@@ -108,6 +108,7 @@
 | 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#96). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |
 | 회원 탈퇴 시 팀에서 빼기 | 1팀 `UserWithdrawService` → 2팀 `TeamService.leaveAllTeams` | 속한 활동 중인 모든 팀의 팀원 행을 `LEFT`로 뺀다. 팀장 차단(`findLedTeams`)을 통과한 뒤에 부른다(#96, #115 댓글) |
 | 회원 탈퇴 차단 | 1팀 `UserWithdrawService` → 2팀 `TeamService` | `TeamService.findLedTeams` — 내가 팀장인 활동 중인 팀 요약. 비어 있어야 탈퇴할 수 있다 |
+| 회원 탈퇴 시 연습 녹음 지우기 | 1팀 `UserWithdrawService` → 4팀 `PracticeRecordingService` | `deleteAllOf` — 탈퇴자의 연습 녹음(분석 중 포함)·피드백을 hard delete하고 녹음 파일도 `files` 행과 저장소 객체까지 지운다(저장소는 커밋 뒤). 직책 확인과 모임·팀 LEFT 처리를 통과한 맨 뒤에서 부른다. `PracticeRecordingService`는 user 도메인을 주입받지 않아 순환이 없다(PR #157 리뷰, 2026-11-11) |
 | 회원 탈퇴 시 신청·초대 닫기 | 1팀 `UserWithdrawService` → 3팀 `JoinRequestService` | `cancelPendingOf` — 탈퇴자의 대기 중 신청은 `CANCELED`, 받은 초대는 `REJECTED`로 닫는다(알림 없음). 차단 통과 뒤 팀·모임 LEFT 처리 앞에서 부른다(이슈 #136) |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) · `getSummariesIncludingDisbanded`(해체된 팀 포함 요약) · `findMyPerformanceTeams`(내 공연 팀, 해체된 팀 포함) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 연결 완료(2026-11-04, 이슈 #130, `docs/conventions/architecture.md` §6) |
@@ -120,7 +121,7 @@
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
-| 연습 녹음 파일 | 4팀 practice → 1팀 `FileService` | `findOwnedFileKey`(받은 `fileUrl`이 내가 올린 `PRACTICE_AUDIO` 파일인지 확인하고 key를 받는다) · `findSize`·`maxUploadBytes`(업로드됐는지·100MB 이하인지 — S3는 업로드 때 크기를 막지 못한다) · `issueReadUrl`(재생·AI 전달용 임시 URL). 녹음은 비공개라 URL이 아니라 key를 저장한다(이슈 #154·#155) |
+| 연습 녹음 파일 | 4팀 practice → 1팀 `FileService` | `findOwnedFileKey`(받은 `fileUrl`이 내가 올린 `PRACTICE_AUDIO` 파일인지 확인하고 key를 받는다) · `findSize`·`maxUploadBytes`(업로드됐는지·100MB 이하인지 — S3는 업로드 때 크기를 막지 못한다) · `issueReadUrl`(재생·AI 전달용 임시 URL) · `deleteOwnedFiles`(회원 탈퇴 때 녹음 파일을 key로 지운다 — 행은 바로, 저장소는 커밋 뒤). 녹음은 비공개라 URL이 아니라 key를 저장한다(이슈 #154·#155) |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.
 

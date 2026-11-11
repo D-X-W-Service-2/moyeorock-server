@@ -14,6 +14,8 @@ import java.io.PushbackInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -145,6 +147,23 @@ public class FileService {
     /** 도메인별 업로드 크기 한도. S3는 업로드 때 막지 못해 부르는 쪽이 findSize와 비교한다. */
     public long maxUploadBytes(UploadDomain domain) {
         return ruleOf(domain).maxBytes();
+    }
+
+    /**
+     * 다른 도메인이 자기 데이터와 함께 지우는 파일을 key로 지운다(연습 녹음 — 회원 탈퇴, PR #157 리뷰). 부르는 쪽 트랜잭션에
+     * 참여해 files 행을 지우고, 저장소 객체는 커밋된 뒤에 지운다(delete와 같은 순서 — 롤백되면 파일이 남는다).
+     * 업로더가 다른 key와 이미 지워진 key는 건너뛴다(사용자가 파일 삭제 API로 먼저 지웠을 수 있다). 같은 key가 여러 번 와도 한 번만 지운다.
+     */
+    @Transactional
+    public void deleteOwnedFiles(Long uploaderId, Collection<String> fileKeys) {
+        if (fileKeys.isEmpty()) {
+            return;
+        }
+        List<UploadedFile> files = uploadedFileRepository.findAllByFileKeyIn(Set.copyOf(fileKeys)).stream()
+                .filter(file -> file.isUploadedBy(uploaderId))
+                .toList();
+        uploadedFileRepository.deleteAll(files);
+        files.forEach(file -> deleteFromStorageAfterCommit(file.getFileKey()));
     }
 
     @Transactional

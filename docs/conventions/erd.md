@@ -416,7 +416,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 - **인덱스** `(user_id, created_at)` ← 내 연습 녹음 목록(최근 요청 순)·진행 중 확인
 - **유니크** `(active_user_id)` ← 한 사람당 진행 중 분석 1개. 동시 요청까지 DB가 막는다(`flyway-migration.md` §3-5 패턴)
 
-> 행은 삭제 API에서 hard delete한다(`practice_feedbacks`도 함께, `architecture.md` §6). 서버가 재시작하면 부팅 전에 바뀐 진행 중 행을 FAILED로 정리한다.
+> 행은 삭제 API에서 hard delete한다(`practice_feedbacks`도 함께, `architecture.md` §6). 회원 탈퇴 때도 그 사람의 행 전부를 지우고, 이때는 녹음 파일(`files` 행·S3 객체)까지 지운다(PR #157 리뷰, 2026-11-11). 서버가 재시작하면 부팅 전에 바뀐 진행 중 행을 FAILED로 정리한다.
 
 ### 20. `practice_feedbacks`
 

@@ -144,6 +144,24 @@ public class PracticeRecordingService {
     }
 
     /**
+     * 회원 탈퇴 때 이 사람의 연습 녹음을 전부 지운다(1팀 UserWithdrawService가 직책 확인을 통과한 뒤 부른다, PR #157 리뷰).
+     * 부르는 쪽 트랜잭션에 참여한다 — 탈퇴가 롤백되면 같이 되돌아간다. 녹음·피드백은 hard delete하고, 녹음 파일도 files 행과
+     * 저장소 객체까지 지운다(저장소는 커밋 뒤). 단건 삭제(API)와 달리 파일까지 지우는 이유: 탈퇴한 사람은 파일 삭제 API를 부를 수
+     * 없어 파일이 영영 남는다. 분석 중인 녹음도 지운다 — 녹음 행을 잠금 조회로 잡아, 겹친 분석 완료는 탈퇴가 커밋된 뒤 빈 결과를 보고
+     * 버린다(delete와 같음). 대기열에 남은 건은 분석을 시작할 때 행이 없어 건너뛴다.
+     */
+    @Transactional
+    public void deleteAllOf(Long userId) {
+        List<PracticeRecording> recordings = recordingRepository.findAllByUserIdForUpdate(userId);
+        if (recordings.isEmpty()) {
+            return;
+        }
+        feedbackRepository.deleteByRecordingIdIn(recordings.stream().map(PracticeRecording::getId).toList());
+        recordingRepository.deleteAllInBatch(recordings);
+        fileService.deleteOwnedFiles(userId, recordings.stream().map(PracticeRecording::getAudioFileKey).toList());
+    }
+
+    /**
      * 실행기 스레드에서 도는 분석 한 건. 트랜잭션이 없다 — AI를 기다리는 동안(수 분) DB 커넥션을 쥐지 않는다.
      * 상태 전이는 짧은 트랜잭션 3개(시작·완료·실패)로 PracticeAnalysisService가 한다.
      */

@@ -67,6 +67,7 @@ Controller → Service → Repository → DB
 | `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
 | `user` → `team` `group` `performance` | 내 활동·타인 프로필 조립은 `UserActivityService`가 `TeamService`·`GroupMemberService`·`PerformanceService`를 호출. `TeamService`·`PerformanceService`는 `UserService`를 주입받으므로 조립을 `UserService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #90) |
 | `group` → `performance` | 동아리 홈의 다가오는 공연은 `GroupService → PerformanceService.findUpcoming`. 그래서 `PerformanceService`는 `GroupService`를 부르지 않고 모임 권한·정보를 `GroupMemberService`로만 받는다(2026-11-03, #112) |
+| `user` → `practice` | 회원 탈퇴 때 `UserWithdrawService`가 `PracticeRecordingService.deleteAllOf`로 탈퇴자의 연습 녹음·피드백·녹음 파일을 지운다. `PracticeRecordingService`는 user 도메인을 주입받지 않는다(PR #157 리뷰, 2026-11-11) |
 | `user` → `team` `group` | 회원 탈퇴 차단은 `UserWithdrawService`가 `TeamService.findLedTeams`·`leaveAllTeams`와 `GroupMemberService.findOwnedGroups`·`leaveAllGroups`를 호출. `TeamService`가 `UserService`를 주입받으므로 `UserService`에 두면 생성자 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(B-8, 2026-11-02) |
 
 ### 순환 참조가 생기면
@@ -119,7 +120,7 @@ performances.status = DONE 또는 CANCELED
 
 대신 **팀을 참조하는 조회에는 `teams.status = 'ACTIVE'` 조건이 반드시 들어가야 한다.** 이 조건이 빠지면 해체된 팀이 목록·활동·대시보드에 남는다. 팀 조회는 `TeamRepository`의 정해진 메서드를 통해서만 한다.
 
-Hard delete는 6곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`), 연습 녹음(`practice_recordings`와 그 `practice_feedbacks`). 팀 선택곡·셋리스트는 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다. 연습 녹음은 2026-11-09에 추가했다(이슈 #155) — 본인만 보는 데이터라 남길 이유가 없다.
+Hard delete는 6곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`), 연습 녹음(`practice_recordings`와 그 `practice_feedbacks`). 팀 선택곡·셋리스트는 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다. 연습 녹음은 2026-11-09에 추가했다(이슈 #155) — 본인만 보는 데이터라 남길 이유가 없다. 회원 탈퇴 때도 그 사람의 연습 녹음 전부를 hard delete하고, 단건 삭제와 달리 녹음 파일(`files` 행·S3 객체)까지 지운다 — 탈퇴한 사람은 파일 삭제 API를 부를 수 없다(PR #157 리뷰, 2026-11-11).
 
 **예외 — 팀 개별 해체 시 그 팀의 셋리스트·선택곡 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행과 그 팀의 `team_songs` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`는 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없다. `team_songs`는 남아 있으면 다른 팀에게 "다른 팀이 이미 골랐어요"가 계속 뜨는데, setlist 도메인은 팀 상태를 직접 볼 수 없어(CLAUDE.md 절대 규칙 2) 해체 팀을 걸러 내기 어렵다. 공연 종료·취소(`DONE`·`CANCELED`)로 인한 일괄 해체에서는 둘 다 지우지 않는다 — 끝난 공연의 기록을 남긴다(2026-11-02 결정, PR #87 리뷰).
 

@@ -27,13 +27,17 @@ import java.lang.reflect.Field;
 import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 class FileServiceTest {
@@ -53,6 +57,13 @@ class FileServiceTest {
     @BeforeEach
     void setUp() {
         fileService = new FileService(uploadedFileRepository, fileStorageClient);
+    }
+
+    @AfterEach
+    void clearSynchronization() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -371,6 +382,37 @@ class FileServiceTest {
         assertThat(fileService.maxUploadBytes(UploadDomain.GROUP_COVER)).isEqualTo(10L * 1024 * 1024);
         assertThat(fileService.maxUploadBytes(UploadDomain.PERFORMANCE_POSTER)).isEqualTo(10L * 1024 * 1024);
         assertThat(fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO)).isEqualTo(100L * 1024 * 1024);
+    }
+
+    @Test
+    @DisplayName("다른 도메인용 파일 삭제: 내가 올린 파일만 files 행을 지우고, 저장소 객체는 커밋된 뒤에 지운다")
+    void deleteOwnedFiles_deletesOwnFiles_andStorageAfterCommit() {
+        UploadedFile mine = UploadedFile.create("practice/a.m4a", UploadDomain.PRACTICE_AUDIO, "a.m4a", "audio/mp4", UPLOADER_ID);
+        UploadedFile others = UploadedFile.create("practice/b.m4a", UploadDomain.PRACTICE_AUDIO, "b.m4a", "audio/mp4", OTHER_USER_ID);
+        when(uploadedFileRepository.findAllByFileKeyIn(any())).thenReturn(List.of(mine, others));
+        // 트랜잭션 없이 커밋 시점을 보려고 동기화만 켜고, 커밋 후 콜백은 손으로 부른다(PracticeRecordingServiceTest와 같은 방식)
+        TransactionSynchronizationManager.initSynchronization();
+
+        fileService.deleteOwnedFiles(UPLOADER_ID, List.of("practice/a.m4a", "practice/b.m4a", "practice/gone.m4a"));
+
+        verify(uploadedFileRepository).deleteAll(List.of(mine));
+        verify(fileStorageClient, never()).delete(anyString());
+        TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        verify(fileStorageClient).delete("practice/a.m4a");
+        verify(fileStorageClient, never()).delete("practice/b.m4a");
+    }
+
+    @Test
+    @DisplayName("다른 도메인용 파일 삭제: 같은 key가 여러 번 와도 한 번만 찾고, 빈 목록이면 아무것도 하지 않는다")
+    void deleteOwnedFiles_dedupesKeys_andSkipsEmpty() {
+        when(uploadedFileRepository.findAllByFileKeyIn(any())).thenReturn(List.of());
+
+        fileService.deleteOwnedFiles(UPLOADER_ID, List.of("practice/a.m4a", "practice/a.m4a"));
+        fileService.deleteOwnedFiles(UPLOADER_ID, List.of());
+
+        verify(uploadedFileRepository).findAllByFileKeyIn(org.mockito.ArgumentMatchers.argThat(
+                keys -> keys.size() == 1 && keys.contains("practice/a.m4a")));
+        verifyNoInteractions(fileStorageClient);
     }
 
     // 삭제 성공 경로는 스토리지 삭제가 커밋 이후(afterCommit)에 일어나서 트랜잭션 없는 단위 테스트로는

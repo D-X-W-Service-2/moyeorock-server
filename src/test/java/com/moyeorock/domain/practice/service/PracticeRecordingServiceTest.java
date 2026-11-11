@@ -329,6 +329,36 @@ class PracticeRecordingServiceTest {
         order.verify(recordingRepository).delete(analyzing);
     }
 
+    // ---- 회원 탈퇴 (1팀 UserWithdrawService가 부른다)
+
+    @Test
+    @DisplayName("탈퇴: 녹음이 없으면 아무것도 지우지 않는다")
+    void deleteAllOf_doesNothing_whenNoRecordings() {
+        when(recordingRepository.findAllByUserIdForUpdate(ME)).thenReturn(List.of());
+
+        service.deleteAllOf(ME);
+
+        verify(feedbackRepository, never()).deleteByRecordingIdIn(any());
+        verify(recordingRepository, never()).deleteAllInBatch(any());
+        verify(fileService, never()).deleteOwnedFiles(any(), any());
+    }
+
+    @Test
+    @DisplayName("탈퇴: 분석 중인 것까지 내 녹음 전부를 잠금 조회로 잡고 피드백 → 녹음 → 녹음 파일 순으로 지운다")
+    void deleteAllOf_removesFeedbacksRecordingsAndFiles() {
+        PracticeRecording done = recordingOf(ME, PracticeRecordingStatus.DONE);
+        PracticeRecording analyzing = withIdAndKey(recordingOf(ME, PracticeRecordingStatus.ANALYZING), 13L, "practice/other.m4a");
+        List<PracticeRecording> mine = List.of(done, analyzing);
+        when(recordingRepository.findAllByUserIdForUpdate(ME)).thenReturn(mine);
+
+        service.deleteAllOf(ME);
+
+        InOrder order = inOrder(feedbackRepository, recordingRepository, fileService);
+        order.verify(feedbackRepository).deleteByRecordingIdIn(List.of(RECORDING_ID, 13L));
+        order.verify(recordingRepository).deleteAllInBatch(mine);
+        order.verify(fileService).deleteOwnedFiles(ME, List.of(FILE_KEY, "practice/other.m4a"));
+    }
+
     // ---- 분석 실행(실행기 스레드)
 
     @Test
@@ -443,6 +473,20 @@ class PracticeRecordingServiceTest {
             recording.fail("이전 실패");
         }
         return recording;
+    }
+
+    private static PracticeRecording withIdAndKey(PracticeRecording recording, Long id, String fileKey) {
+        try {
+            Field idField = PracticeRecording.class.getDeclaredField("id");
+            idField.setAccessible(true);
+            idField.set(recording, id);
+            Field keyField = PracticeRecording.class.getDeclaredField("audioFileKey");
+            keyField.setAccessible(true);
+            keyField.set(recording, fileKey);
+            return recording;
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // id(GeneratedValue)와 createdAt(JPA 감사)은 저장할 때 채워진다 — 리플렉션으로 저장된 것처럼 흉내 낸다.

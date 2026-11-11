@@ -189,6 +189,31 @@ class PracticeAnalysisFlowTest {
         assertThat(feedbackRepository.findByRecordingIdOrderByStartSecAscIdAsc(id)).isEmpty();
     }
 
+    @Test
+    @DisplayName("분석 중에 회원 탈퇴 정리(deleteAllOf)가 겹쳐도 늦게 온 결과는 버려지고, 녹음 파일은 행과 저장소 객체까지 지워진다")
+    void deleteAllOf_duringAnalysis_discardsLateResult_andDeletesFile() throws InterruptedException {
+        CountDownLatch analysisStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(analysisClient.analyze(any())).thenAnswer(invocation -> {
+            analysisStarted.countDown();
+            release.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            return List.of(new AnalysisFeedback(0, 5, "VOCAL", "늦게 온 결과"));
+        });
+        String audioUrl = uploadAudio(401L);
+        String fileKey = fileStorageClient.toFileKey(audioUrl).orElseThrow();
+        Long id = recordingService.create(401L, request(audioUrl)).id();
+        assertThat(analysisStarted.await(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)).isTrue();
+
+        recordingService.deleteAllOf(401L);
+        release.countDown();
+        awaitIdle();
+
+        assertThat(recordingRepository.findById(id)).isEmpty();
+        assertThat(feedbackRepository.findByRecordingIdOrderByStartSecAscIdAsc(id)).isEmpty();
+        assertThat(uploadedFileRepository.findByFileKey(fileKey)).isEmpty();
+        assertThat(fileStorageClient.size(fileKey)).isEmpty();
+    }
+
     private static PracticeRecordingCreateRequest request(String audioUrl) {
         return new PracticeRecordingCreateRequest("연습 녹음", Instrument.VOCAL, audioUrl);
     }

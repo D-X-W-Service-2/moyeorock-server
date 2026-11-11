@@ -470,6 +470,12 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `audioUrl`(상세)은 저장된 값이 아니라 조회할 때마다 만드는 **임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 DB에는 URL 대신 스토리지 key가 있다. `PracticeRecordingStatus`(`SUBMITTED|ANALYZING|DONE|FAILED`)는 practice만 쓰는 도메인 enum이다. 삭제 응답은 노션대로 `data: null`이라 `DeleteResponse`를 쓰지 않는다(공지 삭제와 같은 예외).
 
+**다른 도메인이 부르는 메서드** (`PracticeRecordingService`)
+
+| 메서드 | 호출하는 쪽 | 동작 |
+|---|---|---|
+| `deleteAllOf(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람의 연습 녹음 전부(분석 중 포함)를 잠금 조회해 피드백 → 녹음 순으로 hard delete하고, 녹음 파일을 `FileService.deleteOwnedFiles`로 지운다(`files` 행은 바로, 저장소 객체는 커밋 뒤). 겹친 분석 결과는 탈퇴 커밋 뒤 빈 결과를 보고 버려진다(PR #157 리뷰) |
+
 ---
 
 ## 12. 정리
