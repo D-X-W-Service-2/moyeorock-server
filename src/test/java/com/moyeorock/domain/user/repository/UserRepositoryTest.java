@@ -301,7 +301,7 @@ class UserRepositoryTest {
     }
 
     @Test
-    @DisplayName("추천 후보는 활동 중·추천 허용·해당 악기 보유 사용자만, 제외 대상을 뺀 채 userId 순으로 상한까지 나온다")
+    @DisplayName("추천 후보는 활동 중·추천 허용·해당 악기 보유 사용자만, 제외 대상을 뺀 채 상한까지 나온다")
     void recommendation_candidates_filter_and_limit() {
         User first = saveUser("후보1", UserStatus.ACTIVE);
         User second = saveUser("후보2", UserStatus.ACTIVE);
@@ -320,13 +320,39 @@ class UserRepositoryTest {
         entityManager.clear();
 
         List<UserInstrument> all = userInstrumentRepository.findRecommendationCandidates(
-                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, PageRequest.of(0, 10));
+                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, 10);
         List<UserInstrument> limited = userInstrumentRepository.findRecommendationCandidates(
-                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, PageRequest.of(0, 2));
+                Instrument.DRUM, List.of(excluded.getId()), UserStatus.ACTIVE, 2);
 
+        // 순서는 무작위라 어떤 사람이 나왔는지만 본다
         assertThat(all).extracting(UserInstrument::getUserId)
-                .containsExactly(first.getId(), second.getId(), third.getId());
-        assertThat(limited).extracting(UserInstrument::getUserId).containsExactly(first.getId(), second.getId());
+                .containsExactlyInAnyOrder(first.getId(), second.getId(), third.getId());
+        assertThat(limited).hasSize(2).extracting(UserInstrument::getUserId)
+                .isSubsetOf(first.getId(), second.getId(), third.getId());
+    }
+
+    @Test
+    @DisplayName("추천 후보는 id가 앞선 사람에게 고정되지 않고 무작위로 뽑힌다")
+    void recommendation_candidates_are_random() {
+        List<Long> eligible = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            User drummer = saveUser("드럼" + i, UserStatus.ACTIVE);
+            entityManager.persist(UserInstrument.create(drummer.getId(), Instrument.DRUM, Level.NOVICE));
+            eligible.add(drummer.getId());
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (int i = 0; i < 40; i++) {
+            userInstrumentRepository.findRecommendationCandidates(
+                            Instrument.DRUM, List.of(), UserStatus.ACTIVE, 1)
+                    .forEach(candidate -> seen.add(candidate.getUserId()));
+        }
+
+        // 1명씩 40번 뽑았을 때 한 사람만 나올 확률은 (1/5)^39로 사실상 0이다
+        assertThat(seen).hasSizeGreaterThan(1);
+        assertThat(eligible).containsAll(seen);
     }
 
     @Test
@@ -338,7 +364,7 @@ class UserRepositoryTest {
         entityManager.clear();
 
         assertThat(userInstrumentRepository.findRecommendationCandidates(
-                Instrument.DRUM, List.of(), UserStatus.ACTIVE, PageRequest.of(0, 10)))
+                Instrument.DRUM, List.of(), UserStatus.ACTIVE, 10))
                 .extracting(UserInstrument::getUserId).containsExactly(drummer.getId());
     }
 

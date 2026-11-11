@@ -3,6 +3,7 @@ package com.moyeorock.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -570,7 +571,7 @@ class UserServiceTest {
         @DisplayName("후보의 지역·장르·해당 악기 실력을 담고, 쿼리에 악기·제외 대상·ACTIVE·상한을 넘긴다")
         void returns_candidates_with_region_genres_and_level() {
             given(userInstrumentRepository.findRecommendationCandidates(
-                    eq(Instrument.DRUM), eq(Set.of(3L)), eq(UserStatus.ACTIVE), eq(PageRequest.of(0, 200))))
+                    eq(Instrument.DRUM), eq(Set.of(3L)), eq(UserStatus.ACTIVE), eq(200)))
                     .willReturn(List.of(drummer(30L, Level.ADVANCED), drummer(31L, Level.NOVICE)));
             given(userRepository.findAllByIdInAndStatusNot(any(), eq(UserStatus.WITHDRAWN))).willReturn(List.of(
                     candidate(30L, "서준", Region.SEOUL, List.of(Genre.ROCK)),
@@ -586,7 +587,7 @@ class UserServiceTest {
         @Test
         @DisplayName("후보가 없으면 사용자 조회 없이 빈 목록")
         void no_candidates_skips_user_lookup() {
-            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), any()))
+            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), anyInt()))
                     .willReturn(List.of());
 
             assertThat(userService.findRecommendationCandidates(Instrument.DRUM, Set.of(), 200)).isEmpty();
@@ -596,7 +597,7 @@ class UserServiceTest {
         @Test
         @DisplayName("두 조회 사이에 탈퇴한 사용자는 결과에서 빠진다")
         void drops_candidate_whose_user_row_is_gone() {
-            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), any()))
+            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), anyInt()))
                     .willReturn(List.of(drummer(30L, Level.ADVANCED), drummer(31L, Level.NOVICE)));
             given(userRepository.findAllByIdInAndStatusNot(any(), eq(UserStatus.WITHDRAWN)))
                     .willReturn(List.of(candidate(30L, "서준", Region.SEOUL, List.of(Genre.ROCK))));
