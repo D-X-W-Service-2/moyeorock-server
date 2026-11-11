@@ -21,7 +21,7 @@ com.moyeorock
 └── domain/
     ├── auth/  user/  group/  notice/  performance/  team/
     ├── rehearsal/  recruit/  join/  song/  setlist/
-    └── bookmark/  notification/  dashboard/
+    └── bookmark/  notification/  dashboard/  practice/
 ```
 
 도메인 내부는 전부 동일하게 `controller` `service` `repository` `entity` `dto/request` `dto/response`.
@@ -67,6 +67,7 @@ Controller → Service → Repository → DB
 | `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
 | `user` → `team` `group` `performance` | 내 활동·타인 프로필 조립은 `UserActivityService`가 `TeamService`·`GroupMemberService`·`PerformanceService`를 호출. `TeamService`·`PerformanceService`는 `UserService`를 주입받으므로 조립을 `UserService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #90) |
 | `group` → `performance` | 동아리 홈의 다가오는 공연은 `GroupService → PerformanceService.findUpcoming`. 그래서 `PerformanceService`는 `GroupService`를 부르지 않고 모임 권한·정보를 `GroupMemberService`로만 받는다(2026-11-03, #112) |
+| `user` → `practice` | 회원 탈퇴 때 `UserWithdrawService`가 `PracticeRecordingService.deleteAllOf`로 탈퇴자의 연습 녹음·피드백·녹음 파일을 지운다. `PracticeRecordingService`는 user 도메인을 주입받지 않는다(PR #157 리뷰, 2026-11-11) |
 | `user` → `team` `group` | 회원 탈퇴 차단은 `UserWithdrawService`가 `TeamService.findLedTeams`·`leaveAllTeams`와 `GroupMemberService.findOwnedGroups`·`leaveAllGroups`를 호출. `TeamService`가 `UserService`를 주입받으므로 `UserService`에 두면 생성자 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(B-8, 2026-11-02) |
 
 ### 순환 참조가 생기면
@@ -84,7 +85,7 @@ Service끼리 서로 부르게 되는 상황이면 설계가 잘못된 것이다
 | `TeamMapper` 등 매퍼 클래스 | DTO 변환은 응답 DTO의 정적 팩토리 메서드로 (`TeamDetailResponse.from(team)`) |
 | Service 안의 별도 Validator 클래스 | 검증은 Service 메서드 안에서 |
 | 도메인별 예외 클래스 | `BusinessException` + `ErrorCode` enum만 쓴다 |
-| 임의의 `@Async` · 이벤트 · 캐시 도입 | 성능 문제가 실제로 확인된 뒤에. 단 알림 발생 이벤트(`NotificationEvent`)는 명세에 정해진 방식이라 예외다 |
+| 임의의 `@Async` · 이벤트 · 캐시 도입 | 성능 문제가 실제로 확인된 뒤에. 단 알림 발생 이벤트(`NotificationEvent`)는 명세에 정해진 방식이라 예외다. 연습 녹음 AI 분석(`practice`)도 예외다 — 명세가 비동기(202)라 백그라운드 실행이 필요해서, `@Async` 없이 전용 단일 스레드 실행기(`PracticeAnalysisConfig`)에 요청 커밋 후 직접 넘긴다(2026-11-09 승인, 이슈 #155) |
 | DTO 상속 · 제네릭 베이스 DTO | `ApiResponse<T>` `PageResponse<T>` 두 개 외에는 쓰지 않는다 |
 | 도메인 밖 공용 유틸 클래스 남발 | `global/common`에 이미 있는지 먼저 확인 |
 
@@ -119,11 +120,13 @@ performances.status = DONE 또는 CANCELED
 
 대신 **팀을 참조하는 조회에는 `teams.status = 'ACTIVE'` 조건이 반드시 들어가야 한다.** 이 조건이 빠지면 해체된 팀이 목록·활동·대시보드에 남는다. 팀 조회는 `TeamRepository`의 정해진 메서드를 통해서만 한다.
 
-Hard delete는 5곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`). 뒤의 둘은 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다.
+Hard delete는 6곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_songs`), 공연 셋리스트(`setlists`), 연습 녹음(`practice_recordings`와 그 `practice_feedbacks`). 팀 선택곡·셋리스트는 2026-10-30에 추가했다(이슈 #85) — 선택곡 저장·넘기기가 목록 통째 교체라 빠진 행을 지우고, 모임장이 셋리스트에서 뺀 곡도 지운다. 연습 녹음은 2026-11-09에 추가했다(이슈 #155) — 본인만 보는 데이터라 남길 이유가 없다. 회원 탈퇴 때도 그 사람의 연습 녹음 전부를 hard delete하고, 단건 삭제와 달리 녹음 파일(`files` 행·S3 객체)까지 지운다 — 탈퇴한 사람은 파일 삭제 API를 부를 수 없다(PR #157 리뷰, 2026-11-11).
 
 **예외 — 팀 개별 해체 시 그 팀의 셋리스트·선택곡 행을 지운다.** 팀이 `PATCH /v1/teams/{id}/status`로 해체되면 그 팀이 넘긴 `setlists` 행과 그 팀의 `team_songs` 행을 하드 삭제한다(`TeamService → SetlistService.deleteByTeam`, 팀 해체와 같은 트랜잭션). `setlists`는 `UNIQUE(performance_id, song_id)` 때문에, 행이 남아 있으면 같은 공연의 다른 팀이 그 곡을 영영 넘길 수 없다. `team_songs`는 남아 있으면 다른 팀에게 "다른 팀이 이미 골랐어요"가 계속 뜨는데, setlist 도메인은 팀 상태를 직접 볼 수 없어(CLAUDE.md 절대 규칙 2) 해체 팀을 걸러 내기 어렵다. 공연 종료·취소(`DONE`·`CANCELED`)로 인한 일괄 해체에서는 둘 다 지우지 않는다 — 끝난 공연의 기록을 남긴다(2026-11-02 결정, PR #87 리뷰).
 
 ## 7. 알려진 한계 (v0)
+
+**연습 녹음 분석은 서버 재시작(CD 배포)마다 끊긴다.** 분석 대기열은 메모리라 재시작하면 사라지고 분석 중이던 AI 호출도 끊긴다. 앱이 뜨면 부팅 전에 바뀐 `SUBMITTED`·`ANALYZING` 녹음을 `FAILED`("서버 재시작으로 분석이 중단되었습니다")로 바꾸고, 사용자가 다시 요청한다(`PracticeAnalysisService.failUnfinishedOnStartup`). 서버 1대 전제다 — 여러 대가 되면 다른 서버가 하던 분석까지 실패로 만든다. 재시작 손실이 문제가 되면 DB를 대기열로 쓰는 폴링 방식으로 옮긴다(`docs/plans/practice-recording.md` D-4).
 
 의도적으로 두는 것이다. 발견했다고 임의로 고치지 말 것.
 

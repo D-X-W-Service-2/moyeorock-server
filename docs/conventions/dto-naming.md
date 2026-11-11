@@ -1,6 +1,6 @@
 # moyeorock DTO 명명 규약
 
-대상: 전체 77개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28, 내 모임 목록·모임 해체 추가분 2026-10-29, 내 팀 목록 신규분 2026-10-31 포함) · 14 도메인
+대상: 전체 77개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28, 내 모임 목록·모임 해체 추가분 2026-10-29, 내 팀 목록 신규분 2026-10-31, 연습 녹음 신규분 2026-11-09 포함) · 15 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
 **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
@@ -447,18 +447,49 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
+## 11-1. practice (5)
+
+패키지 `domain/practice` (4팀, 2026-11-09 신규, 이슈 #155 — 노션 `API 초안` 도메인 "연습")
+
+| 기능 | 메서드 | 경로 | Request | Response |
+|---|---|---|---|---|
+| 연습 녹음 분석 요청 | POST | `/v1/practice-recordings` | `PracticeRecordingCreateRequest` | `PracticeRecordingSummaryResponse` (202) |
+| 내 연습 녹음 목록 | GET | `/v1/users/me/practice-recordings` | — | `PageResponse<PracticeRecordingSummaryResponse>` |
+| 연습 녹음 상세 (분석 결과) | GET | `/v1/practice-recordings/{id}` | — | `PracticeRecordingDetailResponse` |
+| 연습 녹음 분석 다시 요청 | POST | `/v1/practice-recordings/{id}/retry` | — | `PracticeRecordingSummaryResponse` (202) |
+| 연습 녹음 삭제 | DELETE | `/v1/practice-recordings/{id}` | — | — (`data: null`) |
+
+**보조 DTO**
+
+| 클래스 | 설명 |
+|---|---|
+| `PracticeRecordingCreateRequest` | `(String title, Instrument part, Long songId, String audioUrl)` — `part`는 녹음한 세션(필수, 혼자 연습한 세션 하나의 녹음). `songId`는 연습한 곡(필수). `audioUrl`은 업로드 API(`PRACTICE_AUDIO`)가 준 `fileUrl`. 서버가 "내가 올린 연습 녹음 파일"인지 확인하고 스토리지 key로 바꿔 저장한다 |
+| `PracticeRecordingSummaryResponse` | `(Long id, String title, Instrument part, PracticeRecordingStatus status, LocalDateTime createdAt, LocalDateTime analyzedAt)` — 요청·다시 요청 응답과 목록 항목 공용(규칙 3) |
+| `PracticeRecordingDetailResponse` | `(Long id, String title, Instrument part, String audioUrl, PracticeRecordingStatus status, String failureReason, LocalDateTime createdAt, LocalDateTime analyzedAt, List<Feedback> feedbacks)` |
+| `PracticeRecordingDetailResponse.Feedback` | `(int startSec, int endSec, Instrument part, String content)` — 상세에서만 쓰는 중첩 record(규칙 6). 세션은 공용 `Instrument` |
+
+`audioUrl`(상세)은 저장된 값이 아니라 조회할 때마다 만드는 **임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 DB에는 URL 대신 스토리지 key가 있다. `PracticeRecordingStatus`(`SUBMITTED|ANALYZING|DONE|FAILED`)는 practice만 쓰는 도메인 enum이다. 삭제 응답은 노션대로 `data: null`이라 `DeleteResponse`를 쓰지 않는다(공지 삭제와 같은 예외).
+
+**다른 도메인이 부르는 메서드** (`PracticeRecordingService`)
+
+| 메서드 | 호출하는 쪽 | 동작 |
+|---|---|---|
+| `deleteAllOf(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람의 연습 녹음 전부(분석 중 포함)를 잠금 조회해 피드백 → 녹음 순으로 hard delete하고, 녹음 파일을 `FileService.deleteOwnedFiles`로 지운다(`files` 행은 바로, 저장소 객체는 커밋 뒤). 겹친 분석 결과는 탈퇴 커밋 뒤 빈 결과를 보고 버려진다(PR #157 리뷰) |
+
+---
+
 ## 12. 정리
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 81 |
-| Request DTO | 36 |
-| Response DTO | 60 |
+| 엔드포인트 | 86 |
+| Request DTO | 37 |
+| Response DTO | 62 |
 | 전역 공통 | 5 |
 
-요청 DTO가 36개뿐인 이유는 81개 중 **48개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 37개뿐인 이유는 86개 중 **52개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡. 연습 녹음 5개 신규분(2026-11-09, 요청 바디는 분석 요청 1개뿐) 반영: §11-1 · `docs/specs/api-spec.md` §12)
 
 ### 재사용 상위 5개
 

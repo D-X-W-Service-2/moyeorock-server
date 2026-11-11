@@ -2,21 +2,24 @@ package com.moyeorock.domain.song.service;
 
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 /**
  * 곡 마스터 조회. 곡은 외부 카탈로그에서 들여오는 데이터라 이 Service는 쓰지 않고 읽기만 한다(Song 엔티티 주석).
- * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을 확인하려고 이 Service를 부른다.
+ * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을, practice가 곡 존재·external_id를 확인하려고 이 Service를 부른다.
  */
 @Service
 @RequiredArgsConstructor
@@ -42,6 +45,16 @@ public class SongService {
         return songRepository.findAllById(songIds).stream()
                 .map(SongSummaryResponse::from)
                 .collect(Collectors.toMap(SongSummaryResponse::id, Function.identity()));
+    }
+
+    /**
+     * 곡의 외부 카탈로그 id(external_id). 연습 녹음 분석이 AI에 원곡을 이 값으로 알려 준다 — 원곡 음원은 AI 서버가 갖고 있다.
+     * 없는 곡이거나 external_id가 비어 있으면 빈 값.
+     */
+    public Optional<String> findExternalId(Long songId) {
+        return songRepository.findById(songId)
+                .map(Song::getExternalId)
+                .filter(StringUtils::hasText);
     }
 
     private String normalizeKeyword(String keyword) {

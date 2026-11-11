@@ -15,6 +15,8 @@ import java.io.PushbackInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -48,7 +50,10 @@ public class FileService {
     // 적용되지 않아 여기서 막는다. S3는 클라이언트가 S3에 직접 올려 서버가 업로드 때 막을 수 없다 — 크기가
     // 중요한 쪽(연습 녹음)은 findSize·maxUploadBytes로 사후에 확인한다.
     private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
-    private static final long AUDIO_MAX_BYTES = 100L * 1024 * 1024;
+    // 연습 녹음은 AI 연습 피드백 API로 Base64에 실어 보낸다(PracticeRecordingService). AI 쪽 한도는 Base64 2,600,000자·원본
+    // 2,000,000바이트인데, Base64가 원본의 4/3배라 원본 1,950,000바이트가 Base64 2,600,000자다 — 둘 중 빡빡한 쪽에 맞춘다
+    // (AI 팀 핸드오프 2026-11-11). Lambda 함수 URL의 요청 본문 한도(6MB) 안에도 들어간다.
+    private static final long AUDIO_MAX_BYTES = 1_950_000L;
 
     private final UploadedFileRepository uploadedFileRepository;
     private final FileStorageClient fileStorageClient;
@@ -138,6 +143,23 @@ public class FileService {
         return fileStorageClient.issueReadUrl(fileKey, expiry);
     }
 
+    /**
+     * 비공개 파일(연습 녹음)을 통째로 읽는다 — AI에 Base64로 실어 보낼 때 쓴다. {@code maxBytes}를 넘으면 더 읽지 않고
+     * FILE_SIZE_EXCEEDED다: 등록 때 크기를 확인했어도 업로드 URL이 만료되기 전이면 같은 key에 더 큰 파일을 다시 올릴 수
+     * 있어서, 메모리에 올리기 전에 다시 막는다. DB를 보지 않아 트랜잭션을 열지 않는다.
+     */
+    public byte[] readBytes(String fileKey, long maxBytes) {
+        try (InputStream content = openOrThrow(fileKey)) {
+            byte[] bytes = content.readNBytes(Math.toIntExact(maxBytes + 1));
+            if (bytes.length > maxBytes) {
+                throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
+            }
+            return bytes;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     /** 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값. */
     public OptionalLong findSize(String fileKey) {
         return fileStorageClient.size(fileKey);
@@ -146,6 +168,23 @@ public class FileService {
     /** 도메인별 업로드 크기 한도. S3는 업로드 때 막지 못해 부르는 쪽이 findSize와 비교한다. */
     public long maxUploadBytes(UploadDomain domain) {
         return ruleOf(domain).maxBytes();
+    }
+
+    /**
+     * 다른 도메인이 자기 데이터와 함께 지우는 파일을 key로 지운다(연습 녹음 — 회원 탈퇴, PR #157 리뷰). 부르는 쪽 트랜잭션에
+     * 참여해 files 행을 지우고, 저장소 객체는 커밋된 뒤에 지운다(delete와 같은 순서 — 롤백되면 파일이 남는다).
+     * 업로더가 다른 key와 이미 지워진 key는 건너뛴다(사용자가 파일 삭제 API로 먼저 지웠을 수 있다). 같은 key가 여러 번 와도 한 번만 지운다.
+     */
+    @Transactional
+    public void deleteOwnedFiles(Long uploaderId, Collection<String> fileKeys) {
+        if (fileKeys.isEmpty()) {
+            return;
+        }
+        List<UploadedFile> files = uploadedFileRepository.findAllByFileKeyIn(Set.copyOf(fileKeys)).stream()
+                .filter(file -> file.isUploadedBy(uploaderId))
+                .toList();
+        uploadedFileRepository.deleteAll(files);
+        files.forEach(file -> deleteFromStorageAfterCommit(file.getFileKey()));
     }
 
     /**
