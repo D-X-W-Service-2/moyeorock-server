@@ -16,6 +16,9 @@ import com.moyeorock.domain.practice.entity.PracticeRecording;
 import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import com.moyeorock.domain.practice.repository.PracticeFeedbackRepository;
 import com.moyeorock.domain.practice.repository.PracticeRecordingRepository;
+import com.moyeorock.domain.song.entity.Song;
+import com.moyeorock.domain.song.repository.SongRepository;
+import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
@@ -33,6 +36,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -53,6 +57,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 class PracticeAnalysisFlowTest {
 
     private static final long TIMEOUT_MILLIS = 10_000;
+    private static final String SONG_EXTERNAL_ID = "flow-test-song";
 
     @MockitoBean
     private PracticeAnalysisClient analysisClient;
@@ -76,8 +81,18 @@ class PracticeAnalysisFlowTest {
     private UploadedFileRepository uploadedFileRepository;
 
     @Autowired
+    private SongRepository songRepository;
+
+    @Autowired
     @Qualifier(PracticeAnalysisConfig.EXECUTOR_BEAN_NAME)
     private ThreadPoolTaskExecutor analysisExecutor;
+
+    private Song song;
+
+    @BeforeEach
+    void saveSong() {
+        song = songRepository.save(Song.create("예뻤어", "DAY6", Genre.ROCK, null, null, null, SONG_EXTERNAL_ID));
+    }
 
     @AfterEach
     void cleanUp() {
@@ -85,10 +100,11 @@ class PracticeAnalysisFlowTest {
         feedbackRepository.deleteAllInBatch();
         recordingRepository.deleteAllInBatch();
         uploadedFileRepository.deleteAllInBatch();
+        songRepository.delete(song);
     }
 
     @Test
-    @DisplayName("요청이 커밋되면 실행기가 임시 URL로 AI를 부르고, 결과를 저장해 분석 완료가 된다")
+    @DisplayName("요청이 커밋되면 실행기가 곡 external_id와 녹음 파일 내용으로 AI를 부르고, 결과를 저장해 분석 완료가 된다")
     void create_runsAnalysisAfterCommit_andSavesResult() {
         when(analysisClient.analyze(any())).thenReturn(List.of(
                 new AnalysisFeedback(80, 95, "VOCAL", "음정이 2도 플랫되었습니다"),
@@ -103,8 +119,9 @@ class PracticeAnalysisFlowTest {
                 .containsExactly(10, 80);
         ArgumentCaptor<AnalysisRequest> captor = ArgumentCaptor.forClass(AnalysisRequest.class);
         verify(analysisClient).analyze(captor.capture());
-        assertThat(captor.getValue().audioUrl()).contains("/practice/");
-        assertThat(captor.getValue().fileExtension()).isEqualTo("m4a");
+        assertThat(captor.getValue().songExternalId()).isEqualTo(SONG_EXTERNAL_ID);
+        assertThat(captor.getValue().performanceAudio()).containsExactly(1, 2, 3);
+        assertThat(captor.getValue().performanceFilename()).endsWith(".m4a").doesNotContain("/");
         assertThat(captor.getValue().part()).isEqualTo(Instrument.VOCAL);
     }
 
@@ -214,8 +231,8 @@ class PracticeAnalysisFlowTest {
         assertThat(fileStorageClient.size(fileKey)).isEmpty();
     }
 
-    private static PracticeRecordingCreateRequest request(String audioUrl) {
-        return new PracticeRecordingCreateRequest("연습 녹음", Instrument.VOCAL, audioUrl);
+    private PracticeRecordingCreateRequest request(String audioUrl) {
+        return new PracticeRecordingCreateRequest("연습 녹음", Instrument.VOCAL, song.getId(), audioUrl);
     }
 
     // 업로드 URL을 발급받고 실제로 파일을 올린 것처럼 저장소에 써 둔다(테스트 설정은 로컬 저장).

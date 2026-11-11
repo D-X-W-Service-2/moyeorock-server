@@ -11,12 +11,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.moyeorock.config.TestcontainersConfig;
 import com.moyeorock.domain.practice.repository.PracticeRecordingRepository;
+import com.moyeorock.domain.song.entity.Song;
+import com.moyeorock.domain.song.repository.SongRepository;
+import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.file.client.FileStorageClient;
 import com.moyeorock.global.file.dto.response.PresignedUrlResponse;
 import com.moyeorock.global.file.enums.UploadDomain;
 import com.moyeorock.global.file.service.FileService;
 import com.moyeorock.global.security.JwtProvider;
 import java.io.ByteArrayInputStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +61,17 @@ class PracticeRecordingApiTest {
     @Autowired
     private PracticeRecordingRepository recordingRepository;
 
+    @Autowired
+    private SongRepository songRepository;
+
+    private long songId;
+
+    @BeforeEach
+    void saveSong() {
+        songId = songRepository.save(Song.create("예뻤어", "DAY6", Genre.ROCK, null, null, null,
+                "local-ce9924cfa2b2a7d2d4a37f46")).getId();
+    }
+
     @Test
     @DisplayName("토큰 없이 호출하면 5개 모두 401이다")
     void withoutToken_returns401() throws Exception {
@@ -82,7 +97,7 @@ class PracticeRecordingApiTest {
     }
 
     @Test
-    @DisplayName("분석 요청: 제목 빈칸·101자, audioUrl 빈칸, 세션 없음·없는 세션 값이면 400 VALIDATION_FAILED")
+    @DisplayName("분석 요청: 제목 빈칸·101자, audioUrl 빈칸, 세션 없음·없는 세션 값, 곡 없음이면 400 VALIDATION_FAILED")
     void create_returns400_forInvalidInput() throws Exception {
         String audioUrl = uploadAudio(ME);
         create(ME, " ", audioUrl).andExpect(status().isBadRequest())
@@ -91,12 +106,25 @@ class PracticeRecordingApiTest {
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         create(ME, "연습", "").andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-        createRaw(ME, "{\"title\":\"연습\",\"audioUrl\":\"" + audioUrl + "\"}")
+        createRaw(ME, "{\"title\":\"연습\",\"songId\":" + songId + ",\"audioUrl\":\"" + audioUrl + "\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("part: 세션은 필수입니다."));
-        createRaw(ME, "{\"title\":\"연습\",\"part\":\"SAXOPHONE\",\"audioUrl\":\"" + audioUrl + "\"}")
+        createRaw(ME, "{\"title\":\"연습\",\"part\":\"SAXOPHONE\",\"songId\":" + songId + ",\"audioUrl\":\""
+                + audioUrl + "\"}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        createRaw(ME, "{\"title\":\"연습\",\"part\":\"VOCAL\",\"audioUrl\":\"" + audioUrl + "\"}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("songId: 곡은 필수입니다."));
+    }
+
+    @Test
+    @DisplayName("분석 요청: 없는 곡이면 404 SONG_NOT_FOUND")
+    void create_returns404_forUnknownSong() throws Exception {
+        createRaw(ME, "{\"title\":\"연습\",\"part\":\"VOCAL\",\"songId\":" + (songId + 1_000_000)
+                + ",\"audioUrl\":\"" + uploadAudio(ME) + "\"}")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SONG_NOT_FOUND"));
     }
 
     @Test
@@ -189,7 +217,8 @@ class PracticeRecordingApiTest {
     private ResultActions create(long userId, String title, String audioUrl) throws Exception {
         return mockMvc.perform(post(BASE).header("Authorization", bearer(userId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"" + title + "\",\"part\":\"VOCAL\",\"audioUrl\":\"" + audioUrl + "\"}"));
+                .content("{\"title\":\"" + title + "\",\"part\":\"VOCAL\",\"songId\":" + songId
+                        + ",\"audioUrl\":\"" + audioUrl + "\"}"));
     }
 
     private ResultActions createRaw(long userId, String json) throws Exception {

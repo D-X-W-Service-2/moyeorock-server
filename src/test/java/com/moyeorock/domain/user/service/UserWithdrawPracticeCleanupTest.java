@@ -101,7 +101,7 @@ class UserWithdrawPracticeCleanupTest {
         String fileUrl = fileService.issuePresignedUrl(UploadDomain.PRACTICE_AUDIO, "practice.m4a", "audio/mp4", userId)
                 .fileUrl();
         String fileKey = fileStorageClient.toFileKey(fileUrl).orElseThrow();
-        PracticeRecording recording = PracticeRecording.create(userId, "연습", Instrument.VOCAL, fileKey);
+        PracticeRecording recording = PracticeRecording.create(userId, "연습", Instrument.VOCAL, 10L, fileKey);
         recording.startAnalysis();
         if (finished) {
             recording.complete(LocalDateTime.now());

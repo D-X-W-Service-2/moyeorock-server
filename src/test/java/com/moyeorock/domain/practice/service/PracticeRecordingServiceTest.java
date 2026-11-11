@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.moyeorock.domain.practice.client.AnalysisFeedback;
 import com.moyeorock.domain.practice.client.AnalysisRequest;
 import com.moyeorock.domain.practice.client.PracticeAnalysisClient;
+import com.moyeorock.domain.practice.client.PracticeAnalysisException;
 import com.moyeorock.domain.practice.config.PracticeProperties;
 import com.moyeorock.domain.practice.dto.request.PracticeRecordingCreateRequest;
 import com.moyeorock.domain.practice.dto.response.PracticeRecordingDetailResponse;
@@ -21,6 +22,8 @@ import com.moyeorock.domain.practice.entity.PracticeRecording;
 import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import com.moyeorock.domain.practice.repository.PracticeFeedbackRepository;
 import com.moyeorock.domain.practice.repository.PracticeRecordingRepository;
+import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.service.SongService;
 import com.moyeorock.global.common.entity.BaseTimeEntity;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.exception.BusinessException;
@@ -32,6 +35,7 @@ import java.sql.SQLIntegrityConstraintViolationException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import org.junit.jupiter.api.AfterEach;
@@ -65,7 +69,10 @@ class PracticeRecordingServiceTest {
     private static final String AUDIO_URL = "https://files/practice/key.m4a";
     private static final String FILE_KEY = "practice/key.m4a";
     private static final String READ_URL = "https://signed/practice/key.m4a?X-Amz-Signature=x";
-    private static final long MAX_BYTES = 100L * 1024 * 1024;
+    private static final long MAX_BYTES = 1_950_000L;
+    private static final Long SONG_ID = 7L;
+    private static final String SONG_EXTERNAL_ID = "local-ce9924cfa2b2a7d2d4a37f46";
+    private static final byte[] AUDIO = {1, 2, 3};
     private static final Duration URL_EXPIRY = Duration.ofMinutes(30);
     private static final LocalDateTime REQUESTED_AT = LocalDateTime.of(2026, 11, 9, 14, 30);
 
@@ -79,6 +86,8 @@ class PracticeRecordingServiceTest {
     private PracticeAnalysisClient analysisClient;
     @Mock
     private FileService fileService;
+    @Mock
+    private SongService songService;
 
     private PracticeRecordingService service;
 
@@ -100,13 +109,13 @@ class PracticeRecordingServiceTest {
     @DisplayName("분석 요청은 SUBMITTED로 저장하고, 분석은 커밋된 뒤에야 넘긴다")
     void create_savesSubmitted_andStartsAnalysisOnlyAfterCommit() {
         stubUploadedAudio(1024);
+        stubSongExists();
         when(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).thenReturn(false);
         when(recordingRepository.saveAndFlush(any())).thenAnswer(invocation -> saved(invocation.getArgument(0)));
         when(analysisService.start(RECORDING_ID)).thenReturn(Optional.empty());
         TransactionSynchronizationManager.initSynchronization();
 
-        PracticeRecordingSummaryResponse response =
-                service.create(ME, new PracticeRecordingCreateRequest("11/9 보컬 연습", Instrument.VOCAL, AUDIO_URL));
+        PracticeRecordingSummaryResponse response = service.create(ME, request("11/9 보컬 연습"));
 
         assertThat(response).extracting(PracticeRecordingSummaryResponse::id, PracticeRecordingSummaryResponse::status,
                         PracticeRecordingSummaryResponse::createdAt, PracticeRecordingSummaryResponse::analyzedAt)
@@ -115,8 +124,8 @@ class PracticeRecordingServiceTest {
         ArgumentCaptor<PracticeRecording> captor = ArgumentCaptor.forClass(PracticeRecording.class);
         verify(recordingRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue()).extracting(PracticeRecording::getUserId, PracticeRecording::getTitle,
-                        PracticeRecording::getPart, PracticeRecording::getAudioFileKey)
-                .containsExactly(ME, "11/9 보컬 연습", Instrument.VOCAL, FILE_KEY);
+                        PracticeRecording::getPart, PracticeRecording::getSongId, PracticeRecording::getAudioFileKey)
+                .containsExactly(ME, "11/9 보컬 연습", Instrument.VOCAL, SONG_ID, FILE_KEY);
 
         verify(analysisService, never()).start(anyLong());
         commit();
@@ -128,7 +137,7 @@ class PracticeRecordingServiceTest {
     void create_rejectsAudioUrlNotMine() {
         when(fileService.findOwnedFileKey(AUDIO_URL, UploadDomain.PRACTICE_AUDIO, ME)).thenReturn(Optional.empty());
 
-        assertValidationFailed(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)),
+        assertValidationFailed(() -> service.create(ME, request("연습")),
                 "audioUrl: 내가 올린 연습 녹음 파일이 아닙니다.");
         verify(recordingRepository, never()).saveAndFlush(any());
     }
@@ -139,18 +148,27 @@ class PracticeRecordingServiceTest {
         when(fileService.findOwnedFileKey(AUDIO_URL, UploadDomain.PRACTICE_AUDIO, ME)).thenReturn(Optional.of(FILE_KEY));
         when(fileService.findSize(FILE_KEY)).thenReturn(OptionalLong.empty());
 
-        assertValidationFailed(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)),
+        assertValidationFailed(() -> service.create(ME, request("연습")),
                 "audioUrl: 업로드가 끝나지 않은 파일입니다.");
         verify(recordingRepository, never()).saveAndFlush(any());
     }
 
     @Test
-    @DisplayName("100MB를 넘는 파일이면 400 VALIDATION_FAILED — S3는 업로드 때 크기를 막지 못해 여기서 본다")
-    void create_rejectsFileOver100MB() {
+    @DisplayName("1.95MB를 넘는 파일이면 400 VALIDATION_FAILED — S3는 업로드 때 크기를 막지 못해 여기서 본다")
+    void create_rejectsFileOverLimit() {
         stubUploadedAudio(MAX_BYTES + 1);
 
-        assertValidationFailed(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)),
-                "audioUrl: 100MB를 넘는 파일입니다.");
+        assertValidationFailed(() -> service.create(ME, request("연습")), "audioUrl: 1.95MB를 넘는 파일입니다.");
+        verify(recordingRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("없는 곡이면 404 SONG_NOT_FOUND, 저장하지 않는다")
+    void create_rejectsUnknownSong() {
+        stubUploadedAudio(MAX_BYTES);
+        when(songService.getSummaries(List.of(SONG_ID))).thenReturn(Map.of());
+
+        assertErrorCode(() -> service.create(ME, request("연습")), ErrorCode.SONG_NOT_FOUND);
         verify(recordingRepository, never()).saveAndFlush(any());
     }
 
@@ -158,9 +176,10 @@ class PracticeRecordingServiceTest {
     @DisplayName("진행 중인 내 녹음이 있으면 409 PRACTICE_ANALYSIS_IN_PROGRESS, 저장하지 않는다")
     void create_conflicts_whenAnalysisInProgress() {
         stubUploadedAudio(MAX_BYTES);
+        stubSongExists();
         when(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).thenReturn(true);
 
-        assertErrorCode(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)),
+        assertErrorCode(() -> service.create(ME, request("연습")),
                 ErrorCode.PRACTICE_ANALYSIS_IN_PROGRESS);
         verify(recordingRepository, never()).saveAndFlush(any());
     }
@@ -169,11 +188,12 @@ class PracticeRecordingServiceTest {
     @DisplayName("동시 요청이 겹쳐 진행 중 유니크에 걸리면 500이 아니라 409다")
     void create_turnsActiveUserUniqueViolationInto409() {
         stubUploadedAudio(1024);
+        stubSongExists();
         when(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).thenReturn(false);
         when(recordingRepository.saveAndFlush(any())).thenThrow(uniqueViolation(
                 "Duplicate entry '1' for key 'practice_recordings.uk_practice_recordings_active_user_id'"));
 
-        assertErrorCode(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)),
+        assertErrorCode(() -> service.create(ME, request("연습")),
                 ErrorCode.PRACTICE_ANALYSIS_IN_PROGRESS);
     }
 
@@ -181,10 +201,11 @@ class PracticeRecordingServiceTest {
     @DisplayName("다른 제약 위반은 409로 바꾸지 않고 그대로 던진다")
     void create_rethrowsOtherIntegrityViolation() {
         stubUploadedAudio(1024);
+        stubSongExists();
         when(recordingRepository.existsByUserIdAndStatusIn(ME, PracticeRecordingStatus.IN_PROGRESS)).thenReturn(false);
         when(recordingRepository.saveAndFlush(any())).thenThrow(uniqueViolation("Data too long for column 'title'"));
 
-        assertThatThrownBy(() -> service.create(ME, new PracticeRecordingCreateRequest("연습", Instrument.VOCAL, AUDIO_URL)))
+        assertThatThrownBy(() -> service.create(ME, request("연습")))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -362,17 +383,48 @@ class PracticeRecordingServiceTest {
     // ---- 분석 실행(실행기 스레드)
 
     @Test
-    @DisplayName("분석: 시작 → 임시 URL과 녹음 세션으로 AI 호출 → 결과 저장")
-    void runAnalysis_callsAiWithReadUrl_andSavesResult() {
+    @DisplayName("분석: 시작 → 곡 external_id·녹음 파일 내용·파일 이름·세션으로 AI 호출 → 결과 저장")
+    void runAnalysis_callsAiWithExternalIdAndAudio_andSavesResult() {
         List<AnalysisFeedback> results = List.of(new AnalysisFeedback(0, 5, "VOCAL", "결과"));
         when(analysisService.start(RECORDING_ID)).thenReturn(Optional.of(recordingOf(ME, PracticeRecordingStatus.ANALYZING)));
-        when(fileService.issueReadUrl(FILE_KEY, URL_EXPIRY)).thenReturn(READ_URL);
-        when(analysisClient.analyze(new AnalysisRequest(READ_URL, "m4a", Instrument.VOCAL))).thenReturn(results);
+        stubAnalysisInput();
+        when(analysisClient.analyze(any())).thenReturn(results);
 
         service.runAnalysis(RECORDING_ID);
 
+        ArgumentCaptor<AnalysisRequest> captor = ArgumentCaptor.forClass(AnalysisRequest.class);
+        verify(analysisClient).analyze(captor.capture());
+        assertThat(captor.getValue()).extracting(AnalysisRequest::songExternalId, AnalysisRequest::performanceAudio,
+                        AnalysisRequest::performanceFilename, AnalysisRequest::part)
+                .containsExactly(SONG_EXTERNAL_ID, AUDIO, "key.m4a", Instrument.VOCAL);
         verify(analysisService).complete(RECORDING_ID, results);
         verify(analysisService, never()).fail(anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("곡에 external_id가 없으면 AI를 부르지 않고 실패(사유: 지원하지 않는 곡)로 바꾼다")
+    void runAnalysis_failsWithUnsupportedSong_whenNoExternalId() {
+        when(analysisService.start(RECORDING_ID)).thenReturn(Optional.of(recordingOf(ME, PracticeRecordingStatus.ANALYZING)));
+        when(songService.findExternalId(SONG_ID)).thenReturn(Optional.empty());
+
+        service.runAnalysis(RECORDING_ID);
+
+        verify(analysisClient, never()).analyze(any());
+        verify(analysisService).fail(RECORDING_ID, PracticeAnalysisException.UNSUPPORTED_SONG);
+    }
+
+    @Test
+    @DisplayName("AI가 사유를 정해 준 실패(원곡과 맞추지 못함 등)는 그 사유로 실패시킨다")
+    void runAnalysis_failsWithGivenReason_onPracticeAnalysisException() {
+        when(analysisService.start(RECORDING_ID)).thenReturn(Optional.of(recordingOf(ME, PracticeRecordingStatus.ANALYZING)));
+        stubAnalysisInput();
+        when(analysisClient.analyze(any()))
+                .thenThrow(new PracticeAnalysisException(PracticeAnalysisException.REVIEW_REQUIRED));
+
+        service.runAnalysis(RECORDING_ID);
+
+        verify(analysisService).fail(RECORDING_ID, PracticeAnalysisException.REVIEW_REQUIRED);
+        verify(analysisService, never()).complete(anyLong(), any());
     }
 
     @Test
@@ -390,7 +442,7 @@ class PracticeRecordingServiceTest {
     @DisplayName("AI 연결 실패·응답 대기 초과면 실패(사유: AI 서버 연결)로 바꾼다")
     void runAnalysis_failsWithUnreachableReason_onConnectionError() {
         when(analysisService.start(RECORDING_ID)).thenReturn(Optional.of(recordingOf(ME, PracticeRecordingStatus.ANALYZING)));
-        when(fileService.issueReadUrl(FILE_KEY, URL_EXPIRY)).thenReturn(READ_URL);
+        stubAnalysisInput();
         when(analysisClient.analyze(any())).thenThrow(new ResourceAccessException("Read timed out"));
 
         service.runAnalysis(RECORDING_ID);
@@ -403,7 +455,7 @@ class PracticeRecordingServiceTest {
     @DisplayName("AI 오류 응답 등 그 밖의 실패는 실패(사유: 분석하지 못함)로 바꾼다")
     void runAnalysis_failsWithGenericReason_onOtherError() {
         when(analysisService.start(RECORDING_ID)).thenReturn(Optional.of(recordingOf(ME, PracticeRecordingStatus.ANALYZING)));
-        when(fileService.issueReadUrl(FILE_KEY, URL_EXPIRY)).thenReturn(READ_URL);
+        stubAnalysisInput();
         when(analysisClient.analyze(any())).thenThrow(new IllegalStateException("AI 500"));
 
         service.runAnalysis(RECORDING_ID);
@@ -426,7 +478,23 @@ class PracticeRecordingServiceTest {
 
     private PracticeRecordingService serviceWith(TaskExecutor executor) {
         return new PracticeRecordingService(recordingRepository, feedbackRepository, analysisService, analysisClient,
-                fileService, new PracticeProperties(30, new PracticeProperties.Ai("fake", 0)), executor);
+                fileService, songService, new PracticeProperties(30, new PracticeProperties.Ai("fake", 0, null, null, false, 180)),
+                executor);
+    }
+
+    private static PracticeRecordingCreateRequest request(String title) {
+        return new PracticeRecordingCreateRequest(title, Instrument.VOCAL, SONG_ID, AUDIO_URL);
+    }
+
+    private void stubSongExists() {
+        when(songService.getSummaries(List.of(SONG_ID)))
+                .thenReturn(Map.of(SONG_ID, new SongSummaryResponse(SONG_ID, "예뻤어", "DAY6")));
+    }
+
+    private void stubAnalysisInput() {
+        when(songService.findExternalId(SONG_ID)).thenReturn(Optional.of(SONG_EXTERNAL_ID));
+        when(fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO)).thenReturn(MAX_BYTES);
+        when(fileService.readBytes(FILE_KEY, MAX_BYTES)).thenReturn(AUDIO);
     }
 
     private void stubUploadedAudio(long size) {
@@ -462,7 +530,7 @@ class PracticeRecordingServiceTest {
     }
 
     private static PracticeRecording recordingOf(Long userId, PracticeRecordingStatus status) {
-        PracticeRecording recording = saved(PracticeRecording.create(userId, "연습", Instrument.VOCAL, FILE_KEY));
+        PracticeRecording recording = saved(PracticeRecording.create(userId, "연습", Instrument.VOCAL, SONG_ID, FILE_KEY));
         if (status == PracticeRecordingStatus.SUBMITTED) {
             return recording;
         }

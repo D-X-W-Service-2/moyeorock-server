@@ -313,22 +313,22 @@ class FileServiceTest {
     }
 
     @Test
-    @DisplayName("연습 녹음은 100MB까지 받는다")
-    void receiveUpload_practiceAudio_acceptsUpTo100MB() {
+    @DisplayName("연습 녹음은 1,950,000바이트(AI Base64 한도 2,600,000자)까지 받는다")
+    void receiveUpload_practiceAudio_acceptsUpToLimit() {
         stubPracticeAudioUpload();
 
-        fileService.receiveUpload("practice/key.m4a", "audio/mp4", zeros(100L * 1024 * 1024), UPLOADER_ID);
+        fileService.receiveUpload("practice/key.m4a", "audio/mp4", zeros(1_950_000L), UPLOADER_ID);
 
         verify(fileStorageClient).write(org.mockito.ArgumentMatchers.eq("practice/key.m4a"), any());
     }
 
     @Test
-    @DisplayName("연습 녹음이 100MB를 넘으면 FILE_SIZE_EXCEEDED")
-    void receiveUpload_practiceAudio_throws_whenOver100MB() {
+    @DisplayName("연습 녹음이 1,950,000바이트를 넘으면 FILE_SIZE_EXCEEDED")
+    void receiveUpload_practiceAudio_throws_whenOverLimit() {
         stubPracticeAudioUpload();
 
         assertThatThrownBy(() -> fileService.receiveUpload("practice/key.m4a", "audio/mp4",
-                zeros(100L * 1024 * 1024 + 1), UPLOADER_ID))
+                zeros(1_950_001L), UPLOADER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
@@ -376,12 +376,33 @@ class FileServiceTest {
     }
 
     @Test
-    @DisplayName("업로드 크기 한도는 이미지 10MB, 연습 녹음 100MB다")
+    @DisplayName("업로드 크기 한도는 이미지 10MB, 연습 녹음 1,950,000바이트다")
     void maxUploadBytes_perDomain() {
         assertThat(fileService.maxUploadBytes(UploadDomain.PROFILE_IMAGE)).isEqualTo(10L * 1024 * 1024);
         assertThat(fileService.maxUploadBytes(UploadDomain.GROUP_COVER)).isEqualTo(10L * 1024 * 1024);
         assertThat(fileService.maxUploadBytes(UploadDomain.PERFORMANCE_POSTER)).isEqualTo(10L * 1024 * 1024);
-        assertThat(fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO)).isEqualTo(100L * 1024 * 1024);
+        assertThat(fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO)).isEqualTo(1_950_000L);
+    }
+
+    @Test
+    @DisplayName("readBytes: 한도 이하면 파일 내용을 통째로 돌려주고 스트림을 닫는다")
+    void readBytes_returnsContent_withinLimit() throws IOException {
+        InputStream content = org.mockito.Mockito.spy(new ByteArrayInputStream(new byte[]{1, 2, 3}));
+        when(fileStorageClient.read("practice/key.m4a")).thenReturn(content);
+
+        assertThat(fileService.readBytes("practice/key.m4a", 3)).containsExactly(1, 2, 3);
+        verify(content).close();
+    }
+
+    @Test
+    @DisplayName("readBytes: 한도를 넘으면 더 읽지 않고 FILE_SIZE_EXCEEDED — 등록 뒤 같은 key에 큰 파일을 다시 올린 경우")
+    void readBytes_throws_whenOverLimit() {
+        when(fileStorageClient.read("practice/key.m4a")).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3, 4}));
+
+        assertThatThrownBy(() -> fileService.readBytes("practice/key.m4a", 3))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
     }
 
     @Test
