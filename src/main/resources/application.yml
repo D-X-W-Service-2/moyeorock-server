@@ -67,6 +67,8 @@ ai:
   song-sync:
     enabled: ${AI_SONG_SYNC_ENABLED:false}
     cron: ${AI_SONG_SYNC_CRON:0 0 4 * * *}
+    # 수동 동기화(POST /v1/songs/sync)를 부를 수 있는 사용자 id, 쉼표로 구분. 비어 있으면 아무도 못 부른다(이슈 #162).
+    admin-user-ids: ${AI_SONG_SYNC_ADMIN_USER_IDS:}
 
 # 문서(/v3/api-docs, /swagger-ui.html)는 SWAGGER_ENABLED=true일 때만 열린다. 값이 없으면 닫힌다 — 운영 배포에서
 # 설정을 빠뜨려도 API 문서가 노출되지 않게 하려는 것이다(PR #114 리뷰). 로컬·개발은 .env에 SWAGGER_ENABLED=true를 둔다.

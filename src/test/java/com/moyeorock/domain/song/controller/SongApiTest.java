@@ -1,6 +1,7 @@
 package com.moyeorock.domain.song.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -95,6 +96,20 @@ class SongApiTest {
         mockMvc.perform(get("/v1/songs?genre=KPOP").header("Authorization", bearer()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    @DisplayName("수동 동기화는 토큰 없이 호출하면 401이다")
+    void sync_withoutToken_returns401() throws Exception {
+        mockMvc.perform(post("/v1/songs/sync")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("수동 동기화는 지정한 사용자가 아니면 403 NO_PERMISSION이다(테스트 설정은 지정한 사용자가 없다)")
+    void sync_byOtherUser_returns403() throws Exception {
+        mockMvc.perform(post("/v1/songs/sync").header("Authorization", bearer()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("NO_PERMISSION"));
     }
 
     private String bearer() {
