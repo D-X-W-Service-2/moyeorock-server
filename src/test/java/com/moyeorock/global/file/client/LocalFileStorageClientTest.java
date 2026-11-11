@@ -163,4 +163,17 @@ class LocalFileStorageClientTest {
             }
         };
     }
+
+    @Test
+    @DisplayName("서버 전용 읽기는 앞에서부터 maxBytes까지만 읽고, 파일이 없으면 NoSuchFileException이다")
+    void readAtMost_readsPrefix_orThrowsWhenMissing() {
+        LocalFileStorageClient client = client(tempDir);
+        client.write("practice/abc.m4a", new ByteArrayInputStream(new byte[]{1, 2, 3, 4, 5}));
+
+        assertThat(client.readAtMost("practice/abc.m4a", 3)).containsExactly(1, 2, 3);
+        assertThat(client.readAtMost("practice/abc.m4a", 10)).containsExactly(1, 2, 3, 4, 5);
+        assertThatThrownBy(() -> client.readAtMost("practice/none.m4a", 3))
+                .isInstanceOf(java.io.UncheckedIOException.class)
+                .hasCauseInstanceOf(java.nio.file.NoSuchFileException.class);
+    }
 }

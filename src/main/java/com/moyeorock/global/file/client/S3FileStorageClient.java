@@ -1,6 +1,9 @@
 package com.moyeorock.global.file.client;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -10,9 +13,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -65,9 +70,44 @@ public class S3FileStorageClient implements FileStorageClient {
         throw new UnsupportedOperationException("S3는 클라이언트가 presigned URL로 직접 업로드하므로 서버가 파일을 받지 않는다");
     }
 
+    // 인증 없는 로컬 서빙(GET /v1/files/local/**)이 쓰는 메서드라 S3에서는 열지 않는다 — 열면 비공개인 연습 녹음이 그 경로로
+    // 인증 없이 나간다. 서버가 내용을 읽을 때는 readAtMost를 쓴다(이슈 #167).
     @Override
     public InputStream read(String fileKey) {
         throw new UnsupportedOperationException("S3는 fileUrl로 클라이언트가 직접 읽으므로 서버가 파일을 내려주지 않는다");
+    }
+
+    // Range로 앞에서부터 maxBytes까지만 받는다. 범위 없이 받으면 중간에 스트림을 닫아도 SDK가 연결을 재사용하려고 남은 내용을
+    // 끝까지 읽어 버려서, 등록 뒤 같은 key에 올린 큰 파일을 통째로 내려받게 된다. 없는 객체는 ListBucket 권한이 없으면 403으로
+    // 오므로 size와 같은 기준으로 404·403 둘 다 없음으로 본다(로컬과 같게 NoSuchFileException → FileService가 FILE_NOT_FOUND).
+    // 빈 객체에 범위를 걸면 S3가 416을 주므로 빈 내용으로 본다.
+    @Override
+    public byte[] readAtMost(String fileKey, int maxBytes) {
+        if (maxBytes <= 0) {
+            return new byte[0];
+        }
+        GetObjectRequest request = GetObjectRequest.builder()
+                .bucket(properties.bucket())
+                .key(fileKey)
+                .range("bytes=0-" + (maxBytes - 1))
+                .build();
+        try (ResponseInputStream<GetObjectResponse> content = s3Client.getObject(request)) {
+            return content.readNBytes(maxBytes);
+        } catch (S3Exception e) {
+            if (e.statusCode() == 416) {
+                return new byte[0];
+            }
+            if (e.statusCode() == 404 || e.statusCode() == 403) {
+                if (e.statusCode() == 403) {
+                    log.warn("S3 GetObject 403 — 객체가 없거나 권한이 없습니다(ListBucket 권한이 없으면 없는 객체도 403). fileKey={}",
+                            fileKey);
+                }
+                throw new UncheckedIOException(new NoSuchFileException(fileKey));
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override

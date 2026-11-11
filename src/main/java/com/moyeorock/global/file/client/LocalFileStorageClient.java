@@ -100,6 +100,15 @@ public class LocalFileStorageClient implements FileStorageClient {
     }
 
     @Override
+    public byte[] readAtMost(String fileKey, int maxBytes) {
+        try (InputStream content = Files.newInputStream(resolvePath(fileKey))) {
+            return content.readNBytes(maxBytes);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
     public void delete(String fileKey) {
         try {
             Files.deleteIfExists(resolvePath(fileKey));

@@ -6,7 +6,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,8 +17,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -117,5 +124,71 @@ class S3FileStorageClientTest {
                 .thenThrow(S3Exception.builder().statusCode(500).message("Internal Error").build());
 
         assertThatThrownBy(() -> client.size("practice/abc.m4a")).isInstanceOf(S3Exception.class);
+    }
+
+    @Test
+    @DisplayName("스트림 읽기(read)는 S3에서 열지 않는다 — 인증 없는 로컬 서빙 경로로 비공개 녹음이 나가지 않게(이슈 #167)")
+    void read_staysUnsupported() {
+        assertThatThrownBy(() -> client.read("practice/abc.m4a")).isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    @DisplayName("서버 전용 읽기는 Range로 앞에서부터 maxBytes까지만 요청하고 받은 내용을 돌려준다")
+    void readAtMost_requestsRange_andReturnsContent() {
+        byte[] audio = {1, 2, 3};
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenAnswer(invocation -> {
+            GetObjectRequest request = invocation.getArgument(0);
+            assertThat(request.bucket()).isEqualTo(BUCKET);
+            assertThat(request.key()).isEqualTo("practice/abc.m4a");
+            assertThat(request.range()).isEqualTo("bytes=0-1950000");
+            return response(audio);
+        });
+
+        assertThat(client.readAtMost("practice/abc.m4a", 1_950_001)).isEqualTo(audio);
+    }
+
+    @Test
+    @DisplayName("S3가 범위보다 많이 주더라도 maxBytes까지만 읽는다")
+    void readAtMost_readsNoMoreThanMax() {
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(response(new byte[]{1, 2, 3, 4, 5}));
+
+        assertThat(client.readAtMost("practice/abc.m4a", 3)).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    @DisplayName("읽을 객체가 없으면(404, ListBucket 권한이 없으면 403) 로컬과 같게 NoSuchFileException으로 알린다")
+    void readAtMost_throwsNoSuchFile_whenMissing() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(NoSuchKeyException.builder().statusCode(404).message("Not Found").build())
+                .thenThrow(S3Exception.builder().statusCode(403).message("Forbidden").build());
+
+        for (int i = 0; i < 2; i++) {
+            assertThatThrownBy(() -> client.readAtMost("practice/none.m4a", 10))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .hasCauseInstanceOf(NoSuchFileException.class);
+        }
+    }
+
+    @Test
+    @DisplayName("빈 객체에 범위를 걸면 S3가 416을 주므로 빈 내용으로 본다")
+    void readAtMost_returnsEmpty_whenRangeNotSatisfiable() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(416).message("Range Not Satisfiable").build());
+
+        assertThat(client.readAtMost("practice/empty.m4a", 10)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("그 밖의 S3 오류는 읽기에서도 그대로 던진다")
+    void readAtMost_rethrows_onOtherErrors() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(500).message("Internal Error").build());
+
+        assertThatThrownBy(() -> client.readAtMost("practice/abc.m4a", 10)).isInstanceOf(S3Exception.class);
+    }
+
+    private static ResponseInputStream<GetObjectResponse> response(byte[] body) {
+        return new ResponseInputStream<>(GetObjectResponse.builder().contentLength((long) body.length).build(),
+                AbortableInputStream.create(new ByteArrayInputStream(body)));
     }
 }
