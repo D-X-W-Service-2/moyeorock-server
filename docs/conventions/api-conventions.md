@@ -24,6 +24,7 @@ JSON 키는 `camelCase`로 쓴다 (`totalElements`, `totalPages`). Jackson 기�
 |---|---|
 | 200 | 조회 · 수정 · 삭제 · 상태 전이 |
 | 201 | 생성 |
+| 202 | 비동기 작업 접수 — 연습 녹음 분석 요청·다시 요청(처리는 나중에 끝나고 결과는 조회로 본다, 2026-11-09) |
 | 400 | `VALIDATION_FAILED` |
 | 401 | `UNAUTHORIZED` |
 | 403 | `FORBIDDEN` · `NO_PERMISSION` |
@@ -32,7 +33,7 @@ JSON 키는 `camelCase`로 쓴다 (`totalElements`, `totalPages`). Jackson 기�
 | 409 | 중복 · 상태 충돌 |
 | 415 | `UNSUPPORTED_MEDIA_TYPE`(요청 Content-Type 미지원) |
 
-**204를 쓰지 않는다.** 봉투를 항상 내려주려면 바디가 있어야 한다. 삭제도 200 + `DeleteResponse`. 단, 공지 삭제는 노션 `API 초안`(2026-09-30)이 `data: null`로 정해 `DeleteResponse`를 쓰지 않는다(`docs/conventions/dto-naming.md` §8).
+**204를 쓰지 않는다.** 봉투를 항상 내려주려면 바디가 있어야 한다. 삭제도 200 + `DeleteResponse`. 단, 공지 삭제는 노션 `API 초안`(2026-09-30)이 `data: null`로 정해 `DeleteResponse`를 쓰지 않는다(`docs/conventions/dto-naming.md` §8). 연습 녹음 삭제도 노션(2026-11-09)대로 `data: null`이다.
 
 ## 3. 예외 · ErrorCode
 
@@ -135,10 +136,10 @@ Spring의 `Page<T>`를 그대로 반환하지 않는다. 불필요한 필드가 
 - 접두사 `/v1/` — **전 도메인 예외 없음.** 합주(rehearsal)만 `API 초안` 정리 전까지 `/v0/`를 유지하던 예외가 있었으나, 초안이 `/v1/`로 정리된 것을 확인하고 2026-10-05에 해소했다. `/v0/`는 더 이상 쓰지 않는다
 - `recruit-post`는 예외적으로 단수형이다(2026-09-11 `API 초안` 기준으로 정했고, 2026-11-03에도 현행 유지로 확인). 그 외 리소스는 아래 규칙대로 복수형을 쓴다. `join-requests`는 `API 초안`이 복수형으로 바뀌어 2026-11-03에 복수형으로 맞췄다
 - 리소스는 복수형 (`/teams` `/invitations` `/join-requests`). 예외: `recruit-post` (단수형)
-- 상태 전이는 `PATCH /{id}/status` 또는 `PATCH /{id}/{action}`
+- 상태 전이는 `PATCH /{id}/status` 또는 `PATCH /{id}/{action}`. 예외: 연습 녹음 분석 다시 요청은 `POST /v1/practice-recordings/{id}/retry`다 — 상태만 바꾸는 게 아니라 분석 작업을 새로 접수해서(비멱등·202) 노션대로 둔다
 - 하위 리소스는 부모 경로 아래 (`/teams/{teamId}/rehearsals`), 단건 조회·수정·삭제는 단독 경로 (`/rehearsals/{id}`)
 
-**소프트 삭제는 `DELETE`가 아니라 `PATCH .../status`다.** `DELETE`는 실제로 행이 사라지는 3곳(합주·공지·북마크)에만 쓴다. 팀원·모임원의 탈퇴·강퇴는 행이 사라지지 않고 `status`만 바뀌므로 `PATCH /{teamId 또는 groupId}/members/{userId}/status`를 쓴다.
+**소프트 삭제는 `DELETE`가 아니라 `PATCH .../status`다.** `DELETE`는 실제로 행이 사라지는 곳(합주·공지·북마크·연습 녹음)에만 쓴다. 팀원·모임원의 탈퇴·강퇴는 행이 사라지지 않고 `status`만 바뀌므로 `PATCH /{teamId 또는 groupId}/members/{userId}/status`를 쓴다.
 
 ## 6. DTO
 

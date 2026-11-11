@@ -52,6 +52,7 @@ public class FileController {
 
             - 예: `DELETE /v1/files?fileUrl=https%3A%2F%2F...%2Fprofile%2Fabc.png` — 쿼리 값이라 `encodeURIComponent`로 인코딩한다.
             - 응답 `id`는 지운 파일의 id다(업로드 응답의 `fileId`와 같은 값).
+            - 연습 녹음 상세의 `audioUrl`은 조회 때마다 새로 만드는 임시 URL이라 이 API로 지울 수 없다(404).
 
             **에러**
             - 400 `VALIDATION_FAILED`: `fileUrl`이 없음

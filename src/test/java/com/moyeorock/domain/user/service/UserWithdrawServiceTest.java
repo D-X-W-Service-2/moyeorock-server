@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.join.service.JoinRequestService;
+import com.moyeorock.domain.practice.service.PracticeRecordingService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamService;
@@ -45,6 +46,8 @@ class UserWithdrawServiceTest {
     GroupMemberService groupMemberService;
     @Mock
     JoinRequestService joinRequestService;
+    @Mock
+    PracticeRecordingService practiceRecordingService;
     @InjectMocks
     UserWithdrawService userWithdrawService;
 
@@ -84,10 +87,11 @@ class UserWithdrawServiceTest {
         verify(joinRequestService).cancelPendingOf(USER_ID);
         verify(groupMemberService).leaveAllGroups(USER_ID);
         verify(teamService).leaveAllTeams(USER_ID);
+        verify(practiceRecordingService).deleteAllOf(USER_ID);
     }
 
     @Test
-    @DisplayName("대기 중인 신청·초대는 직책 확인(findLedTeams) 앞에서 닫는다 — 승인과 겹쳐도 새 멤버 행을 놓치지 않으려는 순서다")
+    @DisplayName("대기 중인 신청·초대는 직책 확인(findLedTeams) 앞에서 닫고, 연습 녹음은 모임·팀 정리를 통과한 맨 뒤에 지운다")
     void closesJoinRequestsBeforeRoleCheck() {
         givenActiveForUpdate(activeUser());
         given(teamService.findLedTeams(USER_ID)).willReturn(List.of());
@@ -96,13 +100,14 @@ class UserWithdrawServiceTest {
         userWithdrawService.withdraw(USER_ID);
 
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(
-                userRepository, joinRequestService, teamService, groupMemberService);
+                userRepository, joinRequestService, teamService, groupMemberService, practiceRecordingService);
         inOrder.verify(userRepository).findByIdAndStatusForUpdate(USER_ID, UserStatus.ACTIVE);
         inOrder.verify(joinRequestService).cancelPendingOf(USER_ID);
         inOrder.verify(teamService).findLedTeams(USER_ID);
         inOrder.verify(groupMemberService).findOwnedGroups(USER_ID);
         inOrder.verify(groupMemberService).leaveAllGroups(USER_ID);
         inOrder.verify(teamService).leaveAllTeams(USER_ID);
+        inOrder.verify(practiceRecordingService).deleteAllOf(USER_ID);
     }
 
     @Test
@@ -123,6 +128,7 @@ class UserWithdrawServiceTest {
         verify(joinRequestService).cancelPendingOf(USER_ID);
         verify(groupMemberService, never()).leaveAllGroups(USER_ID);
         verify(teamService, never()).leaveAllTeams(USER_ID);
+        verify(practiceRecordingService, never()).deleteAllOf(USER_ID);
     }
 
     @Test
@@ -139,6 +145,7 @@ class UserWithdrawServiceTest {
         assertThat(thrown.getMessage()).isEqualTo("모임 '홍대 밴드부'의 모임장을 위임하거나 모임을 해체한 뒤 탈퇴할 수 있습니다.");
         assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         verify(groupMemberService, never()).leaveAllGroups(USER_ID);
+        verify(practiceRecordingService, never()).deleteAllOf(USER_ID);
     }
 
     @Test
@@ -163,6 +170,6 @@ class UserWithdrawServiceTest {
 
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(ErrorCode.USER_NOT_FOUND);
-        verifyNoInteractions(teamService);
+        verifyNoInteractions(teamService, practiceRecordingService);
     }
 }

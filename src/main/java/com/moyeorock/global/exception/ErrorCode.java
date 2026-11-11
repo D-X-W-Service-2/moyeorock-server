@@ -88,7 +88,11 @@ public enum ErrorCode {
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다."),
     // 공연 팀원은 그 공연을 연 모임의 활동 모임원만 될 수 있다(#96). 코드 이름은 4팀이 정했다 — 기존 코드를 빌리면 프론트가 구분하기 어렵다
-    NOT_PERFORMANCE_GROUP_MEMBER(HttpStatus.FORBIDDEN, "공연을 연 모임의 모임원만 공연 팀에 들어올 수 있습니다.");
+    NOT_PERFORMANCE_GROUP_MEMBER(HttpStatus.FORBIDDEN, "공연을 연 모임의 모임원만 공연 팀에 들어올 수 있습니다."),
+
+    // 연습 (practice) — 코드 이름은 노션 API 초안 "연습"(2026-11-09)과 맞추고 메시지는 4팀이 정했다(이슈 #155)
+    PRACTICE_RECORDING_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 연습 녹음입니다."),
+    PRACTICE_ANALYSIS_IN_PROGRESS(HttpStatus.CONFLICT, "이미 분석 중인 연습 녹음이 있습니다.");
 
     private final HttpStatus status;
     private final String message;

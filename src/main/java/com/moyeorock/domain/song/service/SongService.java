@@ -22,6 +22,7 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -33,11 +34,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientException;
 
 /**
  * 곡 마스터 조회와 AI 서버 곡 카탈로그 동기화. 곡은 AI 서버 카탈로그에서 들어오는 데이터라 화면용 쓰기는 없다(Song 엔티티 주석).
- * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을 확인하려고 이 Service를 부른다.
+ * 다른 Service를 부르지 않는다 — setlist가 곡 존재·요약을, practice가 곡 존재·external_id를 확인하려고 이 Service를 부른다.
  */
 @Slf4j
 @Service
@@ -71,6 +73,16 @@ public class SongService {
         return songRepository.findAllById(songIds).stream()
                 .map(SongSummaryResponse::from)
                 .collect(Collectors.toMap(SongSummaryResponse::id, Function.identity()));
+    }
+
+    /**
+     * 곡의 외부 카탈로그 id(external_id). 연습 녹음 분석이 AI에 원곡을 이 값으로 알려 준다 — 원곡 음원은 AI 서버가 갖고 있다.
+     * 없는 곡이거나 external_id가 비어 있으면 빈 값.
+     */
+    public Optional<String> findExternalId(Long songId) {
+        return songRepository.findById(songId)
+                .map(Song::getExternalId)
+                .filter(StringUtils::hasText);
     }
 
     /**

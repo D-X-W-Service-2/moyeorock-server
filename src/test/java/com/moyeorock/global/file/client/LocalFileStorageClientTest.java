@@ -109,12 +109,12 @@ class LocalFileStorageClientTest {
     }
 
     @Test
-    @DisplayName("발급 때 준 fileUrl을 fileKey로 되돌린다(파일 삭제가 fileUrl로 받는다, 이슈 #164)")
+    @DisplayName("발급 때 준 fileUrl을 fileKey로 되돌린다")
     void toFileKey_returnsKey_forIssuedFileUrl() {
         LocalFileStorageClient client = client(tempDir);
-        String fileUrl = client.issuePresignedUrl("profile/abc.png", "image/png").fileUrl();
+        String fileUrl = client.issuePresignedUrl("practice/abc.m4a", "audio/mp4").fileUrl();
 
-        assertThat(client.toFileKey(fileUrl)).contains("profile/abc.png");
+        assertThat(client.toFileKey(fileUrl)).contains("practice/abc.m4a");
     }
 
     @Test
@@ -122,10 +122,29 @@ class LocalFileStorageClientTest {
     void toFileKey_returnsEmpty_forForeignUrl() {
         LocalFileStorageClient client = client(tempDir);
 
-        assertThat(client.toFileKey("https://evil.example.com/v1/files/local/profile/abc.png")).isEmpty();
-        assertThat(client.toFileKey("http://localhost:8080/v1/files/local-upload/profile/abc.png")).isEmpty();
+        assertThat(client.toFileKey("https://evil.example.com/v1/files/local/practice/abc.m4a")).isEmpty();
+        assertThat(client.toFileKey("http://localhost:8080/v1/files/local-upload/practice/abc.m4a")).isEmpty();
         assertThat(client.toFileKey("http://localhost:8080/v1/files/local/")).isEmpty();
         assertThat(client.toFileKey(null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("로컬 저장은 읽기 URL로 서빙 경로를 그대로 준다")
+    void issueReadUrl_returnsServePath() {
+        LocalFileStorageClient client = client(tempDir);
+
+        assertThat(client.issueReadUrl("practice/abc.m4a", java.time.Duration.ofMinutes(30)))
+                .isEqualTo("http://localhost:8080/v1/files/local/practice/abc.m4a");
+    }
+
+    @Test
+    @DisplayName("올라간 파일은 크기를 돌려주고, 아직 없으면 빈 값이다")
+    void size_returnsBytes_orEmptyWhenMissing() {
+        LocalFileStorageClient client = client(tempDir);
+        client.write("practice/abc.m4a", new ByteArrayInputStream(new byte[1234]));
+
+        assertThat(client.size("practice/abc.m4a")).hasValue(1234);
+        assertThat(client.size("practice/none.m4a")).isEmpty();
     }
 
     // 용량 초과·연결 끊김처럼 일부를 흘려보낸 뒤 예외가 나는 업로드 스트림

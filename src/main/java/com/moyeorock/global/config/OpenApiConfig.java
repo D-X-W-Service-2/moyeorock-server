@@ -65,7 +65,8 @@ public class OpenApiConfig {
             Map.entry("join", "가입 신청"),
             Map.entry("notification", "알림"),
             Map.entry("bookmark", "저장"),
-            Map.entry("file", "파일"));
+            Map.entry("file", "파일"),
+            Map.entry("practice", "연습"));
 
     @Bean
     public OpenAPI moyeorockOpenAPI() {

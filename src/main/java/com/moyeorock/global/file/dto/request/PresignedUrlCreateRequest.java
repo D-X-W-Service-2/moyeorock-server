@@ -15,8 +15,8 @@ public record PresignedUrlCreateRequest(
         @Size(max = 255, message = "파일명은 255자 이하여야 합니다.")
         String fileName,
 
-        // contentType은 files.content_type이 VARCHAR(100)이지만 FileService가 허용 목록
-        // (image/jpeg·png·webp)과 정확히 일치하는지 먼저 검사해 길이 초과가 DB까지 가지 않는다.
+        // contentType은 files.content_type이 VARCHAR(100)이지만 FileService가 도메인별 허용 목록
+        // (이미지 image/jpeg·png·webp, 연습 녹음 audio/*)과 정확히 일치하는지 먼저 검사해 길이 초과가 DB까지 가지 않는다.
         @NotBlank(message = "contentType은 필수입니다.")
         String contentType
 ) {

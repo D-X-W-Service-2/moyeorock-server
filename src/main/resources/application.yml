@@ -32,6 +32,12 @@ spring:
     serialization:
       fail-on-empty-beans: false
 
+  # 연습 녹음 분석 전용 실행기 빈(PracticeAnalysisConfig)이 있어도 기본 실행기(applicationTaskExecutor)를 그대로 만든다.
+  # 이 값이 없으면 Spring Boot는 Executor 빈이 하나라도 있으면 기본 실행기를 만들지 않는다.
+  task:
+    execution:
+      mode: force
+
 jwt:
   secret-key: ${JWT_SECRET_KEY}
   issuer: ${JWT_ISSUER}
@@ -45,10 +51,11 @@ kakao:
   user-info-uri: https://kapi.kakao.com/v2/user/me
 
 # file.storage.type을 안 정하면 local이 기본값이다(FileStorageClient 구현체들의
-# @ConditionalOnProperty matchIfMissing=true). S3로 전환할 땐 FILE_STORAGE_TYPE=s3 +
-# file.storage.s3.bucket/region/upload-url-expiry-seconds를 설정한다. upload-url-expiry-seconds를
-# 빠뜨리면 0으로 바인딩돼 발급한 URL이 바로 만료된다. 프론트는 업로드 PUT에서 Authorization 헤더를
-# 빼야 한다(docs/specs/api-spec.md §10 file "업로드 PUT 규칙").
+# @ConditionalOnProperty matchIfMissing=true). S3는 FILE_STORAGE_TYPE=s3 + FILE_STORAGE_S3_BUCKET을 준다 —
+# 변수 이름을 Spring 기본 변환 이름(file.storage.s3.bucket ↔ FILE_STORAGE_S3_BUCKET)에 맞춰서, 서버 환경 파일에
+# 이 이름으로 넣어 뒀다면 yml이 없어도 같은 값이 들어간다. upload-url-expiry-seconds는 고정값으로 둔다 — 빠뜨리면
+# 0으로 바인딩돼 발급한 URL이 바로 만료된다. 프론트는 S3 업로드 PUT에서 Authorization 헤더를 빼야 한다
+# (docs/specs/api-spec.md §10 file "업로드 PUT 규칙").
 file:
   storage:
     type: ${FILE_STORAGE_TYPE:local}
@@ -56,6 +63,20 @@ file:
       base-path: ${FILE_LOCAL_BASE_PATH:./uploads}
       base-url: ${FILE_LOCAL_BASE_URL:http://localhost:8080}
       upload-url-expiry-seconds: 600
+    s3:
+      bucket: ${FILE_STORAGE_S3_BUCKET:}
+      region: ${FILE_STORAGE_S3_REGION:ap-northeast-2}
+      upload-url-expiry-seconds: 600
+
+# 개인 연습 녹음 AI 분석(이슈 #155). AI 서버가 생기기 전까지 가짜 AI(고정 결과)를 쓴다 — PracticeProperties 참고.
+practice:
+  audio-url-expiry-minutes: 30
+  ai:
+    # fake(기본값, 가짜 AI) | ai(실제 AI 서버). 실제 AI는 곡 동기화·팀원 추천과 같은 AI 서버·키를 쓴다(AI 팀 핸드오프 2026-11-11)
+    type: ${PRACTICE_AI_TYPE:fake}
+    fake-delay-seconds: 5
+    base-url: ${AI_SERVER_BASE_URL:}
+    api-key: ${AI_SERVER_API_KEY:}
 
 # AI 서버 곡 카탈로그 동기화(이슈 #147). 백엔드가 GET {base-url}/v1/songs?cursor=&limit=을 차례로 불러 songs에 넣는다.
 # base-url이 비어 있으면 동기화를 건너뛴다. api-key는 Authorization: Bearer로 보낸다(AI 팀이 발급).

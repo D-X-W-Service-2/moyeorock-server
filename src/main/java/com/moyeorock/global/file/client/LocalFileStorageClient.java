@@ -9,6 +9,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.OptionalLong;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -36,6 +37,13 @@ public class LocalFileStorageClient implements FileStorageClient {
         return new UploadUrl(uploadUrl, fileUrlPrefix() + fileKey, expiresAt);
     }
 
+    // 로컬 서빙(GET /v1/files/local/**)은 인증·만료가 없다. 로컬 저장은 개발용이라 비공개를 흉내 내지 않고
+    // fileUrl을 그대로 준다 — 비공개 파일도 로컬에서는 이 경로로 열린다.
+    @Override
+    public String issueReadUrl(String fileKey, Duration expiry) {
+        return fileUrlPrefix() + fileKey;
+    }
+
     @Override
     public Optional<String> toFileKey(String fileUrl) {
         String prefix = fileUrlPrefix();
@@ -43,6 +51,16 @@ public class LocalFileStorageClient implements FileStorageClient {
             return Optional.empty();
         }
         return Optional.of(fileUrl.substring(prefix.length()));
+    }
+
+    @Override
+    public OptionalLong size(String fileKey) {
+        try {
+            Path path = resolvePath(fileKey);
+            return Files.isRegularFile(path) ? OptionalLong.of(Files.size(path)) : OptionalLong.empty();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
@@ -105,7 +123,7 @@ public class LocalFileStorageClient implements FileStorageClient {
         return properties.baseUrl() + LOCAL_SERVE_PATH;
     }
 
-    // fileKey는 현재 항상 서버가 generateFileKey로 만든 값만 쓰이지만(FileService), 방어적으로
+    // fileKey는 현재 항상 서버가 만든 값만 쓰이지만(FileService.issuePresignedUrl), 방어적으로
     // basePath 하위를 벗어나는 경로(예: "../../etc/passwd")는 여기서 한 번 더 막는다.
     private Path resolvePath(String fileKey) {
         Path base = Path.of(properties.basePath()).normalize();

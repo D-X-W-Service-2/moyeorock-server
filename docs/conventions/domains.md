@@ -1,6 +1,6 @@
 # 도메인 지도
 
-14개 도메인 · 18개 테이블(`files` 포함, `global/file`은 도메인 아님. `setlists`는 2026-10-30 추가, 이슈 #85). 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
+15개 도메인 · 20개 테이블(`files` 포함, `global/file`은 도메인 아님. `setlists`는 2026-10-30 추가, 이슈 #85. `practice`와 그 테이블 2개는 2026-11-09 추가, 이슈 #155). 엔드포인트 총계는 파일 삭제 신규 확인(2026-09-11, `docs/specs/api-spec.md` §10 gap #10)으로 표기가 갱신 중이다 — 정확한 총계는 `docs/specs/api-spec.md` "알려진 공백" 참고.
 
 > **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
 
@@ -21,13 +21,14 @@
 | `performance` | 4팀 | `performances` | 10 |
 | `song` | 4팀 | `songs` | 2 |
 | `setlist` | 4팀 | `team_songs` `setlists` | 2 |
+| `practice` | 4팀 | `practice_recordings` `practice_feedbacks` | 5 |
 | `dashboard` | 3팀 | (없음) | 1 |
 
 > **엔드포인트 상세 명세(요청·응답 구조)는 `docs/specs/`에 있다** (`api-spec.md` · `dto-spec.md`). 정본은 노션 `API 명세서 v0`, `docs/specs/`는 대조 날짜가 명시된 스냅샷이다.
 > 명세에 없으면 **임의로 만들지 말고 요청할 것.** 응답 필드나 에러 코드를 추측해서 채우지 않는다.
 > DTO 이름은 `docs/conventions/dto-naming.md`, 컬럼은 `docs/conventions/erd.md`에 있다.
 
-`global/file`은 도메인이 아니고 엔드포인트 2개(업로드 URL 발급 · 파일 삭제)를 갖는다. **1팀 담당** — Security와 같은 인프라 성격이고, 1팀(프로필)·4팀(커버·포스터)이 함께 쓴다. 파일 삭제는 `API 초안`에서 2026-09-11에 새로 확인됐고, 2026-11-11 `DELETE /v1/files/{fileId}`에서 `DELETE /v1/files?fileUrl=`로 바꿨다(이슈 #164 — 저장한 뒤에는 프론트가 `fileId`를 알 수 없다).
+`global/file`은 도메인이 아니고 엔드포인트 2개(업로드 URL 발급 · 파일 삭제)를 갖는다. **1팀 담당** — Security와 같은 인프라 성격이고, 1팀(프로필)·4팀(커버·포스터·연습 녹음)이 함께 쓴다. 파일 삭제는 `API 초안`에서 2026-09-11에 새로 확인됐고, 2026-11-11 `DELETE /v1/files/{fileId}`에서 `DELETE /v1/files?fileUrl=`로 바꿨다(이슈 #164 — 저장한 뒤에는 프론트가 `fileId`를 알 수 없다).
 
 ## 헷갈리는 경계
 
@@ -48,7 +49,7 @@
 - **공연 내 같은 곡 중복은 `setlists`의 `UNIQUE(performance_id, song_id)`가 막는다.** 팀 선택곡 단계에서는 막지 않고 "다른 팀이 이미 골랐어요" 표시만 한다
 - DTO 이름은 `SetlistResponse`·`SetlistSubmitRequest`·`SetlistConfirmRequest`(공연 쪽), `TeamSongsSaveRequest`·`TeamSongsResponse`(팀 쪽)다(`dto-naming.md` §10)
 
-**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-requests`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team` 소유다.
+**`user/me` 경로는 user 도메인이 아니다.** `/v1/users/me/rehearsals`는 `rehearsal`, `/v1/users/me/join-requests`는 `join`, `/v1/users/me/songs/recommendations`는 `song` 소유다. "내 것만 필터링한 뷰"일 뿐이다. `/v1/users/me/teams`(내 팀 목록)는 `team`, `/v1/users/me/practice-recordings`(내 연습 녹음 목록)는 `practice` 소유다.
 
 **공연 참가 단위는 팀이다.** 공연자 개별 관리 API는 없다. 공연에서 팀을 빼는 것 = 팀 해체.
 
@@ -82,7 +83,7 @@
 | **1팀** | `auth` `user` `file` | 14 |
 | **2팀** | `team` `rehearsal` | 16 |
 | **3팀** | `recruit` `join` `notification` `bookmark` `dashboard` | 23 |
-| **4팀** | `group` `notice` `performance` `song` `setlist` | 27 |
+| **4팀** | `group` `notice` `performance` `song` `setlist` `practice` | 32 |
 
 > 팀 곡 추천(AI)은 song·setlist 중 소유가 정해지지 않아(`docs/specs/api-spec.md` 공백 #5) 위 개수에 넣지 않았다 — `docs/conventions/dto-naming.md` §10(5개)과 합계가 1 다른 이유다. setlist 2개는 팀 선택곡 저장·조회(조회는 2026-11-02, 이슈 #103 신규).
 > 곡 수동 동기화(`POST /v1/songs/sync`, 2026-11-11, 이슈 #162)는 노션 `API 초안`에 없는 운영용 API라 위 개수에 넣지 않았다. 로그인한 사용자면 누구나 부를 수 있다(`api-spec.md` song).
@@ -108,6 +109,7 @@
 | 모임 탈퇴·강퇴 시 공연 팀에서 빼기 | 4팀 `GroupService` → 2팀 `TeamService.leavePerformanceTeams` | 그 모임 공연들의 활동 중인 팀에서 이 사람을 `LEFT`로 뺀다. 팀장이면 `409 LEADER_MUST_DELEGATE_FIRST`로 전체를 막는다(#96). 모임 탈퇴 흐름을 `GroupService`가 묶어서 서비스끼리 순환하지 않는다 |
 | 회원 탈퇴 시 팀에서 빼기 | 1팀 `UserWithdrawService` → 2팀 `TeamService.leaveAllTeams` | 속한 활동 중인 모든 팀의 팀원 행을 `LEFT`로 뺀다. 팀장 차단(`findLedTeams`)을 통과한 뒤에 부른다(#96, #115 댓글) |
 | 회원 탈퇴 차단 | 1팀 `UserWithdrawService` → 2팀 `TeamService` | `TeamService.findLedTeams` — 내가 팀장인 활동 중인 팀 요약. 비어 있어야 탈퇴할 수 있다 |
+| 회원 탈퇴 시 연습 녹음 지우기 | 1팀 `UserWithdrawService` → 4팀 `PracticeRecordingService` | `deleteAllOf` — 탈퇴자의 연습 녹음(분석 중 포함)·피드백을 hard delete하고 녹음 파일도 `files` 행과 저장소 객체까지 지운다(저장소는 커밋 뒤). 직책 확인과 모임·팀 LEFT 처리를 통과한 맨 뒤에서 부른다. `PracticeRecordingService`는 user 도메인을 주입받지 않아 순환이 없다(PR #157 리뷰, 2026-11-11) |
 | 회원 탈퇴 시 신청·초대 닫기 | 1팀 `UserWithdrawService` → 3팀 `JoinRequestService` | `cancelPendingOf` — 탈퇴자의 대기 중 신청은 `CANCELED`, 받은 초대는 `REJECTED`로 닫는다(알림 없음). 차단 통과 뒤 팀·모임 LEFT 처리 앞에서 부른다(이슈 #136) |
 | 공연 상세의 팀 정보 | 4팀 → 2팀 `TeamService` | `getActiveSummaries`(공연의 활성 팀 요약) · `findMyTeamIds`(내가 그 공연에서 속한 팀 id 목록) · `getSummariesIncludingDisbanded`(해체된 팀 포함 요약) · `findMyPerformanceTeams`(내 공연 팀, 해체된 팀 포함) |
 | 팀 개별 해체 | 2팀 `TeamService` → 4팀 `SetlistService.deleteByTeam` | 개별 해체 때만 그 팀의 `setlists`·`team_songs` 행을 지운다 — 다른 팀이 그 곡을 넘기거나 "이미 골랐어요" 표시 없이 고를 수 있게. 공연 종료의 일괄 해체에서는 부르지 않는다. 연결 완료(2026-11-04, 이슈 #130, `docs/conventions/architecture.md` §6) |
@@ -121,6 +123,8 @@
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
+| 연습한 곡 | 4팀 practice → 4팀 `SongService` | `getSummaries`(분석 요청 때 곡 존재 확인 — 없으면 404 `SONG_NOT_FOUND`) · `findExternalId`(분석 때 AI에 넘길 곡의 `external_id` — 원곡은 AI 서버에 있다). `SongService`는 다른 Service를 부르지 않아 순환이 없다(2026-11-11) |
+| 연습 녹음 파일 | 4팀 practice → 1팀 `FileService` | `findOwnedFileKey`(받은 `fileUrl`이 내가 올린 `PRACTICE_AUDIO` 파일인지 확인하고 key를 받는다) · `findSize`·`maxUploadBytes`(업로드됐는지·1.95MB 이하인지 — S3는 업로드 때 크기를 막지 못한다) · `issueReadUrl`(재생용 임시 URL) · `readBytes`(AI에 Base64로 보낼 녹음 내용 — 한도를 넘으면 더 읽지 않고 `FILE_SIZE_EXCEEDED`) · `deleteOwnedFiles`(회원 탈퇴 때 녹음 파일을 key로 지운다 — 행은 바로, 저장소는 커밋 뒤). 녹음은 비공개라 URL이 아니라 key를 저장한다(이슈 #154·#155) |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.
 
