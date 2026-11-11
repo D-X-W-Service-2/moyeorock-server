@@ -385,24 +385,35 @@ class FileServiceTest {
     }
 
     @Test
-    @DisplayName("readBytes: 한도 이하면 파일 내용을 통째로 돌려주고 스트림을 닫는다")
-    void readBytes_returnsContent_withinLimit() throws IOException {
-        InputStream content = org.mockito.Mockito.spy(new ByteArrayInputStream(new byte[]{1, 2, 3}));
-        when(fileStorageClient.read("practice/key.m4a")).thenReturn(content);
+    @DisplayName("readBytes: 저장소에 한도+1바이트까지만 요청하고, 한도 이하면 그 내용을 돌려준다")
+    void readBytes_returnsContent_withinLimit() {
+        when(fileStorageClient.readAtMost("practice/key.m4a", 4)).thenReturn(new byte[]{1, 2, 3});
 
         assertThat(fileService.readBytes("practice/key.m4a", 3)).containsExactly(1, 2, 3);
-        verify(content).close();
+        verify(fileStorageClient, never()).read(any());
     }
 
     @Test
     @DisplayName("readBytes: 한도를 넘으면 더 읽지 않고 FILE_SIZE_EXCEEDED — 등록 뒤 같은 key에 큰 파일을 다시 올린 경우")
     void readBytes_throws_whenOverLimit() {
-        when(fileStorageClient.read("practice/key.m4a")).thenReturn(new ByteArrayInputStream(new byte[]{1, 2, 3, 4}));
+        when(fileStorageClient.readAtMost("practice/key.m4a", 4)).thenReturn(new byte[]{1, 2, 3, 4});
 
         assertThatThrownBy(() -> fileService.readBytes("practice/key.m4a", 3))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_SIZE_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("readBytes: 저장소에 파일이 없으면 FILE_NOT_FOUND")
+    void readBytes_throwsNotFound_whenMissing() {
+        when(fileStorageClient.readAtMost("practice/key.m4a", 4))
+                .thenThrow(new UncheckedIOException(new NoSuchFileException("practice/key.m4a")));
+
+        assertThatThrownBy(() -> fileService.readBytes("practice/key.m4a", 3))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_NOT_FOUND);
     }
 
     @Test

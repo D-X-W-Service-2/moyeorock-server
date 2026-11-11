@@ -149,15 +149,21 @@ public class FileService {
      * 있어서, 메모리에 올리기 전에 다시 막는다. DB를 보지 않아 트랜잭션을 열지 않는다.
      */
     public byte[] readBytes(String fileKey, long maxBytes) {
-        try (InputStream content = openOrThrow(fileKey)) {
-            byte[] bytes = content.readNBytes(Math.toIntExact(maxBytes + 1));
-            if (bytes.length > maxBytes) {
-                throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
+        // 한도보다 1바이트 더 받아 넘었는지 안다. 저장소는 이만큼만 내려받는다(S3는 Range) — 인증 없는 로컬 서빙이 쓰는
+        // read(스트림)와 따로 둔 서버 전용 읽기다(이슈 #167).
+        byte[] bytes;
+        try {
+            bytes = fileStorageClient.readAtMost(fileKey, Math.toIntExact(maxBytes + 1));
+        } catch (UncheckedIOException e) {
+            if (e.getCause() instanceof NoSuchFileException) {
+                throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
             }
-            return bytes;
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw e;
         }
+        if (bytes.length > maxBytes) {
+            throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
+        }
+        return bytes;
     }
 
     /** 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값. */

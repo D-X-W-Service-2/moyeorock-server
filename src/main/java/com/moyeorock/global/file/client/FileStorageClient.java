@@ -18,7 +18,13 @@ public interface FileStorageClient {
 
     void write(String fileKey, InputStream content);
 
+    // 로컬 서빙(GET /v1/files/local/**, 인증 없음)이 쓰는 스트림 읽기. S3에서는 열지 않는다 — 열면 비공개 파일(연습 녹음)이
+    // 그 경로로 인증 없이 나간다.
     InputStream read(String fileKey);
+
+    // 서버가 파일 내용을 직접 읽을 때(연습 녹음을 AI에 보낼 때, 이슈 #167) 쓴다. 앞에서부터 최대 maxBytes까지만 받는다 —
+    // 등록 뒤 같은 key에 큰 파일을 다시 올려도 그만큼만 내려받는다. 파일이 없으면 UncheckedIOException(NoSuchFileException).
+    byte[] readAtMost(String fileKey, int maxBytes);
 
     void delete(String fileKey);
 
