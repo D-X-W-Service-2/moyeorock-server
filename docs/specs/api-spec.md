@@ -52,6 +52,7 @@
 > ¶ 팀 목록의 쿼리 파라미터: `region` · `genre` (선택). `status`는 받지 않는다 — 해체된 팀은 항상 목록에서 제외한다(2026-10-31 결정, 노션 팀 목록 페이지에도 "현재 사용하지 않음"으로 반영). 정렬은 최신순 고정(클라이언트 `sort` 무시), 페이지 크기는 기본 20·상한 20.
 > ‡ 내 팀 목록은 노션 `API 초안`에 `[추가 필요]`로 올라온 신규 엔드포인트이며, 2팀 소유로 확정했다(2026-10-31). 경로는 `/users/me` 아래지만 소유는 team이다. 내가 ACTIVE 팀원이고 팀도 ACTIVE인 팀만 최근 합류 순으로 돌려준다.
 > 팀 정보 수정은 응답 바디가 없다(`data: null`, 노션 기준).
+> 팀원 추천(AI)은 구현했다(2026-11-08, 이슈 #150). **팀장만** 부를 수 있고(노션 Actor `팀장`), 아니면 `403 NOT_TEAM_LEADER`, 해체된 팀은 `409 INVALID_STATE`, 없는 팀은 `404 TEAM_NOT_FOUND`다. `instrument` 누락·없는 값은 `400 VALIDATION_FAILED`. 후보는 활동 중·추천 허용(`is_recommendable`)·그 악기 보유·이 팀 팀원이 아닌 사용자 중 무작위 최대 200명이고, 응답은 점수 높은 순 **최대 10명**이다(후보가 없으면 빈 배열, AI를 부르지 않는다). AI 서버 호출이 실패하거나 시간이 초과되거나 주소가 없으면 **`503 RECOMMENDATION_UNAVAILABLE`**이다 — 노션에 없던 에러라 `API 초안` 팀원 추천 페이지에 추가했다. 호출 형식은 §12.
 > 팀을 개별로 해체(`PATCH /v1/teams/{id}/status`)하면 그 팀이 공연 셋리스트로 넘긴 곡(`setlists` 행)과 그 팀의 선택곡(`team_songs` 행)을 함께 삭제한다. 셋리스트 행이 남으면 같은 공연의 다른 팀이 그 곡을 넘길 수 없고, 선택곡 행이 남으면 다른 팀에게 "이미 골랐어요"가 계속 뜨기 때문이다(4팀 결정, 이슈 #85·PR #87 리뷰). 공연 종료·취소로 인한 일괄 해체에서는 둘 다 삭제하지 않는다. 삭제는 4팀 `SetlistService.deleteByTeam`을 해체와 같은 트랜잭션에서 부른다(2026-11-04 연결, 이슈 #130).
 > 해체된 팀의 상세·팀원 목록은 읽기 전용으로 열려 있고, 상세의 `status`가 `DISBANDED`다(2026-11-02 결정, 4팀 요청 — 끝난 공연 페이지의 팀 카드가 연결된다). 수정·해체·팀원 변경·탈퇴는 해체된 팀에서 막힌다. 해체된 팀은 요약 조회(`getSummaries`)에서는 여전히 빠지고, 4팀용 `getSummariesIncludingDisbanded`로만 담긴다.
 > 팀원 역할 변경과 내보내기·탈퇴에서 경로의 `{userId}`가 그 팀의 활동 중인 팀원이 아니면(속한 적이 없거나 이미 탈퇴·강퇴된 경우) `404 TEAM_MEMBER_NOT_FOUND`다. 모임의 `GROUP_MEMBER_NOT_FOUND`와 같은 상황이라 맞췄다(PR #86 리뷰).
@@ -229,8 +230,11 @@
 | GET | `/v1/songs?keyword=&genre=&page=&size=` ¶ | 곡&nbsp;검색 | | `PageResponse<SongResponse>` | 세션별 난이도 포함 |
 | GET | `/v1/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
 | GET | `/v1/teams/{teamId}/songs/recommendations` | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 |
+| POST | `/v1/songs/sync` ⚙ | 곡&nbsp;수동&nbsp;동기화 | | `SongSyncResponse` | 운영용 · §12 |
 
 > ¶ `API 초안`에서 `page`·`size` 페이징 파라미터가 명시적으로 추가됐다(2026-09-11).
+> 곡 마스터(`songs`)는 화면에서 넣지 않는다 — 백엔드가 AI 서버 카탈로그를 받아와 채운다(§12, 이슈 #147).
+> ⚙ 화면에서 부르는 API가 아니라 운영용이다(2026-11-11, 이슈 #162). 매일 04:00 동기화를 지금 바로 돌린다. 노션 `API 초안`에는 없다. 로그인한 사용자면 누구나 부를 수 있다. 이미 돌고 있으면 409 `SONG_SYNC_IN_PROGRESS`, AI 서버 주소가 없거나 호출이 실패하면 503 `SONG_SYNC_UNAVAILABLE`(실패 전에 저장한 페이지는 남는다).
 > 🚧 추천 2개(내 취향 추천곡·팀 곡 추천)는 추천 방식(룰 기반/외부 모델)과 소유 도메인이 정해지지 않아 셋리스트 구현(이슈 #103) 범위에서 뺐다(2026-11-02).
 > ⚠️ `docs/conventions/domains.md`는 song 2개로 집계한다. 팀 곡 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.** `API 초안`은 이 3개를 모두 "노래 / 셋리스트"로 묶어만 두어 이 논쟁을 해소하지 못한다. 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
 
@@ -355,7 +359,42 @@
 
 ---
 
-## §12. 연습 (practice) — 4팀
+## §12. 외부 서버 호출 — AI 서버 (곡 카탈로그 동기화 · 팀원 추천)
+
+프론트가 부르는 API가 아니라 **백엔드가 AI 서버를 부르는** 호출이다(2026-11-06, 이슈 #147). AI 서버는 백엔드를 부르지 않는다 — 처음엔 AI 서버가 `PUT /v1/internal/songs`로 곡을 넣는 방향이었으나(PR #148) 방향을 바꿨다.
+
+| 메서드 | AI 서버 경로 | 쿼리 | 응답 | 비고 |
+|---|---|---|---|---|
+| GET | `{AI_SERVER_BASE_URL}/v1/songs` 🚧 | `cursor`(첫 요청엔 없음) · `limit`(500) | `AiSongPage` | `Authorization: Bearer {AI_SERVER_API_KEY}` |
+
+> 🚧 **잠정안** — AI 서버(`moyeorock-ai`)에 아직 HTTP 서버가 없어 경로·쿼리·응답 모양은 AI 팀과 맞추기 전이다. 바뀌면 `AiSongClient`·`AiSongPage`와 이 절을 함께 고친다.
+
+- **언제**: 매일 04:00(Asia/Seoul) 스케줄. `AI_SONG_SYNC_ENABLED=true`일 때만 돈다(로컬·테스트 기본 꺼짐). `AI_SERVER_BASE_URL`이 비어 있으면 건너뛴다. 한 번에 하나만 돈다. `POST /v1/songs/sync`로 바로 돌릴 수도 있다(§song, 이슈 #162) — 스케줄 켜기와 무관하고, 스케줄과 겹치면 409다
+- **어떻게**: `nextCursor`가 `null`이 될 때까지 받은 커서로 다음 페이지를 부른다. AI 서버 호출은 트랜잭션 밖에서 하고 **페이지마다 따로 커밋**한다 — 중간에 실패해도 앞 페이지는 남고, 다음 회차에 처음부터 다시 받는다. 같은 커서를 다시 돌려주면 무한히 돌지 않고 그 회차를 끝낸다
+- **저장**: `externalId`(AI 쪽 곡 id, 대소문자 구분 — V13) 기준 upsert. 없으면 만들고, 있으면 받은 값으로 **통째로** 바꾼다(빠진 선택 값은 비워진다). 곡 `id`는 그대로다. **카탈로그에 없는 곡은 지우지 않는다** — 팀 선택곡·셋리스트가 참조한다
+- **바꾼 곡 정보는 그 곡을 참조하는 곳에 그대로 보인다** — 팀 선택곡·셋리스트(끝난 공연 포함)·저장 목록은 `songs.id`만 들고 있어 제목·아티스트를 고치면 함께 바뀐다. 카탈로그 정정을 반영하려는 의도된 동작이다
+- **잘못된 곡**: 필수 값 누락·길이 초과·`externalId` 앞뒤 공백·한 곡의 같은 파트 중복·한 페이지 안 `externalId` 중복은 **그 곡만 건너뛰고** 로그(`페이지·순번·externalId·사유`)를 남긴다. 없는 enum 값은 응답 전체를 읽지 못해 그 회차가 실패한다
+- **값**: 우리 enum 그대로다 — 장르 `Genre` 11개(맞는 게 없으면 `ETC`), 파트 `Instrument`, 수준 `Level`. 필드 정의는 `dto-spec.md` AiSongPage
+
+### 팀원 추천 호출 (team) — 2팀
+
+프론트가 `GET /v1/teams/{id}/members/recommendations`를 부를 때마다 백엔드가 AI 서버를 **동기로** 부른다(2026-11-08, 이슈 #150). 곡 카탈로그와 달리 미리 받아 두는 게 아니다. AI 서버 주소·키는 곡 동기화와 같은 `AI_SERVER_BASE_URL`·`AI_SERVER_API_KEY`(`AiServerProperties`)를 쓴다.
+
+| 메서드 | AI 서버 경로 | 요청 | 응답 | 비고 |
+|---|---|---|---|---|
+| POST | `{AI_SERVER_BASE_URL}/v1/recommendations/members` 🚧 | `AiRecommendRequest` | `AiRecommendResponse` | `Authorization: Bearer {AI_SERVER_API_KEY}` · 연결 3초·읽기 30초 |
+
+> 🚧 **잠정안** — AI 팀과 맞추기 전이다. AI 팀이 우리 백엔드 스웨거에 맞춰 붙이기로 해서 요청·응답은 ERD 컬럼과 우리 enum 그대로 먼저 정했다. 바뀌면 `AiMemberRecommendationClient`·`AiRecommendRequest`·`AiRecommendResponse`와 이 절을 함께 고친다. 추천 모델의 입력 값이 ERD에 모두 있는지는 AI 팀 확인이 남았다.
+
+- **누가 후보를 고르나**: 백엔드가 고른다. `UserService.findRecommendationCandidates`(1팀 소유 — 이슈 #150에서 2팀이 추가, 1팀 검토 필요)가 활동 중(`ACTIVE`)·추천 허용(`is_recommendable`)·요청 악기 보유·팀원 제외 조건에 맞는 사용자 중 **무작위로 최대 200명**을 고른다(2026-11-11, PR #151 리뷰 — 앞에서부터 자르면 늦게 가입한 사용자가 영영 후보가 되지 못한다). 조건에 맞는 사용자가 200명 이하면 전원을 보내고, 넘으면 호출할 때마다 후보가 달라져 결과도 조금씩 달라질 수 있다.
+- **보내는 값**: 팀(`id`·`region`·`genres`), 찾는 `instrument`, 현재 팀원(`userId`·이 팀에서 맡은 `instrument`·그 악기의 `level`), 후보(`userId`·`region`·`genres`·요청 악기의 `level`). 온보딩 전 사용자는 `region`·`genres`가, 실력 정보가 없는 팀원은 `level`이 `null`이다. 필드 정의는 `dto-spec.md` AiRecommendRequest.
+- **받는 값**: 후보별 `userId`·`score`·`reasons`. 백엔드는 우리가 보내지 않은 `userId`, 점수가 없는 항목, 같은 `userId`의 뒤쪽 항목, 탈퇴해 조회되지 않는 사용자를 버리고 점수 높은 순 최대 10명을 응답한다.
+- **실패**: 4xx·5xx·타임아웃·`candidates` 누락·주소 미설정은 모두 `503 RECOMMENDATION_UNAVAILABLE`이다. 후보가 0명이면 AI를 부르지 않고 빈 `candidates`로 `200`이다.
+- **트랜잭션**: 다른 도메인 Service 호출과 AI 응답 대기가 있어 `@Transactional`을 붙이지 않는다.
+
+---
+
+## §13. 연습 (practice) — 4팀
 
 개인 연습 녹음을 올려 AI 분석을 받는다(2026-11-09 신규, 이슈 #155 · Notion `Backend (1) > API 명세서 > API 초안` 도메인 "연습" 2026-11-09 대조). 녹음과 분석 결과는 **올린 본인만** 본다 — 남의 녹음은 없는 녹음과 같게 404다.
 

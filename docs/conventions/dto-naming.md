@@ -386,6 +386,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 곡 검색 | GET | `/v1/songs` | — | `PageResponse<SongResponse>` |
 | 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
+| 곡 수동 동기화 (운영용) | POST | `/v1/songs/sync` | — | `SongSyncResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
 | 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
 
@@ -396,6 +397,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, List<SongDifficultyResponse> difficulty)` — 곡 검색·추천의 곡 정보 |
 | `SongDifficultyResponse` | `(Instrument part, Level level)` — 파트별 난이도. 정보가 없는 파트는 목록에서 빠진다 |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 선택곡·셋리스트 항목용 축약형 |
+| `SongSyncResponse` | `(int pages, int created, int updated, int skipped)` — 곡 수동 동기화 결과(이슈 #162) |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song)` — 팀 선택곡 항목. 팀 상세 `songs`·팀 선택곡 저장 응답에서 재사용 |
 | `TeamSongsSaveRequest` | `(List<Long> songIds)` — 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제) |
 | `TeamSongsResponse` | `(Long teamId, List<TeamSongResponse> songs)` |
@@ -489,7 +491,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 요청 DTO가 37개뿐인 이유는 86개 중 **52개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡. 연습 녹음 5개 신규분(2026-11-09, 요청 바디는 분석 요청 1개뿐) 반영: §11-1 · `docs/specs/api-spec.md` §12)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡. 연습 녹음 5개 신규분(2026-11-09, 요청 바디는 분석 요청 1개뿐) 반영: §11-1 · `docs/specs/api-spec.md` §13)
 
 ### 재사용 상위 5개
 

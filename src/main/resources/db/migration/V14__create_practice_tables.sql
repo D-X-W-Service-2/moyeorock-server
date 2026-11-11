@@ -1,6 +1,6 @@
 -- 개인 연습 녹음 AI 분석(이슈 #155, erd.md §19·§20). FK 없음(CLAUDE.md 절대 규칙 6).
--- 버전 번호 참고: 작성 시점 origin/main의 마지막이 V12라 V13으로 뒀다. 다른 브랜치(#147·#150)도 V13을 쓰고 있어
--- 그쪽이 먼저 머지되면 flyway-migration.md §2(머지하는 쪽에서 재조정)에 따라 번호를 올린다.
+-- 버전 번호 참고: 처음엔 V13으로 뒀으나 main에 V13(songs.external_id 콜레이션, #147)이 먼저 머지돼
+-- flyway-migration.md §2(머지하는 쪽에서 재조정)에 따라 V14로 올렸다.
 
 CREATE TABLE practice_recordings (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

@@ -23,7 +23,7 @@ import org.springframework.data.domain.Sort;
 
 /**
  * 연습 녹음 쿼리를 실제 MySQL에서 본다. 특히 "한 사람당 진행 중 분석 1개"를 막는 생성 컬럼 유니크
- * (V13 active_user_id)와 부팅 정리 쿼리의 updated_at 기준은 SQL로만 확인할 수 있다.
+ * (V14 active_user_id)와 부팅 정리 쿼리의 updated_at 기준은 SQL로만 확인할 수 있다.
  */
 @DataJpaTest
 @Import({JpaAuditingConfig.class, TestcontainersConfig.class})

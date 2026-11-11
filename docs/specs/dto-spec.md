@@ -290,6 +290,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 점수 높은 순 **최대 10명**이다. 후보가 없으면 `candidates`는 빈 배열이다. 평가 대상 후보는 조건에 맞는 사용자 중 무작위 최대 200명이라, 사용자가 많으면 호출할 때마다 결과가 조금씩 달라질 수 있다. `user`는 `UserSummaryResponse`(`id`·`nickname`·`profileImage`)이고, `score`·`reasons`는 AI 서버가 매긴 값 그대로다(`reasons`가 없으면 빈 배열). 구현: 이슈 #150(2026-11-08).
+
 ## §3. 합주 (rehearsal)
 
 ### RehearsalCreateRequest
@@ -861,6 +863,81 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
 - 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
+### SongSyncResponse (곡 수동 동기화 · 운영용)
+
+`POST /v1/songs/sync`의 응답(2026-11-11 · 이슈 #162). AI 카탈로그를 처음부터 끝까지 한 번 받은 결과다. 노션 `API 초안`에는 없는 운영용 API다.
+
+```json
+{ "pages": 3, "created": 120, "updated": 880, "skipped": 2 }
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `pages` | int | AI 서버에서 받은 페이지 수 |
+| `created` | int | 새로 만든 곡 수 |
+| `updated` | int | 이미 있던 `externalId`라 받은 값으로 바꾼 곡 수 |
+| `skipped` | int | 검증에 걸려 건너뛴 곡 수(이유는 서버 로그) |
+
+### AiSongPage (AI 서버 응답 · 잠정)
+
+백엔드가 AI 서버에서 받는 곡 카탈로그 한 페이지(`GET {AI}/v1/songs?cursor=&limit=`, 2026-11-06 · 이슈 #147). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다(`KakaoUserInfo`와 같은 자리). 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.**
+
+```json
+{
+  "songs": [
+    {
+      "externalId": "youtube:Lb3mQdm-UHs",
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen",
+      "genre": "ROCK",
+      "songKey": "Bb",
+      "bpm": 72,
+      "difficulty": [
+        { "part": "VOCAL", "level": "ADVANCED" },
+        { "part": "DRUM", "level": "INTERMEDIATE" }
+      ]
+    }
+  ],
+  "nextCursor": "eyJpZCI6NTAwfQ"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `songs` | List | O | 한 페이지 최대 `limit`(500)개. 없으면 응답 형식 위반으로 그 회차가 실패한다 |
+| `nextCursor` | String | X | 다음 페이지 커서. `null`이면 마지막 페이지. 백엔드는 해석하지 않고 그대로 다음 요청에 넣는다 |
+| `songs[].externalId` | String | O | AI 쪽 곡 id. 100자 이하. 이 값으로 같은 곡을 찾는다(`songs.external_id` 유일). **대소문자를 구분한다**. 앞뒤 공백이 있거나 한 페이지 안에서 겹치면 그 곡을 건너뛴다 |
+| `songs[].title` | String | O | 200자 이하 |
+| `songs[].artist` | String | O | 100자 이하 |
+| `songs[].genre` | Enum | O | `Genre`(`ROCK` `INDIE` `PUNK` `METAL` `POP` `BALLAD` `JAZZ` `HIPHOP` `RNB` `ACOUSTIC` `ETC`) |
+| `songs[].songKey` | String | X | 10자 이하. 빈 문자열·공백뿐이면 키 정보 없음(`null`)으로 저장하고, 앞뒤 공백은 지운다 |
+| `songs[].bpm` | Integer | X | 양수 |
+| `songs[].difficulty` | List | X | 곡 검색 응답과 같은 `[{part, level}]` 배열. `part`는 `Instrument`, `level`은 `Level`. 한 곡에 같은 파트가 두 번이면 그 곡을 건너뛴다. 없거나 빈 배열이면 난이도 정보 없음 |
+
+- 필수 값이 빠지거나 길이를 넘는 곡은 그 곡만 건너뛰고 나머지는 저장한다
+- DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
+
+### AiRecommendRequest · AiRecommendResponse (AI 서버 팀원 추천 · 잠정)
+
+백엔드가 AI 서버에 보내는 팀원 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/members`, 2026-11-08 · 이슈 #150). 프론트 API의 DTO가 아니라 `domain/team/client`에 둔다. 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.** 값은 ERD 컬럼과 우리 enum 그대로다.
+
+```json
+{
+  "team": { "id": 5, "region": "SEOUL", "genres": ["ROCK", "POP"] },
+  "instrument": "DRUM",
+  "members": [ { "userId": 3, "instrument": "VOCAL", "level": "ADVANCED" } ],
+  "candidates": [ { "userId": 30, "region": "SEOUL", "genres": ["ROCK"], "level": "INTERMEDIATE" } ]
+}
+```
+
+```json
+{ "candidates": [ { "userId": 30, "score": 0.87, "reasons": ["장르 일치: ROCK", "활동 지역 동일"] } ] }
+```
+
+- `members[].instrument`는 그 사람이 이 팀에서 맡은 세션(`team_members.instrument`), `members[].level`은 그 악기에서의 실력(`user_instruments.level`, 없으면 `null`)이다. `candidates[].level`은 요청한 `instrument`에서의 실력이다.
+- 온보딩 전 사용자는 `region`·`genres`가 `null`일 수 있다. `team.region`도 `null`일 수 있다.
+- 응답의 `score`·`reasons`가 비어 있어도 읽는다(점수가 없는 항목은 버리고, `reasons`가 없으면 빈 배열로 응답한다). 응답에 `candidates` 자체가 없으면 계약 위반이라 `503`이다.
+
 ### SongRecommendationResponse
 
 ```json
@@ -1163,7 +1240,7 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 
 ---
 
-## §12. 연습 (practice)
+## §13. 연습 (practice)
 
 2026-11-09 신규(이슈 #155). Notion `API 초안` 도메인 "연습"과 대조했다.
 

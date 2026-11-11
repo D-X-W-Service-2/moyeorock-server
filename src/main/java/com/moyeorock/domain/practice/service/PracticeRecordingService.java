@@ -51,7 +51,7 @@ import org.springframework.web.client.ResourceAccessException;
 public class PracticeRecordingService {
 
     private static final Sort LATEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt", "id");
-    // V13__create_practice_tables.sql — 진행 중 분석 사람당 1개
+    // V14__create_practice_tables.sql — 진행 중 분석 사람당 1개
     private static final String ACTIVE_USER_UNIQUE_INDEX = "uk_practice_recordings_active_user_id";
 
     static final String REASON_BUSY = "요청이 많아 분석을 시작하지 못했습니다. 잠시 후 다시 요청해 주세요.";

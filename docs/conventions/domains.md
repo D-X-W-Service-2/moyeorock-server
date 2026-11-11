@@ -86,6 +86,7 @@
 | **4팀** | `group` `notice` `performance` `song` `setlist` `practice` | 32 |
 
 > 팀 곡 추천(AI)은 song·setlist 중 소유가 정해지지 않아(`docs/specs/api-spec.md` 공백 #5) 위 개수에 넣지 않았다 — `docs/conventions/dto-naming.md` §10(5개)과 합계가 1 다른 이유다. setlist 2개는 팀 선택곡 저장·조회(조회는 2026-11-02, 이슈 #103 신규).
+> 곡 수동 동기화(`POST /v1/songs/sync`, 2026-11-11, 이슈 #162)는 노션 `API 초안`에 없는 운영용 API라 위 개수에 넣지 않았다. 로그인한 사용자면 누구나 부를 수 있다(`api-spec.md` song).
 
 `dashboard`는 2·3·4팀의 Service를 모두 호출하므로 3팀 작업 중 **마지막**에 만든다.
 
@@ -118,6 +119,7 @@
 | 가입 신청·초대 직렬화 | 3팀 join → 2팀 `TeamService.lockTeam` · 4팀 `GroupMemberService.lockActiveGroup` | 신청·초대를 만들 때와 승인·수락할 때 트랜잭션의 첫 일반 조회 전에 대상 팀·모임 행을 잠근다. 대기 건 중복 확인과 저장 사이, 소속 확인과 `addMember` 사이에 다른 요청이 끼어들지 못하게 한다(유니크 제약 없이 같은 사람의 대기 건이 둘 생기는 것을 막는다). 승인 쪽 잠금 순서는 신청 행 → 대상 행(PR #134) |
 | 공고 ↔ 신청 | 3팀 join → 3팀 recruit → 3팀 join | `JoinRequestService`가 신청을 받을 때 `RecruitPostService.getOpenPostForApply`로 공고를 확인하고, `RecruitPostService`가 공고 상세의 `appliedCount`·`myJoinRequest`를 채울 때 **조회 전용 `JoinRequestStatService`**를 부른다. `JoinRequestService`와 `RecruitPostService`가 서로 부르면 순환이라 신청 현황 조회만 다른 Service를 부르지 않는 말단 클래스로 떼었다(`architecture.md` §3). 여기에 다른 Service 호출을 넣지 않는다 |
 | 공연 팀원 확인 | 2팀 `TeamService.addMember` · 3팀 가입 신청·초대 → 4팀 `PerformanceMemberService.ensureGroupMember` | 공연 팀에는 그 공연을 연 모임의 활동 모임원만 들어올 수 있다. 아니면 `403 NOT_PERFORMANCE_GROUP_MEMBER`(#96·#105). `PerformanceMemberService`는 `GroupMemberService`만 불러 순환이 없다 |
+| 곡 마스터 채우기 | 4팀 `SongService.syncFromAi` → AI 서버 | 백엔드가 AI 서버 곡 카탈로그(`GET {AI}/v1/songs?cursor=&limit=`, 잠정)를 페이지로 받아 `externalId` 기준으로 upsert한다. 지우지 않는다. AI 서버는 백엔드를 부르지 않는다 — 매일 04:00 스케줄(`AI_SONG_SYNC_ENABLED`). 곡은 AI가 분석한 곡으로만 추천하므로 우리가 따로 넣지 않는다(2026-11-06, 이슈 #147, `docs/specs/api-spec.md` §12) |
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
@@ -129,6 +131,8 @@
 **`PUT /v1/teams/{teamId}/songs`(팀 선택곡 저장)는 경로가 `/teams`로 시작하지만 4팀 소유다.** `team_songs`를 다루므로 `setlist` 도메인이고, 2팀의 `TeamController`에 넣지 않는다.
 
 **AI 추천 3개는 2팀·4팀에 나뉘어 있다** — 팀원 추천(2팀), 개인 추천곡·팀 곡 추천(4팀). 룰 기반이냐 외부 모델이냐를 **두 팀이 함께 결정해야 한다.** 한쪽만 폴링 방식이 되면 프론트가 두 패턴을 구현하게 된다.
+
+팀원 추천은 2026-11-08에 구현했다(이슈 #150): 백엔드가 후보를 골라 AI 서버(`POST {AI}/v1/recommendations/members`, 잠정)에 요청마다 동기 호출한다. 후보 조회는 1팀 `UserService.findRecommendationCandidates`를 쓴다. 곡 추천 2개는 아직 방식이 정해지지 않았다.
 
 ## 착수 순서
 

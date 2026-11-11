@@ -18,8 +18,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// 곡 마스터 데이터 — 외부 카탈로그(external_id)에서 가져온다. 팀·사용자 데이터를 담지 않으므로
-// 생성 이후 수정 메서드가 없다(erd.md §8에 updated_at도 없음).
+// 곡 마스터 데이터 — 백엔드가 AI 서버 곡 카탈로그를 받아와 AI 쪽 곡 id(external_id) 기준으로 넣고 갱신한다(SongService#syncFromAi, 이슈 #147).
+// 팀·사용자 데이터를 담지 않는다. 갱신해도 updated_at은 없다(erd.md §8).
 @Entity
 @Table(name = "songs")
 @Getter
@@ -49,6 +49,7 @@ public class Song extends BaseTimeEntity {
     @Column(columnDefinition = "json")
     private Map<Instrument, Level> difficulty;
 
+    // DB 콜레이션은 utf8mb4_0900_bin(대소문자 구분, V13) — SongService의 Java 비교와 기준이 같다
     @Column(name = "external_id", length = 100)
     private String externalId;
 
@@ -63,5 +64,16 @@ public class Song extends BaseTimeEntity {
         song.difficulty = difficulty;
         song.externalId = externalId;
         return song;
+    }
+
+    // AI 카탈로그에 같은 externalId로 다시 들어온 곡 — 받은 값으로 통째로 바꾼다(빠진 선택 값은 비워진다). externalId는 바꾸지 않는다.
+    public void update(String title, String artist, Genre genre, String songKey, Integer bpm,
+            Map<Instrument, Level> difficulty) {
+        this.title = title;
+        this.artist = artist;
+        this.genre = genre;
+        this.songKey = songKey;
+        this.bpm = bpm;
+        this.difficulty = difficulty;
     }
 }

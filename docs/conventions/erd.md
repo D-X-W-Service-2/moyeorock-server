@@ -175,8 +175,10 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `song_key` | `VARCHAR(10)` |  |
 |  | `bpm` | `INT` |  |
 |  | `difficulty` | `JSON` | 세션별 난이도 |
-| UK | `external_id` | `VARCHAR(100)` | 유일 |
+| UK | `external_id` | `VARCHAR(100)` | 유일 · 대소문자 구분(`utf8mb4_0900_bin`) |
 | ＋ | `created_at` | `DATETIME(6)` |  |
+
+> **2026-11-06 변경(PR #148 리뷰, V13)**: `external_id` 콜레이션을 서버 기본(대소문자 무시)에서 `utf8mb4_0900_bin`으로 바꿨다. AI 서버 곡 id(YouTube 영상 id 등)는 대소문자만 달라도 다른 곡인데, 대소문자를 무시하는 유니크에서 같은 값으로 부딪혀 곡 저장이 실패했다. 코드 포인트로 비교하고 끝 공백도 구분해서(NO PAD) 애플리케이션의 `String.equals`와 기준이 같다. 영향은 song 도메인뿐이다 — `external_id`는 AI 곡 동기화(`SongService.syncFromAi`, 이슈 #147)만 쓰고, 다른 테이블은 `songs.id`로 참조한다. 계획: `docs/plans/songs-external-id-case-sensitive.md`.
 
 
 ---
@@ -393,7 +395,7 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 ## 개인 연습
 
-> 2026-11-09 신규(이슈 #155, V13 — 번호는 머지 때 재확인). 4팀 `practice` 도메인 소유. 다른 팀 테이블은 건드리지 않는다. 계획: `docs/plans/practice-recording.md`.
+> 2026-11-09 신규(이슈 #155, V14 — main의 V13(songs 콜레이션)이 먼저 머지돼 올렸다). 4팀 `practice` 도메인 소유. 다른 팀 테이블은 건드리지 않는다. 계획: `docs/plans/practice-recording.md`.
 
 ### 19. `practice_recordings`
 
