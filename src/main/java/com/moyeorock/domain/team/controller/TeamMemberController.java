@@ -2,11 +2,13 @@ package com.moyeorock.domain.team.controller;
 
 import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
+import com.moyeorock.domain.team.dto.response.TeamMemberRecommendationResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.global.common.dto.ApiResponse;
+import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,6 +32,13 @@ public class TeamMemberController {
     @GetMapping
     public ApiResponse<TeamMembersResponse> getMembers(@PathVariable Long teamId) {
         return ApiResponse.success(teamService.getMembers(teamId));
+    }
+
+    @Operation(summary = "팀원 추천 (AI)")
+    @GetMapping("/recommendations")
+    public ApiResponse<TeamMemberRecommendationResponse> recommendMembers(@AuthUser Long requesterId,
+            @PathVariable Long teamId, @RequestParam Instrument instrument) {
+        return ApiResponse.success(teamService.recommendMembers(requesterId, teamId, instrument));
     }
 
     @Operation(summary = "팀원 역할·세션 변경")

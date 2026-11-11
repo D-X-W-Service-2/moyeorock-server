@@ -3,6 +3,7 @@ package com.moyeorock.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -14,6 +15,7 @@ import com.moyeorock.domain.user.dto.request.UserInstrumentRequest;
 import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
 import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.RecommendationCandidateResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
@@ -547,6 +549,61 @@ class UserServiceTest {
             assertThat(userService.getProfileSummaries(List.of())).isEmpty();
             assertThat(userService.getProfileSummaries(null)).isEmpty();
             verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("findRecommendationCandidates")
+    class FindRecommendationCandidates {
+
+        private User candidate(Long id, String nickname, Region region, List<Genre> genres) {
+            User user = User.signupWithEmail(nickname + "@example.com", "hash", nickname, LocalDateTime.now());
+            ReflectionTestUtils.setField(user, "id", id);
+            user.completeOnboarding(nickname, region, genres);
+            return user;
+        }
+
+        private UserInstrument drummer(Long userId, Level level) {
+            return UserInstrument.create(userId, Instrument.DRUM, level);
+        }
+
+        @Test
+        @DisplayName("후보의 지역·장르·해당 악기 실력을 담고, 쿼리에 악기·제외 대상·ACTIVE·상한을 넘긴다")
+        void returns_candidates_with_region_genres_and_level() {
+            given(userInstrumentRepository.findRecommendationCandidates(
+                    eq(Instrument.DRUM), eq(Set.of(3L)), eq(UserStatus.ACTIVE), eq(200)))
+                    .willReturn(List.of(drummer(30L, Level.ADVANCED), drummer(31L, Level.NOVICE)));
+            given(userRepository.findAllByIdInAndStatusNot(any(), eq(UserStatus.WITHDRAWN))).willReturn(List.of(
+                    candidate(30L, "서준", Region.SEOUL, List.of(Genre.ROCK)),
+                    candidate(31L, "민서", null, null)));
+
+            var result = userService.findRecommendationCandidates(Instrument.DRUM, Set.of(3L), 200);
+
+            assertThat(result).containsExactly(
+                    new RecommendationCandidateResponse(30L, Region.SEOUL, List.of(Genre.ROCK), Level.ADVANCED),
+                    new RecommendationCandidateResponse(31L, null, null, Level.NOVICE));
+        }
+
+        @Test
+        @DisplayName("후보가 없으면 사용자 조회 없이 빈 목록")
+        void no_candidates_skips_user_lookup() {
+            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), anyInt()))
+                    .willReturn(List.of());
+
+            assertThat(userService.findRecommendationCandidates(Instrument.DRUM, Set.of(), 200)).isEmpty();
+            verify(userRepository, never()).findAllByIdInAndStatusNot(any(), any());
+        }
+
+        @Test
+        @DisplayName("두 조회 사이에 탈퇴한 사용자는 결과에서 빠진다")
+        void drops_candidate_whose_user_row_is_gone() {
+            given(userInstrumentRepository.findRecommendationCandidates(any(), any(), any(), anyInt()))
+                    .willReturn(List.of(drummer(30L, Level.ADVANCED), drummer(31L, Level.NOVICE)));
+            given(userRepository.findAllByIdInAndStatusNot(any(), eq(UserStatus.WITHDRAWN)))
+                    .willReturn(List.of(candidate(30L, "서준", Region.SEOUL, List.of(Genre.ROCK))));
+
+            assertThat(userService.findRecommendationCandidates(Instrument.DRUM, Set.of(), 200))
+                    .extracting(RecommendationCandidateResponse::userId).containsExactly(30L);
         }
     }
 }
