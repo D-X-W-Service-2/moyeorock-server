@@ -290,7 +290,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-- 점수 높은 순 **최대 10명**이다. 후보가 없으면 `candidates`는 빈 배열이다. `user`는 `UserSummaryResponse`(`id`·`nickname`·`profileImage`)이고, `score`·`reasons`는 AI 서버가 매긴 값 그대로다(`reasons`가 없으면 빈 배열). 구현: 이슈 #150(2026-11-08).
+- 점수 높은 순 **최대 10명**이다. 후보가 없으면 `candidates`는 빈 배열이다. 평가 대상 후보는 조건에 맞는 사용자 중 무작위 최대 200명이라, 사용자가 많으면 호출할 때마다 결과가 조금씩 달라질 수 있다. `user`는 `UserSummaryResponse`(`id`·`nickname`·`profileImage`)이고, `score`·`reasons`는 AI 서버가 매긴 값 그대로다(`reasons`가 없으면 빈 배열). 구현: 이슈 #150(2026-11-08).
 
 ## §3. 합주 (rehearsal)
 
