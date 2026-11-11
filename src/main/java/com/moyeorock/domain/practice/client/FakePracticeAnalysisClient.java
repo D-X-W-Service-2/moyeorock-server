@@ -8,8 +8,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * AI 서버가 생기기 전까지 쓰는 가짜 AI. 정해진 시간만큼 기다렸다가 고정 결과를 돌려준다 — 기다리는 이유는 dev 서버에서
- * 프론트가 SUBMITTED → ANALYZING → DONE 폴링을 실제처럼 붙여 볼 수 있게 하려는 것이다. practice.ai.type이 없으면 이게 뜬다.
+ * 가짜 AI. 정해진 시간만큼 기다렸다가 고정 결과를 돌려준다 — 기다리는 이유는 로컬·dev 서버에서 프론트가
+ * SUBMITTED → ANALYZING → DONE 폴링을 실제처럼 붙여 볼 수 있게 하려는 것이다. practice.ai.type이 없으면 이게 뜬다
+ * (실제 AI는 type=ai — AiPracticeAnalysisClient).
  */
 @Component
 @ConditionalOnProperty(prefix = "practice.ai", name = "type", havingValue = "fake", matchIfMissing = true)

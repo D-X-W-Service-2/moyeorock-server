@@ -49,7 +49,10 @@ public class FileService {
     // 적용되지 않아 여기서 막는다. S3는 클라이언트가 S3에 직접 올려 서버가 업로드 때 막을 수 없다 — 크기가
     // 중요한 쪽(연습 녹음)은 findSize·maxUploadBytes로 사후에 확인한다.
     private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
-    private static final long AUDIO_MAX_BYTES = 100L * 1024 * 1024;
+    // 연습 녹음은 AI 연습 피드백 API로 Base64에 실어 보낸다(PracticeRecordingService). AI 쪽 한도는 Base64 2,600,000자·원본
+    // 2,000,000바이트인데, Base64가 원본의 4/3배라 원본 1,950,000바이트가 Base64 2,600,000자다 — 둘 중 빡빡한 쪽에 맞춘다
+    // (AI 팀 핸드오프 2026-11-11). Lambda 함수 URL의 요청 본문 한도(6MB) 안에도 들어간다.
+    private static final long AUDIO_MAX_BYTES = 1_950_000L;
 
     private final UploadedFileRepository uploadedFileRepository;
     private final FileStorageClient fileStorageClient;
@@ -137,6 +140,23 @@ public class FileService {
     /** 비공개 파일을 읽을 임시 URL. 권한 확인은 부르는 도메인이 key를 저장할 때(findOwnedFileKey) 끝낸 것으로 본다. */
     public String issueReadUrl(String fileKey, Duration expiry) {
         return fileStorageClient.issueReadUrl(fileKey, expiry);
+    }
+
+    /**
+     * 비공개 파일(연습 녹음)을 통째로 읽는다 — AI에 Base64로 실어 보낼 때 쓴다. {@code maxBytes}를 넘으면 더 읽지 않고
+     * FILE_SIZE_EXCEEDED다: 등록 때 크기를 확인했어도 업로드 URL이 만료되기 전이면 같은 key에 더 큰 파일을 다시 올릴 수
+     * 있어서, 메모리에 올리기 전에 다시 막는다. DB를 보지 않아 트랜잭션을 열지 않는다.
+     */
+    public byte[] readBytes(String fileKey, long maxBytes) {
+        try (InputStream content = openOrThrow(fileKey)) {
+            byte[] bytes = content.readNBytes(Math.toIntExact(maxBytes + 1));
+            if (bytes.length > maxBytes) {
+                throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
+            }
+            return bytes;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값. */

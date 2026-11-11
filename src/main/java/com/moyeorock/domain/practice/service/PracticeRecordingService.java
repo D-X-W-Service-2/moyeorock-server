@@ -3,6 +3,7 @@ package com.moyeorock.domain.practice.service;
 import com.moyeorock.domain.practice.client.AnalysisFeedback;
 import com.moyeorock.domain.practice.client.AnalysisRequest;
 import com.moyeorock.domain.practice.client.PracticeAnalysisClient;
+import com.moyeorock.domain.practice.client.PracticeAnalysisException;
 import com.moyeorock.domain.practice.config.PracticeAnalysisConfig;
 import com.moyeorock.domain.practice.config.PracticeProperties;
 import com.moyeorock.domain.practice.dto.request.PracticeRecordingCreateRequest;
@@ -13,11 +14,13 @@ import com.moyeorock.domain.practice.entity.PracticeRecording;
 import com.moyeorock.domain.practice.enums.PracticeRecordingStatus;
 import com.moyeorock.domain.practice.repository.PracticeFeedbackRepository;
 import com.moyeorock.domain.practice.repository.PracticeRecordingRepository;
+import com.moyeorock.domain.song.service.SongService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.file.enums.UploadDomain;
 import com.moyeorock.global.file.service.FileService;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -60,36 +63,43 @@ public class PracticeRecordingService {
     private final PracticeAnalysisService analysisService;
     private final PracticeAnalysisClient analysisClient;
     private final FileService fileService;
+    private final SongService songService;
     private final PracticeProperties properties;
     private final TaskExecutor analysisExecutor;
 
     public PracticeRecordingService(PracticeRecordingRepository recordingRepository,
             PracticeFeedbackRepository feedbackRepository, PracticeAnalysisService analysisService,
-            PracticeAnalysisClient analysisClient, FileService fileService, PracticeProperties properties,
+            PracticeAnalysisClient analysisClient, FileService fileService, SongService songService,
+            PracticeProperties properties,
             @Qualifier(PracticeAnalysisConfig.EXECUTOR_BEAN_NAME) TaskExecutor analysisExecutor) {
         this.recordingRepository = recordingRepository;
         this.feedbackRepository = feedbackRepository;
         this.analysisService = analysisService;
         this.analysisClient = analysisClient;
         this.fileService = fileService;
+        this.songService = songService;
         this.properties = properties;
         this.analysisExecutor = analysisExecutor;
     }
 
     /**
-     * 분석 요청. 입력 오류(400)를 상태 충돌(409)보다 먼저 본다. 진행 중 확인은 사전 검증이고, 같은 사람의 요청이 정확히 겹치면
-     * practice_recordings의 생성 컬럼 유니크가 막아 같은 409가 된다.
+     * 분석 요청. 입력 오류(400) → 없는 곡(404) → 상태 충돌(409) 순으로 본다. 진행 중 확인은 사전 검증이고, 같은 사람의 요청이
+     * 정확히 겹치면 practice_recordings의 생성 컬럼 유니크가 막아 같은 409가 된다. 곡이 AI 분석을 지원하는지는 여기서 보지 않는다 —
+     * 지원 곡 목록은 AI 서버에 있어, 지원하지 않으면 분석이 실패 사유와 함께 끝난다.
      */
     @Transactional
     public PracticeRecordingSummaryResponse create(Long userId, PracticeRecordingCreateRequest request) {
         String fileKey = fileService.findOwnedFileKey(request.audioUrl(), UploadDomain.PRACTICE_AUDIO, userId)
                 .orElseThrow(() -> invalidAudio("내가 올린 연습 녹음 파일이 아닙니다."));
         ensureUploadedWithinLimit(fileKey);
+        if (songService.getSummaries(List.of(request.songId())).isEmpty()) {
+            throw new BusinessException(ErrorCode.SONG_NOT_FOUND);
+        }
         ensureNoAnalysisInProgress(userId);
 
         PracticeRecording saved = flushOrConflict(
-                () -> recordingRepository.saveAndFlush(
-                        PracticeRecording.create(userId, request.title(), request.part(), fileKey)));
+                () -> recordingRepository.saveAndFlush(PracticeRecording.create(
+                        userId, request.title(), request.part(), request.songId(), fileKey)));
         submitAfterCommit(saved.getId());
         return PracticeRecordingSummaryResponse.from(saved);
     }
@@ -181,9 +191,13 @@ public class PracticeRecordingService {
 
         PracticeRecording recording = started.get();
         try {
-            String audioUrl = fileService.issueReadUrl(recording.getAudioFileKey(), audioUrlExpiry());
+            // 원곡은 AI 서버에 있어 곡의 external_id만 넘긴다. 없으면 AI가 원곡을 찾을 수 없다 — 지원하지 않는 곡과 같다.
+            String externalId = songService.findExternalId(recording.getSongId())
+                    .orElseThrow(() -> new PracticeAnalysisException(PracticeAnalysisException.UNSUPPORTED_SONG));
+            byte[] audio = fileService.readBytes(recording.getAudioFileKey(),
+                    fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO));
             List<AnalysisFeedback> results = analysisClient.analyze(new AnalysisRequest(
-                    audioUrl, extensionOf(recording.getAudioFileKey()), recording.getPart()));
+                    externalId, audio, fileNameOf(recording.getAudioFileKey()), recording.getPart()));
             analysisService.complete(recordingId, results);
         } catch (RuntimeException e) {
             log.warn("연습 녹음 분석에 실패했습니다. recordingId={}", recordingId, e);
@@ -215,8 +229,12 @@ public class PracticeRecordingService {
         }
     }
 
-    // RestClient의 연결 실패·응답 대기 초과는 ResourceAccessException이다. 그 밖(AI 오류 응답·응답 해석 실패 등)은 분석 실패.
+    // 사유가 정해진 실패(지원하지 않는 곡 등)는 그 사유를 쓴다. RestClient의 연결 실패·응답 대기 초과는
+    // ResourceAccessException이다. 그 밖(AI 오류 응답·응답 해석 실패 등)은 분석 실패.
     private static String reasonOf(RuntimeException e) {
+        if (e instanceof PracticeAnalysisException) {
+            return e.getMessage();
+        }
         return e instanceof ResourceAccessException ? REASON_AI_UNREACHABLE : REASON_ANALYSIS_FAILED;
     }
 
@@ -227,7 +245,7 @@ public class PracticeRecordingService {
         }
         long maxBytes = fileService.maxUploadBytes(UploadDomain.PRACTICE_AUDIO);
         if (size.getAsLong() > maxBytes) {
-            throw invalidAudio("%dMB를 넘는 파일입니다.".formatted(maxBytes / (1024 * 1024)));
+            throw invalidAudio("%sMB를 넘는 파일입니다.".formatted(decimalMegabytes(maxBytes)));
         }
     }
 
@@ -264,7 +282,13 @@ public class PracticeRecordingService {
         return Duration.ofMinutes(properties.audioUrlExpiryMinutes());
     }
 
-    private static String extensionOf(String fileKey) {
-        return fileKey.substring(fileKey.lastIndexOf('.') + 1);
+    // 한도가 1,950,000바이트라 1MB 단위로 나누면 "1MB"가 된다 — 소수까지 보여 준다(1.95MB).
+    private static String decimalMegabytes(long bytes) {
+        return BigDecimal.valueOf(bytes, 6).stripTrailingZeros().toPlainString();
+    }
+
+    // practice/{uuid}.m4a → {uuid}.m4a. AI는 파일 이름의 확장자로 녹음 형식을 알아본다.
+    private static String fileNameOf(String fileKey) {
+        return fileKey.substring(fileKey.lastIndexOf('/') + 1);
     }
 }

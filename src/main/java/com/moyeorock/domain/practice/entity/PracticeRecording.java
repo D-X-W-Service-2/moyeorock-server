@@ -40,6 +40,11 @@ public class PracticeRecording extends BaseEntity {
     @Column(length = 20, nullable = false)
     private Instrument part;
 
+    // 연습한 곡(songs.id). AI가 원곡을 이 곡의 external_id로 찾는다 — 원곡 파일은 AI 서버가 갖고 있다. 다른 테이블이라
+    // Long으로만 가리킨다(CLAUDE.md 절대 규칙 6).
+    @Column(name = "song_id", nullable = false)
+    private Long songId;
+
     // URL이 아니라 스토리지 key다 — 녹음은 비공개라 읽을 때마다 임시 URL을 만든다(FileService.issueReadUrl).
     @Column(name = "audio_file_key", nullable = false)
     private String audioFileKey;
@@ -54,11 +59,13 @@ public class PracticeRecording extends BaseEntity {
     @Column(name = "analyzed_at")
     private LocalDateTime analyzedAt;
 
-    public static PracticeRecording create(Long userId, String title, Instrument part, String audioFileKey) {
+    public static PracticeRecording create(Long userId, String title, Instrument part, Long songId,
+            String audioFileKey) {
         PracticeRecording recording = new PracticeRecording();
         recording.userId = userId;
         recording.title = title;
         recording.part = part;
+        recording.songId = songId;
         recording.audioFileKey = audioFileKey;
         recording.status = PracticeRecordingStatus.SUBMITTED;
         return recording;

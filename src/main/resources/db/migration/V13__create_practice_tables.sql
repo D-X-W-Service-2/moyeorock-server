@@ -7,6 +7,7 @@ CREATE TABLE practice_recordings (
     user_id BIGINT NOT NULL,   -- FK 아님, 인덱스만
     title VARCHAR(100) NOT NULL,
     part VARCHAR(20) NOT NULL,   -- 녹음한 세션(공용 Instrument) — 혼자 연습한 세션 하나의 녹음이다
+    song_id BIGINT NOT NULL,   -- 연습한 곡(songs). FK 아님. AI가 이 곡의 external_id로 원곡을 찾는다
     audio_file_key VARCHAR(255) NOT NULL,   -- URL이 아니라 스토리지 key(녹음은 비공개)
     status VARCHAR(10) NOT NULL,
     failure_reason VARCHAR(255),
