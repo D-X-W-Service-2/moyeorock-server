@@ -3,6 +3,7 @@ package com.moyeorock.global.file.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.file.client.FileStorageClient;
 import com.moyeorock.global.file.client.LocalFileStorageProperties;
 import com.moyeorock.global.file.entity.UploadedFile;
@@ -54,8 +55,9 @@ class FileServiceDeleteTest {
     void delete_removesRowAndStoredFile_afterCommit() {
         Long fileId = saveUploadedFile();
 
-        fileService.delete(fileId, UPLOADER_ID);
+        DeleteResponse response = fileService.delete(fileUrl(), UPLOADER_ID);
 
+        assertThat(response.id()).isEqualTo(fileId);
         assertThat(uploadedFileRepository.findById(fileId)).isEmpty();
         assertThat(Files.exists(storedPath())).isFalse();
     }
@@ -66,9 +68,9 @@ class FileServiceDeleteTest {
     void delete_keepsStoredFile_untilCommit() {
         // 테스트 트랜잭션 안에서 delete를 부르면 커밋 없이 롤백된다. 커밋이 실패하는 경우와 같다 —
         // 이때 파일까지 지워져 있으면 "파일은 없는데 행만 남는" 상태가 된다.
-        Long fileId = saveUploadedFile();
+        saveUploadedFile();
 
-        fileService.delete(fileId, UPLOADER_ID);
+        fileService.delete(fileUrl(), UPLOADER_ID);
 
         assertThat(Files.exists(storedPath())).isTrue();
     }
@@ -78,6 +80,11 @@ class FileServiceDeleteTest {
                 UploadedFile.create(fileKey, UploadDomain.PROFILE_IMAGE, "me.png", "image/png", UPLOADER_ID));
         fileStorageClient.write(fileKey, new ByteArrayInputStream(new byte[]{1, 2, 3}));
         return file.getId();
+    }
+
+    // 업로드 URL 발급 응답의 fileUrl과 같은 값 — 프론트는 이 URL로 지운다(이슈 #164)
+    private String fileUrl() {
+        return fileStorageClient.issuePresignedUrl(fileKey, "image/png").fileUrl();
     }
 
     private Path storedPath() {

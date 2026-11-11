@@ -286,7 +286,7 @@
 | 메서드 | 경로 | 기능 | Request | Response |
 |---|---|---|---|---|
 | POST | `/v1/files/presigned-url` | 업로드&nbsp;URL&nbsp;발급 | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| DELETE | `/v1/files/{fileId}` | 파일&nbsp;삭제 † | | `DeleteResponse` |
+| DELETE | `/v1/files?fileUrl=` | 파일&nbsp;삭제 † | `fileUrl` (Query) | `DeleteResponse` |
 
 **로컬 저장 전용 임시 엔드포인트** — AWS 비용 때문에 당분간 서버 로컬 디스크에 저장하기로 한 결정(이슈 #18) 때문에 생긴 것이다. S3로 전환하면 `LocalFileStorageClient`와 함께 **둘 다 제거한다.** `API 초안`에는 없다.
 
@@ -295,7 +295,7 @@
 | PUT | `/v1/files/local-upload/**` | 업로드&nbsp;수신&nbsp;‡ | 파일 바이트(raw body) | — (`data: null`) |
 | GET | `/v1/files/local/**` | 파일&nbsp;서빙&nbsp;‡ | | 원시 바이트 |
 
-> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11). 응답은 공용 `DeleteResponse`(`{id, deleted}`)를 쓴다.
+> † `API 초안`에서 새로 확인된 엔드포인트다(2026-09-11). 응답은 공용 `DeleteResponse`(`{id, deleted}`)를 쓴다. **2026-11-11 `DELETE /v1/files/{fileId}`에서 `?fileUrl=`로 바꿨다(이슈 #164)** — 프로필·커버·포스터는 `fileUrl`만 저장하고 조회 응답에도 URL만 주므로, `fileId`로는 저장한 뒤에 프론트가 삭제를 부를 수 없었다. 업로드 URL 발급 때 받은 `fileUrl`을 `encodeURIComponent`로 인코딩해 보낸다. 이 서버가 발급한 URL이 아니거나 이미 지워졌으면 404 `FILE_NOT_FOUND`, 남이 올린 파일이면 403 `NO_PERMISSION`, `fileUrl`이 없으면 400 `VALIDATION_FAILED`다. 연습 녹음 상세의 `audioUrl`은 임시 URL이라 이 API로 지울 수 없다(404). 응답 `id`는 지운 파일 id(발급 응답의 `fileId`)다.
 > ‡ 로컬 저장에서는 발급된 `uploadUrl`이 S3가 아니라 이 서버의 `PUT /v1/files/local-upload/{fileKey}`를 가리킨다. 서빙(`GET /v1/files/local/**`)은 프로필·커버·포스터가 공개 정보라 인증 없이 열고(`PublicEndpoints` 등록), 원시 바이트를 그대로 내려줘야 해서 `api-conventions.md` §1의 "모든 응답은 `ApiResponse`로 감싼다" 규칙의 예외다.
 > 초안에는 `PUT {uploadUrl}`(파일 업로드) 행도 있다. S3로 전환하면 그 말대로 **S3 주소에 직접 올리는 클라이언트 동작**이 되어 백엔드 엔드포인트가 아니게 된다 — 위 임시 엔드포인트가 그때 사라지는 이유다.
 
@@ -375,7 +375,7 @@
 - **피드백 한 줄 = AI가 찾은 "원곡과 다르게 연주한 후보 구간" 하나다.** AI가 세션·문장을 주지 않아 세션은 녹음한 세션, 내용은 `"원곡 0:20~0:23 구간과 다르게 연주했어요."` 고정 문장이다. 구간(초)은 시작은 내림·끝은 올림한 정수다
 - **`audioUrl`(상세)은 조회할 때마다 새로 만드는 임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 업로드 때 받은 `fileUrl`로는 재생되지 않는다. 폴링 중에도 매번 달라지므로 재생 중인 `<audio>`의 `src`를 바꾸지 말고, 재생이 403으로 끊길 때만 다시 받는다
 - **서버가 재시작(배포)하면 대기·분석 중이던 건은 `FAILED`**("서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")가 된다 — 다시 요청하면 된다
-- **분석 중에도 지울 수 있다.** 나중에 도착한 결과는 버린다. 녹음 파일(S3)은 지워지지 않는다 — 필요하면 `DELETE /v1/files/{fileId}`
+- **분석 중에도 지울 수 있다.** 나중에 도착한 결과는 버린다. 녹음 파일(S3)은 지워지지 않는다 — 필요하면 업로드 때 받은 `fileUrl`로 `DELETE /v1/files?fileUrl=`(상세의 `audioUrl`은 임시 URL이라 지울 수 없다, 이슈 #164)
 - **회원 탈퇴하면 연습 녹음·분석 결과·녹음 파일이 전부 지워진다**(§1 탈퇴, 2026-11-11)
 - 다시 요청은 `FAILED`만 된다. 실패 사유는 비우고, `createdAt`(요청 시각)은 처음 그대로다
 - **녹음은 혼자 연습한 세션 하나의 녹음이다.** 사용자가 녹음 파일을 올리고(서비스 안에서 녹음하지 않는다) 세션(`part`)을 고른다. 세션은 AI에 힌트로 넘기고 목록·상세에도 내려준다(2026-11-09 추가)

@@ -1031,7 +1031,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-- `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
+- `fileId`는 2026-09-30에 `DELETE /v1/files/{fileId}`를 부르려고 추가했다. 2026-11-11 삭제가 `DELETE /v1/files?fileUrl=`로 바뀌어(이슈 #164) **삭제에는 쓰지 않는다** — 이미 읽는 프론트 코드가 깨지지 않게 남겨 둔다. 삭제 응답 `DeleteResponse.id`와 같은 값이다
 - `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
 - 허용 형식·크기는 `domain`마다 다르다(노션 `Presigned URL 발급` 표, 2026-11-09 대조). 확장자와 `contentType` 중 하나라도 그 도메인 목록에 없으면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
 

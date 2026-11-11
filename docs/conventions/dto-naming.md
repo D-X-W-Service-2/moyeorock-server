@@ -420,10 +420,10 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 저장 추가 | POST | `/v1/bookmarks` | `BookmarkCreateRequest` | `BookmarkResponse` |
 | 저장 삭제 | DELETE | `/v1/bookmarks/{id}` | — | `DeleteResponse` |
 | 업로드 URL 발급 | POST | `/v1/files/presigned-url` | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| 파일 삭제 † | DELETE | `/v1/files/{fileId}` | — | 미정 |
+| 파일 삭제 † | DELETE | `/v1/files?fileUrl=` | — (`fileUrl` Query) | `DeleteResponse` |
 | 대시보드 통합 | GET | `/v1/dashboard` | — | `DashboardResponse` |
 
-> † `API 초안`에서 2026-09-11 새로 확인된 엔드포인트다. Response DTO 미정 — 착수 전 팀 확인 필요(`docs/specs/api-spec.md` §10).
+> † `API 초안`에서 2026-09-11 새로 확인된 엔드포인트다. 응답은 공용 `DeleteResponse`다. 2026-11-11 경로를 `/{fileId}`에서 `?fileUrl=`로 바꿨다 — 저장한 뒤에는 프론트가 `fileId`를 알 수 없어서다(이슈 #164, `docs/specs/api-spec.md` §10).
 
 **보조 DTO**
 

@@ -440,28 +440,43 @@ class FileServiceTest {
     // 검증할 수 없다 — FileServiceDeleteTest(실제 트랜잭션)에서 커밋·롤백 양쪽을 본다.
 
     @Test
-    @DisplayName("존재하지 않는 fileId를 삭제하려 하면 FILE_NOT_FOUND 예외를 던진다")
-    void delete_throws_whenFileNotFound() {
-        when(uploadedFileRepository.findById(99L)).thenReturn(Optional.empty());
+    @DisplayName("이 저장소가 만든 fileUrl이 아니면 files 행을 찾지 않고 FILE_NOT_FOUND 예외를 던진다")
+    void delete_throws_whenUrlNotFromThisStorage() {
+        when(fileStorageClient.toFileKey("https://evil.example.com/profile/key.png")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> fileService.delete(99L, UPLOADER_ID))
+        assertThatThrownBy(() -> fileService.delete("https://evil.example.com/profile/key.png", UPLOADER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FILE_NOT_FOUND);
+        verifyNoInteractions(uploadedFileRepository);
+    }
+
+    @Test
+    @DisplayName("발급 이력이 없는(이미 지워진) fileUrl이면 FILE_NOT_FOUND 예외를 던진다")
+    void delete_throws_whenFileNotFound() {
+        when(fileStorageClient.toFileKey("https://files/profile/none.png")).thenReturn(Optional.of("profile/none.png"));
+        when(uploadedFileRepository.findByFileKey("profile/none.png")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> fileService.delete("https://files/profile/none.png", UPLOADER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FILE_NOT_FOUND);
     }
 
     @Test
-    @DisplayName("업로더 본인이 아니면 삭제 시 NO_PERMISSION 예외를 던진다")
+    @DisplayName("업로더 본인이 아니면 삭제 시 NO_PERMISSION 예외를 던지고 행·저장소를 건드리지 않는다")
     void delete_throws_whenNotUploader() {
         UploadedFile file = withId(UploadedFile.create("profile/key.png", UploadDomain.PROFILE_IMAGE, "me.png",
                 "image/png", UPLOADER_ID), 5L);
-        when(uploadedFileRepository.findById(5L)).thenReturn(Optional.of(file));
+        when(fileStorageClient.toFileKey("https://files/profile/key.png")).thenReturn(Optional.of("profile/key.png"));
+        when(uploadedFileRepository.findByFileKey("profile/key.png")).thenReturn(Optional.of(file));
 
-        assertThatThrownBy(() -> fileService.delete(5L, OTHER_USER_ID))
+        assertThatThrownBy(() -> fileService.delete("https://files/profile/key.png", OTHER_USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NO_PERMISSION);
-        verifyNoInteractions(fileStorageClient);
+        verify(uploadedFileRepository, never()).delete(any());
+        verify(fileStorageClient, never()).delete(anyString());
     }
 
     @Test
