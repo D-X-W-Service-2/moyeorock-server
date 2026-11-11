@@ -2,6 +2,7 @@ package com.moyeorock.global.file.client;
 
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Optional;
 
 // local/s3 구현체 둘 다 만들어서 file.storage.type으로 전환한다(기본값 local) — 구현체가
 // 실제로 2개라 CLAUDE.md 절대 규칙 3(인터페이스+구현체 1:1 금지)에 걸리지 않는다.
@@ -19,4 +20,7 @@ public interface FileStorageClient {
     InputStream read(String fileKey);
 
     void delete(String fileKey);
+
+    // issuePresignedUrl이 돌려준 fileUrl을 fileKey로 되돌린다. 이 저장소가 만든 URL 모양이 아니면 빈 값.
+    Optional<String> toFileKey(String fileUrl);
 }

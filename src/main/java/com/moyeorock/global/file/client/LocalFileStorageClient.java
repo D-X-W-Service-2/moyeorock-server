@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -31,9 +32,17 @@ public class LocalFileStorageClient implements FileStorageClient {
     @Override
     public UploadUrl issuePresignedUrl(String fileKey, String contentType) {
         String uploadUrl = properties.baseUrl() + LOCAL_UPLOAD_PATH + fileKey;
-        String fileUrl = properties.baseUrl() + LOCAL_SERVE_PATH + fileKey;
         LocalDateTime expiresAt = LocalDateTime.now().plus(uploadUrlExpiry());
-        return new UploadUrl(uploadUrl, fileUrl, expiresAt);
+        return new UploadUrl(uploadUrl, fileUrlPrefix() + fileKey, expiresAt);
+    }
+
+    @Override
+    public Optional<String> toFileKey(String fileUrl) {
+        String prefix = fileUrlPrefix();
+        if (fileUrl == null || !fileUrl.startsWith(prefix) || fileUrl.length() == prefix.length()) {
+            return Optional.empty();
+        }
+        return Optional.of(fileUrl.substring(prefix.length()));
     }
 
     @Override
@@ -89,6 +98,11 @@ public class LocalFileStorageClient implements FileStorageClient {
         } catch (IOException e) {
             original.addSuppressed(e);
         }
+    }
+
+    // issuePresignedUrl의 fileUrl과 toFileKey가 같은 규칙을 쓰도록 한 곳에서 만든다.
+    private String fileUrlPrefix() {
+        return properties.baseUrl() + LOCAL_SERVE_PATH;
     }
 
     // fileKey는 현재 항상 서버가 generateFileKey로 만든 값만 쓰이지만(FileService), 방어적으로

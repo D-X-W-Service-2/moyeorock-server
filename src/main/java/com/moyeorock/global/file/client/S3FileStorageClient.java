@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -43,9 +44,8 @@ public class S3FileStorageClient implements FileStorageClient {
 
         PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(presignRequest);
         LocalDateTime expiresAt = LocalDateTime.ofInstant(presignedRequest.expiration(), ZoneId.systemDefault());
-        String fileUrl = "https://%s.s3.%s.amazonaws.com/%s".formatted(properties.bucket(), properties.region(), fileKey);
 
-        return new UploadUrl(presignedRequest.url().toString(), fileUrl, expiresAt);
+        return new UploadUrl(presignedRequest.url().toString(), fileUrlPrefix() + fileKey, expiresAt);
     }
 
     @Override
@@ -69,5 +69,19 @@ public class S3FileStorageClient implements FileStorageClient {
                 .bucket(properties.bucket())
                 .key(fileKey)
                 .build());
+    }
+
+    @Override
+    public Optional<String> toFileKey(String fileUrl) {
+        String prefix = fileUrlPrefix();
+        if (fileUrl == null || !fileUrl.startsWith(prefix) || fileUrl.length() == prefix.length()) {
+            return Optional.empty();
+        }
+        return Optional.of(fileUrl.substring(prefix.length()));
+    }
+
+    // issuePresignedUrl의 fileUrl과 toFileKey가 같은 규칙을 쓰도록 한 곳에서 만든다.
+    private String fileUrlPrefix() {
+        return "https://%s.s3.%s.amazonaws.com/".formatted(properties.bucket(), properties.region());
     }
 }
