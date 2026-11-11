@@ -6,7 +6,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,8 +19,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
@@ -117,5 +126,53 @@ class S3FileStorageClientTest {
                 .thenThrow(S3Exception.builder().statusCode(500).message("Internal Error").build());
 
         assertThatThrownBy(() -> client.size("practice/abc.m4a")).isInstanceOf(S3Exception.class);
+    }
+
+    @Test
+    @DisplayName("파일을 읽으면 GetObject로 이 버킷의 객체 내용을 돌려준다(연습 녹음 분석, 이슈 #167)")
+    void read_returnsObjectContent() throws IOException {
+        byte[] audio = {1, 2, 3, 4};
+        when(s3Client.getObject(any(GetObjectRequest.class))).thenAnswer(invocation -> {
+            GetObjectRequest request = invocation.getArgument(0);
+            assertThat(request.bucket()).isEqualTo(BUCKET);
+            assertThat(request.key()).isEqualTo("practice/abc.m4a");
+            return new ResponseInputStream<>(GetObjectResponse.builder().contentLength(4L).build(),
+                    AbortableInputStream.create(new ByteArrayInputStream(audio)));
+        });
+
+        try (InputStream content = client.read("practice/abc.m4a")) {
+            assertThat(content.readAllBytes()).isEqualTo(audio);
+        }
+    }
+
+    @Test
+    @DisplayName("읽을 객체가 없으면(404) 로컬과 같게 NoSuchFileException으로 알린다")
+    void read_throwsNoSuchFile_whenNotFound() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(NoSuchKeyException.builder().statusCode(404).message("Not Found").build());
+
+        assertThatThrownBy(() -> client.read("practice/none.m4a"))
+                .isInstanceOf(UncheckedIOException.class)
+                .hasCauseInstanceOf(NoSuchFileException.class);
+    }
+
+    @Test
+    @DisplayName("ListBucket 권한이 없으면 없는 객체도 403이라 없는 파일로 본다")
+    void read_throwsNoSuchFile_whenForbidden() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(403).message("Forbidden").build());
+
+        assertThatThrownBy(() -> client.read("practice/none.m4a"))
+                .isInstanceOf(UncheckedIOException.class)
+                .hasCauseInstanceOf(NoSuchFileException.class);
+    }
+
+    @Test
+    @DisplayName("그 밖의 S3 오류는 읽기에서도 그대로 던진다")
+    void read_rethrows_onOtherErrors() {
+        when(s3Client.getObject(any(GetObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(500).message("Internal Error").build());
+
+        assertThatThrownBy(() -> client.read("practice/abc.m4a")).isInstanceOf(S3Exception.class);
     }
 }

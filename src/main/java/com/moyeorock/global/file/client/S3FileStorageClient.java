@@ -1,6 +1,8 @@
 package com.moyeorock.global.file.client;
 
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -65,9 +67,26 @@ public class S3FileStorageClient implements FileStorageClient {
         throw new UnsupportedOperationException("S3는 클라이언트가 presigned URL로 직접 업로드하므로 서버가 파일을 받지 않는다");
     }
 
+    // 서버가 파일을 직접 읽는 곳은 연습 녹음 분석뿐이다 — 녹음을 AI에 Base64로 실어 보낸다(FileService.readBytes, 이슈 #167).
+    // 이미지는 클라이언트가 fileUrl로 직접 읽는다. 객체가 없으면 로컬 구현과 같게 NoSuchFileException으로 알려
+    // FileService가 FILE_NOT_FOUND로 바꾼다. 없는 객체는 ListBucket 권한이 없으면 403으로 오므로(size와 같은 이유) 둘 다 없음으로 본다.
     @Override
     public InputStream read(String fileKey) {
-        throw new UnsupportedOperationException("S3는 fileUrl로 클라이언트가 직접 읽으므로 서버가 파일을 내려주지 않는다");
+        try {
+            return s3Client.getObject(GetObjectRequest.builder()
+                    .bucket(properties.bucket())
+                    .key(fileKey)
+                    .build());
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404 || e.statusCode() == 403) {
+                if (e.statusCode() == 403) {
+                    log.warn("S3 GetObject 403 — 객체가 없거나 권한이 없습니다(ListBucket 권한이 없으면 없는 객체도 403). fileKey={}",
+                            fileKey);
+                }
+                throw new UncheckedIOException(new NoSuchFileException(fileKey));
+            }
+            throw e;
+        }
     }
 
     @Override
