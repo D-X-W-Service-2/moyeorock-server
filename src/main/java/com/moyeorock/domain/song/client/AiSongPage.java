@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * AI 서버 곡 카탈로그 한 페이지({@code GET {ai.server.base-url}/v1/songs?cursor=&limit=}, 이슈 #147).
- * {@code nextCursor}가 null이면 마지막 페이지다. 호출 형식은 AI 팀과 맞추기 전 잠정안이다(api-spec.md §9).
+ * {@code nextCursor}가 null이면 마지막 페이지다. 호출 형식은 AI 팀과 맞추기 전 잠정안이다(api-spec.md §12).
  *
  * <p>항목 검증은 SongService가 곡마다 한다 — 검증에 걸린 곡만 건너뛰고 나머지는 저장한다. 글자 수 상한은 songs 컬럼 길이다(erd.md §8).
  */
