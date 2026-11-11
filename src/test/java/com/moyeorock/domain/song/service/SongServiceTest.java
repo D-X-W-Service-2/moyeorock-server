@@ -17,6 +17,7 @@ import com.moyeorock.domain.song.client.AiSongPage;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.dto.response.SongSyncResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.domain.song.service.SongService.SyncResult;
@@ -24,6 +25,8 @@ import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;
@@ -49,6 +52,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 // AI 서버·DB 없이 확인한다. 트랜잭션은 목 PlatformTransactionManager로 페이지마다 커밋되는지만 센다. 검증은 실제 Validator를 쓴다.
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +60,8 @@ class SongServiceTest {
 
     private static final ValidatorFactory VALIDATOR_FACTORY = Validation.buildDefaultValidatorFactory();
     private static final Validator VALIDATOR = VALIDATOR_FACTORY.getValidator();
+    // 수동 동기화를 부르는 사용자
+    private static final long USER_ID = 7L;
 
     @Mock
     private SongRepository songRepository;
@@ -277,6 +283,84 @@ class SongServiceTest {
         songService.syncFromAiOnSchedule();
 
         verify(aiSongClient).fetchSongs(null, SongService.SYNC_PAGE_SIZE);
+    }
+
+    @Test
+    @DisplayName("수동 동기화는 바로 돌고 페이지·생성·갱신·건너뜀 수를 돌려준다")
+    void syncFromAiManually_returnsCounts() {
+        configured();
+        when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1",
+                item("ext-1", "A", null), item(" ext-2", "B", null)));
+        when(aiSongClient.fetchSongs("c1", SongService.SYNC_PAGE_SIZE)).thenReturn(page(null, item("ext-3", "C", null)));
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1")))
+                .thenReturn(List.of(Song.create("옛 제목", "Queen", Genre.ROCK, null, null, null, "ext-1")));
+        when(songRepository.findAllByExternalIdIn(List.of("ext-3"))).thenReturn(List.of());
+
+        SongSyncResponse response = songService.syncFromAiManually(USER_ID);
+
+        assertThat(response).isEqualTo(new SongSyncResponse(2, 1, 1, 1));
+    }
+
+    @Test
+    @DisplayName("AI 서버 주소가 없으면 수동 동기화는 503 SONG_SYNC_UNAVAILABLE이다")
+    void syncFromAiManually_unavailable_whenNotConfigured() {
+        when(aiSongClient.isConfigured()).thenReturn(false);
+
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
+        verify(aiSongClient, never()).fetchSongs(any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("동기화가 이미 돌고 있으면 수동 동기화는 409 SONG_SYNC_IN_PROGRESS이고 AI 서버를 다시 부르지 않는다")
+    void syncFromAiManually_conflict_whileAlreadyRunning() {
+        configured();
+        List<Throwable> nested = new ArrayList<>();
+        when(aiSongClient.fetchSongs(isNull(), anyInt())).thenAnswer(invocation -> {
+            try {
+                songService.syncFromAiManually(USER_ID); // 스케줄 실행이 도는 도중에 들어온 수동 실행
+            } catch (BusinessException e) {
+                nested.add(e);
+            }
+            return page(null);
+        });
+
+        songService.syncFromAi();
+
+        assertThat(nested).singleElement().extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_IN_PROGRESS);
+        verify(aiSongClient, times(1)).fetchSongs(any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("AI 서버 호출이 실패하면 수동 동기화는 503이고, 앞 페이지는 남으며, 끝난 뒤 다시 부를 수 있다")
+    void syncFromAiManually_unavailable_whenAiFails_andCanRunAgain() {
+        configured();
+        when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE))
+                .thenReturn(page("c1", item("ext-1", "A", null)))
+                .thenReturn(page(null));
+        when(aiSongClient.fetchSongs("c1", SongService.SYNC_PAGE_SIZE))
+                .thenThrow(new ResourceAccessException("read timed out"));
+        when(songRepository.findAllByExternalIdIn(any())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
+        verify(transactionManager, times(1)).commit(any());
+
+        assertThat(songService.syncFromAiManually(USER_ID)).isEqualTo(new SongSyncResponse(1, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("AI 서버가 같은 커서를 다시 돌려주면(응답 형식 위반) 수동 동기화는 503이다")
+    void syncFromAiManually_unavailable_whenCursorRepeats() {
+        configured();
+        when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1"));
+        when(aiSongClient.fetchSongs("c1", SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1"));
+
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
     }
 
     private void configured() {

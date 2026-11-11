@@ -76,6 +76,9 @@ public enum ErrorCode {
 
     // 노래 (song) — 코드 이름은 노션에 없어 4팀이 정했다(이슈 #103)
     SONG_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 곡입니다."),
+    // 곡 수동 동기화(이슈 #162) — 코드 이름은 4팀이 정했다
+    SONG_SYNC_IN_PROGRESS(HttpStatus.CONFLICT, "곡 동기화가 이미 진행 중입니다."),
+    SONG_SYNC_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 서버에서 곡을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
 
     // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
     SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),

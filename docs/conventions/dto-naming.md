@@ -386,6 +386,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 곡 검색 | GET | `/v1/songs` | — | `PageResponse<SongResponse>` |
 | 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
+| 곡 수동 동기화 (운영용) | POST | `/v1/songs/sync` | — | `SongSyncResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
 | 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
 
@@ -396,6 +397,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, List<SongDifficultyResponse> difficulty)` — 곡 검색·추천의 곡 정보 |
 | `SongDifficultyResponse` | `(Instrument part, Level level)` — 파트별 난이도. 정보가 없는 파트는 목록에서 빠진다 |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 선택곡·셋리스트 항목용 축약형 |
+| `SongSyncResponse` | `(int pages, int created, int updated, int skipped)` — 곡 수동 동기화 결과(이슈 #162) |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song)` — 팀 선택곡 항목. 팀 상세 `songs`·팀 선택곡 저장 응답에서 재사용 |
 | `TeamSongsSaveRequest` | `(List<Long> songIds)` — 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제) |
 | `TeamSongsResponse` | `(Long teamId, List<TeamSongResponse> songs)` |

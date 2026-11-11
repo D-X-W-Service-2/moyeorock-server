@@ -863,6 +863,21 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
 - 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
+### SongSyncResponse (곡 수동 동기화 · 운영용)
+
+`POST /v1/songs/sync`의 응답(2026-11-11 · 이슈 #162). AI 카탈로그를 처음부터 끝까지 한 번 받은 결과다. 노션 `API 초안`에는 없는 운영용 API다.
+
+```json
+{ "pages": 3, "created": 120, "updated": 880, "skipped": 2 }
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `pages` | int | AI 서버에서 받은 페이지 수 |
+| `created` | int | 새로 만든 곡 수 |
+| `updated` | int | 이미 있던 `externalId`라 받은 값으로 바꾼 곡 수 |
+| `skipped` | int | 검증에 걸려 건너뛴 곡 수(이유는 서버 로그) |
+
 ### AiSongPage (AI 서버 응답 · 잠정)
 
 백엔드가 AI 서버에서 받는 곡 카탈로그 한 페이지(`GET {AI}/v1/songs?cursor=&limit=`, 2026-11-06 · 이슈 #147). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다(`KakaoUserInfo`와 같은 자리). 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.**

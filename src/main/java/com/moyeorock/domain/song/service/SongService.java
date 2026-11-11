@@ -4,12 +4,15 @@ import com.moyeorock.domain.song.client.AiSongClient;
 import com.moyeorock.domain.song.client.AiSongPage;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.song.dto.response.SongSyncResponse;
 import com.moyeorock.domain.song.entity.Song;
 import com.moyeorock.domain.song.repository.SongRepository;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.exception.BusinessException;
+import com.moyeorock.global.exception.ErrorCode;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
@@ -30,6 +33,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.RestClientException;
 
 /**
  * 곡 마스터 조회와 AI 서버 곡 카탈로그 동기화. 곡은 AI 서버 카탈로그에서 들어오는 데이터라 화면용 쓰기는 없다(Song 엔티티 주석).
@@ -80,6 +84,39 @@ public class SongService {
             log.info("AI 곡 동기화 완료: {}", result);
         } catch (RuntimeException e) {
             log.error("AI 곡 동기화 실패 — 이미 저장한 페이지는 남는다", e);
+        }
+    }
+
+    /**
+     * 수동 동기화(POST /v1/songs/sync, 이슈 #162). 스케줄과 같은 동기화를 바로 돌리고 결과를 돌려준다.
+     * {@code ai.song-sync.enabled}(스케줄 켜기)와 무관하고, 로그인한 사용자면 누구나 부를 수 있다. 스케줄과 달리 돌지 못한
+     * 이유를 에러로 알린다.
+     *
+     * <ul>
+     *   <li>AI 서버 주소가 없음 → 503 SONG_SYNC_UNAVAILABLE</li>
+     *   <li>이미 돌고 있음(스케줄·다른 수동 실행) → 409 SONG_SYNC_IN_PROGRESS</li>
+     *   <li>AI 서버 호출 실패·응답 형식 위반 → 503 SONG_SYNC_UNAVAILABLE. 이미 저장한 앞 페이지는 남는다</li>
+     * </ul>
+     * 카탈로그 전체를 받을 때까지 응답을 기다린다 — 페이지마다 AI 응답을 최대 30초 기다린다(AiSongClient).
+     */
+    public SongSyncResponse syncFromAiManually(Long userId) {
+        if (!aiSongClient.isConfigured()) {
+            throw new BusinessException(ErrorCode.SONG_SYNC_UNAVAILABLE);
+        }
+        if (!syncing.compareAndSet(false, true)) {
+            throw new BusinessException(ErrorCode.SONG_SYNC_IN_PROGRESS);
+        }
+        try {
+            SyncResult result = syncAllPages();
+            log.info("AI 곡 수동 동기화 완료: userId={}, {}", userId, result);
+            return new SongSyncResponse(result.pages(), result.created(), result.updated(), result.skipped());
+        } catch (RestClientException | IllegalStateException e) {
+            // AI 서버 장애·시간 초과·응답 해석 실패(RestClientException)와 응답 형식 위반(IllegalStateException — songs 없음,
+            // 같은 커서 반복). 자세한 원인은 로그에만 남긴다.
+            log.error("AI 곡 수동 동기화 실패 — 이미 저장한 페이지는 남는다. userId={}", userId, e);
+            throw new BusinessException(ErrorCode.SONG_SYNC_UNAVAILABLE);
+        } finally {
+            syncing.set(false);
         }
     }
 

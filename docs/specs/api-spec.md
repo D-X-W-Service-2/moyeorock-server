@@ -230,9 +230,11 @@
 | GET | `/v1/songs?keyword=&genre=&page=&size=` ¶ | 곡&nbsp;검색 | | `PageResponse<SongResponse>` | 세션별 난이도 포함 |
 | GET | `/v1/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
 | GET | `/v1/teams/{teamId}/songs/recommendations` | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 |
+| POST | `/v1/songs/sync` ⚙ | 곡&nbsp;수동&nbsp;동기화 | | `SongSyncResponse` | 운영용 · §12 |
 
 > ¶ `API 초안`에서 `page`·`size` 페이징 파라미터가 명시적으로 추가됐다(2026-09-11).
 > 곡 마스터(`songs`)는 화면에서 넣지 않는다 — 백엔드가 AI 서버 카탈로그를 받아와 채운다(§12, 이슈 #147).
+> ⚙ 화면에서 부르는 API가 아니라 운영용이다(2026-11-11, 이슈 #162). 매일 04:00 동기화를 지금 바로 돌린다. 노션 `API 초안`에는 없다. 로그인한 사용자면 누구나 부를 수 있다. 이미 돌고 있으면 409 `SONG_SYNC_IN_PROGRESS`, AI 서버 주소가 없거나 호출이 실패하면 503 `SONG_SYNC_UNAVAILABLE`(실패 전에 저장한 페이지는 남는다).
 > 🚧 추천 2개(내 취향 추천곡·팀 곡 추천)는 추천 방식(룰 기반/외부 모델)과 소유 도메인이 정해지지 않아 셋리스트 구현(이슈 #103) 범위에서 뺐다(2026-11-02).
 > ⚠️ `docs/conventions/domains.md`는 song 2개로 집계한다. 팀 곡 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.** `API 초안`은 이 3개를 모두 "노래 / 셋리스트"로 묶어만 두어 이 논쟁을 해소하지 못한다. 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
 
@@ -363,7 +365,7 @@
 
 > 🚧 **잠정안** — AI 서버(`moyeorock-ai`)에 아직 HTTP 서버가 없어 경로·쿼리·응답 모양은 AI 팀과 맞추기 전이다. 바뀌면 `AiSongClient`·`AiSongPage`와 이 절을 함께 고친다.
 
-- **언제**: 매일 04:00(Asia/Seoul) 스케줄. `AI_SONG_SYNC_ENABLED=true`일 때만 돈다(로컬·테스트 기본 꺼짐). `AI_SERVER_BASE_URL`이 비어 있으면 건너뛴다. 한 번에 하나만 돈다
+- **언제**: 매일 04:00(Asia/Seoul) 스케줄. `AI_SONG_SYNC_ENABLED=true`일 때만 돈다(로컬·테스트 기본 꺼짐). `AI_SERVER_BASE_URL`이 비어 있으면 건너뛴다. 한 번에 하나만 돈다. `POST /v1/songs/sync`로 바로 돌릴 수도 있다(§song, 이슈 #162) — 스케줄 켜기와 무관하고, 스케줄과 겹치면 409다
 - **어떻게**: `nextCursor`가 `null`이 될 때까지 받은 커서로 다음 페이지를 부른다. AI 서버 호출은 트랜잭션 밖에서 하고 **페이지마다 따로 커밋**한다 — 중간에 실패해도 앞 페이지는 남고, 다음 회차에 처음부터 다시 받는다. 같은 커서를 다시 돌려주면 무한히 돌지 않고 그 회차를 끝낸다
 - **저장**: `externalId`(AI 쪽 곡 id, 대소문자 구분 — V13) 기준 upsert. 없으면 만들고, 있으면 받은 값으로 **통째로** 바꾼다(빠진 선택 값은 비워진다). 곡 `id`는 그대로다. **카탈로그에 없는 곡은 지우지 않는다** — 팀 선택곡·셋리스트가 참조한다
 - **바꾼 곡 정보는 그 곡을 참조하는 곳에 그대로 보인다** — 팀 선택곡·셋리스트(끝난 공연 포함)·저장 목록은 `songs.id`만 들고 있어 제목·아티스트를 고치면 함께 바뀐다. 카탈로그 정정을 반영하려는 의도된 동작이다
