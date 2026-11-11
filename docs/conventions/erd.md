@@ -404,7 +404,8 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 |  | `user_id` | `BIGINT NOT NULL` | → users · 올린 사람. FK 아님(CLAUDE.md 절대 규칙 6) |
 |  | `title` | `VARCHAR(100) NOT NULL` | 100자 이하 |
-|  | `part` | `VARCHAR(20) NOT NULL` | 녹음한 세션 — 공용 `Instrument`. 혼자 연습한 세션 하나의 녹음이라 올릴 때 고른다. AI에 세션 힌트로 넘긴다 |
+|  | `part` | `VARCHAR(20) NOT NULL` | 녹음한 세션 — 공용 `Instrument`. 혼자 연습한 세션 하나의 녹음이라 올릴 때 고른다. AI 응답에 세션이 없어 피드백 줄의 세션으로 쓴다 |
+|  | `song_id` | `BIGINT NOT NULL` | → songs · 연습한 곡. FK 아님(절대 규칙 6). AI가 이 곡의 `external_id`로 원곡을 찾는다 — 원곡 음원은 AI 서버에 있다(2026-11-11 추가, AI 팀 핸드오프) |
 |  | `audio_file_key` | `VARCHAR(255) NOT NULL` | 스토리지 key `practice/{uuid}.{확장자}` — URL이 아니다(녹음은 비공개, 읽을 때마다 임시 URL). `files.file_key`와 같은 값 |
 |  | `status` | `VARCHAR(10) NOT NULL` | SUBMITTED\|ANALYZING\|DONE\|FAILED |
 |  | `failure_reason` | `VARCHAR(255)` | 화면에 그대로 보여 줄 실패 사유. FAILED일 때만 값 |
@@ -469,6 +470,7 @@ AI 분석 결과 한 줄(구간·세션·내용). 분석이 끝날 때 한꺼번
 | `teams` | `setlists` | 1:N | 곡을 넘긴 팀 |
 | `songs` | `setlists` | 1:N |  |
 | `users` | `practice_recordings` | 1:N | 올린 사람 |
+| `songs` | `practice_recordings` | 1:N | 연습한 곡 |
 | `practice_recordings` | `practice_feedbacks` | 1:N |  |
 
 `created_by` · `author_id` · `decided_by` · `user_id`(join_requests) · `inviter_id` 는 모두 `users` 를 참조하지만 선이 얽혀 도면에서는 컬럼 주석으로만 표기했다.

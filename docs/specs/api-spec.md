@@ -305,11 +305,11 @@
 |---|---|---|
 | `Authorization` 헤더 | **필수** (`Bearer {token}`). 업로더 본인만 올릴 수 있다 | **넣으면 안 된다.** presigned URL 서명과 충돌해 S3가 거부한다 |
 | `Content-Type` 헤더 | 발급 때 보낸 `contentType`과 같아야 한다(대소문자 무시). 다르거나 없으면 415 `UNSUPPORTED_MEDIA_TYPE` | 같아야 한다. 다르면 S3가 403 |
-| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 도메인별 한도(이미지 10MB·연습 녹음 100MB) 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw). **크기 한도가 걸리지 않는다** — 서버를 거치지 않고 S3에 바로 올라가기 때문이다(아래 ※) |
+| 바디 | 파일 바이트 그대로(raw). `FormData`(multipart)로 보내면 Content-Type이 달라 415. 비어 있으면 400 `EMPTY_FILE`, 도메인별 한도(이미지 10MB·연습 녹음 1.95MB) 초과면 400 `FILE_SIZE_EXCEEDED` | 파일 바이트 그대로(raw). **크기 한도가 걸리지 않는다** — 서버를 거치지 않고 S3에 바로 올라가기 때문이다(아래 ※) |
 | 만료 | `expiresAt`(발급 후 10분)이 지나면 403 `UPLOAD_URL_EXPIRED` | 만료되면 S3가 403 |
 | 재업로드 | 만료 전엔 같은 `uploadUrl`로 다시 올리면 덮어쓴다 | 같음 |
 
-> ※ **도메인별 형식·크기**(2026-11-09, 이슈 #154): 이미지 3개 도메인은 `jpg` `jpeg` `png` `webp`·10MB, 연습 녹음 `PRACTICE_AUDIO`(폴더 `practice/`)는 `mp3` `m4a` `wav`·100MB다. 표 전체는 `dto-spec.md` `PresignedUrlResponse`. S3는 presigned PUT이 크기를 제한하지 않아 업로드 때 한도가 걸리지 않는다 — 연습 녹음은 분석 요청 때 서버가 실제 크기를 확인한다(`FileService.findSize`·`maxUploadBytes`). 업로드 자체를 막으려면 발급 요청에 `fileSize`를 받아 서명에 넣어야 해서 후속으로 논의한다.
+> ※ **도메인별 형식·크기**(2026-11-09, 이슈 #154): 이미지 3개 도메인은 `jpg` `jpeg` `png` `webp`·10MB, 연습 녹음 `PRACTICE_AUDIO`(폴더 `practice/`)는 `mp3` `m4a` `wav`·1.95MB(1,950,000바이트)다 — AI 연습 피드백 API가 녹음을 Base64 2,600,000자까지 받아서 그 원본 크기에 맞췄다(2026-11-11, 이전 100MB). 표 전체는 `dto-spec.md` `PresignedUrlResponse`. S3는 presigned PUT이 크기를 제한하지 않아 업로드 때 한도가 걸리지 않는다 — 연습 녹음은 분석 요청 때 서버가 실제 크기를 확인한다(`FileService.findSize`·`maxUploadBytes`). 업로드 자체를 막으려면 발급 요청에 `fileSize`를 받아 서명에 넣어야 해서 후속으로 논의한다.
 >
 > `PRACTICE_AUDIO`는 **비공개**다. `fileUrl`로 바로 열리지 않고, 다른 도메인이 `FileService.findOwnedFileKey`로 "내가 올린 그 도메인 파일인지" 확인해 key를 저장한 뒤 읽을 때마다 `FileService.issueReadUrl`로 임시 URL(S3 presigned GET)을 만든다. 로컬 저장에서는 임시 URL 대신 공개 서빙 경로가 나간다(개발용).
 
@@ -367,10 +367,12 @@
 | POST | `/v1/practice-recordings/{id}/retry` | 분석&nbsp;다시&nbsp;요청 (**202**) | | `PracticeRecordingSummaryResponse` |
 | DELETE | `/v1/practice-recordings/{id}` | 삭제 | | — (`data: null`) |
 
-**흐름** — ① 업로드 URL 발급(`domain: PRACTICE_AUDIO`) → 녹음 파일 PUT → ② 받은 `fileUrl`을 `audioUrl`로, 녹음한 세션을 `part`로 분석 요청 → 202 `SUBMITTED` → ③ 서버가 AI에 보내면 `ANALYZING`, 끝나면 `DONE`(실패 `FAILED`) → ④ 프론트는 상세를 5초쯤 간격으로 조회하다 `DONE`·`FAILED`면 멈춘다. 진행률은 없다.
+**흐름** — ① 업로드 URL 발급(`domain: PRACTICE_AUDIO`) → 녹음 파일 PUT → ② 받은 `fileUrl`을 `audioUrl`로, 녹음한 세션을 `part`로, 연습한 곡(곡 검색 API의 id)을 `songId`로 분석 요청 → 202 `SUBMITTED` → ③ 서버가 AI에 보내면 `ANALYZING`, 끝나면 `DONE`(실패 `FAILED`) → ④ 프론트는 상세를 5초쯤 간격으로 조회하다 `DONE`·`FAILED`면 멈춘다. 진행률은 없다.
 
 - **분석은 비동기다.** 요청이 커밋된 뒤 서버 안의 전용 실행기가 하나씩 처리한다 — 서버 전체에서 한 번에 하나, **한 사람당 진행 중(`SUBMITTED`·`ANALYZING`) 분석도 하나**다(다시 요청 포함)
-- **AI 서버가 아직 없어 가짜 AI(고정 결과)로 동작한다**(`practice.ai.type=fake`). 결과 내용 앞에 "(테스트)"가 붙는다. AI 응답 형식이 정해지면 실제 호출로 바뀐다
+- **실제 AI 연습 피드백 API로 분석한다**(`practice.ai.type=ai`. 값이 없으면 가짜 AI `fake` — 결과 앞에 "(테스트)"가 붙는다). 원곡은 AI 서버에 있어 곡의 `external_id`와 녹음 파일(Base64)만 보낸다(2026-11-11, AI 팀 핸드오프)
+- **녹음은 3~60초, 파일은 1.95MB 이하**여야 한다. AI가 분석을 지원하는 곡은 시범 곡(30곡)뿐이다 — 지원하지 않는 곡, 원곡과 맞추지 못한 녹음(AI `review_required`), 길이·형식이 맞지 않는 녹음은 `FAILED`가 되고 `failureReason`에 사유가 온다. 곡이 지원되는지는 분석 요청 때 확인하지 않는다
+- **피드백 한 줄 = AI가 찾은 "원곡과 다르게 연주한 후보 구간" 하나다.** AI가 세션·문장을 주지 않아 세션은 녹음한 세션, 내용은 `"원곡 0:20~0:23 구간과 다르게 연주했어요."` 고정 문장이다. 구간(초)은 시작은 내림·끝은 올림한 정수다
 - **`audioUrl`(상세)은 조회할 때마다 새로 만드는 임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 업로드 때 받은 `fileUrl`로는 재생되지 않는다. 폴링 중에도 매번 달라지므로 재생 중인 `<audio>`의 `src`를 바꾸지 말고, 재생이 403으로 끊길 때만 다시 받는다
 - **서버가 재시작(배포)하면 대기·분석 중이던 건은 `FAILED`**("서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")가 된다 — 다시 요청하면 된다
 - **분석 중에도 지울 수 있다.** 나중에 도착한 결과는 버린다. 녹음 파일(S3)은 지워지지 않는다 — 필요하면 `DELETE /v1/files/{fileId}`
@@ -382,12 +384,13 @@
 
 | 코드 | 상태 | 상황 |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | 제목 빈칸·100자 초과, `audioUrl` 빈칸, `part` 없음·없는 세션 값 / `audioUrl`이 내가 올린 `PRACTICE_AUDIO` 파일이 아님·업로드가 끝나지 않음·100MB 초과 — `message`가 `"audioUrl: …"`로 사유를 준다 |
+| `VALIDATION_FAILED` | 400 | 제목 빈칸·100자 초과, `audioUrl` 빈칸, `part` 없음·없는 세션 값, `songId` 없음 / `audioUrl`이 내가 올린 `PRACTICE_AUDIO` 파일이 아님·업로드가 끝나지 않음·1.95MB 초과 — `message`가 `"audioUrl: …"`로 사유를 준다 |
+| `SONG_NOT_FOUND` | 404 | 없는 곡 (분석 요청) |
 | `PRACTICE_RECORDING_NOT_FOUND` | 404 | 없는 녹음이거나 남의 녹음 (상세·다시 요청·삭제) |
 | `INVALID_STATE` | 409 | 다시 요청인데 실패한 녹음이 아님 |
 | `PRACTICE_ANALYSIS_IN_PROGRESS` | 409 | 진행 중인 내 녹음이 이미 있음 (분석 요청·다시 요청) |
 
-> 노션 분석 요청 400 칸에는 "업로드가 끝나지 않음·100MB 초과"가 아직 없다 — S3는 업로드(PUT) 때 크기를 막지 못해 분석 요청 때 서버가 확인하기로 했다(이슈 #154·#155). 노션 반영 필요.
+> 노션 분석 요청에는 `songId`(필수)·404 `SONG_NOT_FOUND`와 400 칸의 "업로드가 끝나지 않음·1.95MB 초과"가 아직 없다(2026-11-11) — S3는 업로드(PUT) 때 크기를 막지 못해 분석 요청 때 서버가 확인하기로 했다(이슈 #154·#155). 노션 반영 필요.
 
 ---
 

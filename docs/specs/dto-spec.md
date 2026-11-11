@@ -1038,7 +1038,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
   | `domain` | 확장자 | `contentType` | 최대 크기 |
   |---|---|---|---|
   | `PROFILE_IMAGE` `GROUP_COVER` `PERFORMANCE_POSTER` | `jpg` `jpeg` `png` `webp` | `image/jpeg` `image/png` `image/webp` | 10MB |
-  | `PRACTICE_AUDIO` | `mp3` `m4a` `wav` | `audio/mpeg` `audio/mp4` `audio/x-m4a` `audio/wav` `audio/x-wav` | 100MB |
+  | `PRACTICE_AUDIO` | `mp3` `m4a` `wav` | `audio/mpeg` `audio/mp4` `audio/x-m4a` `audio/wav` `audio/x-wav` | 1.95MB(1,950,000바이트, AI 연습 피드백 API 한도 — 2026-11-11) |
 
 - `PRACTICE_AUDIO`(개인 연습 녹음)는 **비공개**다. S3 `practice/`는 공개 읽기가 아니라서 `fileUrl`로 바로 열리지 않는다 — 연습 녹음 분석 요청의 `audioUrl`로 보내는 식별자로만 쓰고, 재생은 연습 녹음 상세가 주는 임시 URL로 한다(이슈 #154)
 - 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
@@ -1173,13 +1173,15 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 {
   "title": "11/9 보컬 연습 - 너의 의미",
   "part": "VOCAL",
+  "songId": 41,
   "audioUrl": "https://moyeorock-dev-files.s3.ap-northeast-2.amazonaws.com/practice/550e8400-e29b-41d4-a716-446655440000.m4a"
 }
 ```
 
 - `title` 필수, 100자 이하
 - `part` 필수. 녹음한 세션(`VOCAL` `EL_GT` `AC_GT` `BASS` `DRUM` `KEY`) — 혼자 연습한 세션 하나의 녹음이다. AI에 세션 힌트로 넘긴다
-- `audioUrl` 필수. 업로드 API(`domain: PRACTICE_AUDIO`)가 준 `fileUrl` 그대로. 내가 올린 연습 녹음 파일이어야 하고, 실제로 업로드돼 있어야 하며 100MB 이하여야 한다 — 아니면 400 `VALIDATION_FAILED`(`message`에 `"audioUrl: …"` 사유)
+- `songId` 필수. 연습한 곡(곡 검색 API의 `id`). 없는 곡이면 404 `SONG_NOT_FOUND`. AI가 이 곡의 원곡과 녹음을 맞춰 본다 — 시범 지원 곡이 아니면 분석이 `FAILED`가 된다(2026-11-11 추가)
+- `audioUrl` 필수. 업로드 API(`domain: PRACTICE_AUDIO`)가 준 `fileUrl` 그대로. 내가 올린 연습 녹음 파일이어야 하고, 실제로 업로드돼 있어야 하며 1.95MB 이하여야 한다(녹음 길이는 3~60초) — 아니면 400 `VALIDATION_FAILED`(`message`에 `"audioUrl: …"` 사유)
 
 ### PracticeRecordingSummaryResponse
 

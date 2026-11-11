@@ -121,7 +121,8 @@
 | 알림 발생 | 2·3·4팀 → 3팀 `notification` | 이벤트로만 전달. `NotificationService` 직접 호출 금지. `global/event/NotificationEvent`를 **트랜잭션 안에서** 발행한다(밖에서 발행하면 버려진다). 사용법은 `docs/specs/api-spec.md` §10 |
 | 회원 탈퇴 | 1팀 `UserWithdrawService` → 4팀 `GroupMemberService` | `findOwnedGroups`(내가 모임장인 해체되지 않은 모임 — 있으면 1팀이 탈퇴를 막고 모임 이름을 메시지에 쓴다) · `leaveAllGroups`(내 ACTIVE 모임원 행을 모두 `LEFT`, 활동 중 모임의 모임장이면 `OWNER_CANNOT_LEAVE`). 모임 행을 잠그고 모임원 행을 잠금 조회로 다시 읽어 탈퇴 직전 위임과 겹쳐도 모임장 없는 모임이 생기지 않는다(2026-11-03, #112) |
 | 대시보드 | 3팀 → 2·4팀 | 각 도메인 Service 호출 |
-| 연습 녹음 파일 | 4팀 practice → 1팀 `FileService` | `findOwnedFileKey`(받은 `fileUrl`이 내가 올린 `PRACTICE_AUDIO` 파일인지 확인하고 key를 받는다) · `findSize`·`maxUploadBytes`(업로드됐는지·100MB 이하인지 — S3는 업로드 때 크기를 막지 못한다) · `issueReadUrl`(재생·AI 전달용 임시 URL) · `deleteOwnedFiles`(회원 탈퇴 때 녹음 파일을 key로 지운다 — 행은 바로, 저장소는 커밋 뒤). 녹음은 비공개라 URL이 아니라 key를 저장한다(이슈 #154·#155) |
+| 연습한 곡 | 4팀 practice → 4팀 `SongService` | `getSummaries`(분석 요청 때 곡 존재 확인 — 없으면 404 `SONG_NOT_FOUND`) · `findExternalId`(분석 때 AI에 넘길 곡의 `external_id` — 원곡은 AI 서버에 있다). `SongService`는 다른 Service를 부르지 않아 순환이 없다(2026-11-11) |
+| 연습 녹음 파일 | 4팀 practice → 1팀 `FileService` | `findOwnedFileKey`(받은 `fileUrl`이 내가 올린 `PRACTICE_AUDIO` 파일인지 확인하고 key를 받는다) · `findSize`·`maxUploadBytes`(업로드됐는지·1.95MB 이하인지 — S3는 업로드 때 크기를 막지 못한다) · `issueReadUrl`(재생용 임시 URL) · `readBytes`(AI에 Base64로 보낼 녹음 내용 — 한도를 넘으면 더 읽지 않고 `FILE_SIZE_EXCEEDED`) · `deleteOwnedFiles`(회원 탈퇴 때 녹음 파일을 key로 지운다 — 행은 바로, 저장소는 커밋 뒤). 녹음은 비공개라 URL이 아니라 key를 저장한다(이슈 #154·#155) |
 
 **2팀의 `TeamService`가 3팀·4팀 양쪽에서 호출된다.** 팀 생성·해체·멤버 추가 메서드 시그니처는 2팀이 먼저 정해 구현했다(시그니처 표는 `docs/conventions/dto-naming.md` §3). 다른 팀이 가져다 쓰고, 맞지 않으면 요청받아 고친다.
 
