@@ -37,7 +37,7 @@ public class SongController {
             화면에서 부르는 API가 아니다.
 
             **호출 조건**
-            - 서버 환경변수 `AI_SONG_SYNC_ADMIN_USER_IDS`(쉼표로 구분)에 적은 사용자만 부를 수 있다. 비어 있으면 아무도 못 부른다.
+            - 로그인한 사용자면 누구나 부를 수 있다.
             - `AI_SERVER_BASE_URL`이 있어야 한다. 스케줄 켜기(`AI_SONG_SYNC_ENABLED`)와는 무관하다.
 
             **동작**
@@ -48,12 +48,11 @@ public class SongController {
 
             **에러**
             - 401 `UNAUTHORIZED`: 인증 필요
-            - 403 `NO_PERMISSION`: 지정한 사용자가 아님
             - 409 `SONG_SYNC_IN_PROGRESS`: 동기화가 이미 돌고 있음(스케줄 포함)
             - 503 `SONG_SYNC_UNAVAILABLE`: AI 서버 주소 미설정·호출 실패·시간 초과·응답 형식 위반. 실패 전에 저장한 페이지는 남는다
             """)
     @PostMapping("/sync")
     public ApiResponse<SongSyncResponse> sync(@AuthUser Long userId) {
-        return ApiResponse.success(songService.syncFromAiByAdmin(userId));
+        return ApiResponse.success(songService.syncFromAiManually(userId));
     }
 }

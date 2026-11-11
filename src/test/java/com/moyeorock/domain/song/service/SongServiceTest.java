@@ -14,7 +14,6 @@ import static org.mockito.Mockito.when;
 
 import com.moyeorock.domain.song.client.AiSongClient;
 import com.moyeorock.domain.song.client.AiSongPage;
-import com.moyeorock.domain.song.config.SongSyncProperties;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
@@ -61,8 +60,8 @@ class SongServiceTest {
 
     private static final ValidatorFactory VALIDATOR_FACTORY = Validation.buildDefaultValidatorFactory();
     private static final Validator VALIDATOR = VALIDATOR_FACTORY.getValidator();
-    // 수동 동기화를 부를 수 있는 사용자
-    private static final long ADMIN_ID = 7L;
+    // 수동 동기화를 부르는 사용자
+    private static final long USER_ID = 7L;
 
     @Mock
     private SongRepository songRepository;
@@ -75,8 +74,7 @@ class SongServiceTest {
 
     @BeforeEach
     void setUp() {
-        songService = new SongService(songRepository, aiSongClient, new TransactionTemplate(transactionManager), VALIDATOR,
-                new SongSyncProperties(List.of(ADMIN_ID)));
+        songService = new SongService(songRepository, aiSongClient, new TransactionTemplate(transactionManager), VALIDATOR);
     }
 
     @AfterAll
@@ -288,8 +286,8 @@ class SongServiceTest {
     }
 
     @Test
-    @DisplayName("수동 동기화는 지정한 사용자가 부르면 바로 돌고 페이지·생성·갱신·건너뜀 수를 돌려준다")
-    void syncFromAiByAdmin_returnsCounts() {
+    @DisplayName("수동 동기화는 바로 돌고 페이지·생성·갱신·건너뜀 수를 돌려준다")
+    void syncFromAiManually_returnsCounts() {
         configured();
         when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1",
                 item("ext-1", "A", null), item(" ext-2", "B", null)));
@@ -298,38 +296,17 @@ class SongServiceTest {
                 .thenReturn(List.of(Song.create("옛 제목", "Queen", Genre.ROCK, null, null, null, "ext-1")));
         when(songRepository.findAllByExternalIdIn(List.of("ext-3"))).thenReturn(List.of());
 
-        SongSyncResponse response = songService.syncFromAiByAdmin(ADMIN_ID);
+        SongSyncResponse response = songService.syncFromAiManually(USER_ID);
 
         assertThat(response).isEqualTo(new SongSyncResponse(2, 1, 1, 1));
     }
 
     @Test
-    @DisplayName("수동 동기화는 지정한 사용자가 아니면 403 NO_PERMISSION이고 AI 서버를 부르지 않는다")
-    void syncFromAiByAdmin_rejectsOtherUser() {
-        assertThatThrownBy(() -> songService.syncFromAiByAdmin(99L))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.NO_PERMISSION);
-        verifyNoInteractions(aiSongClient);
-    }
-
-    @Test
-    @DisplayName("지정한 사용자가 없으면(설정이 비어 있으면) 아무도 수동 동기화를 부를 수 없다")
-    void syncFromAiByAdmin_rejectsEveryone_whenNoAdminConfigured() {
-        SongService noAdmin = new SongService(songRepository, aiSongClient, new TransactionTemplate(transactionManager),
-                VALIDATOR, new SongSyncProperties(List.of()));
-
-        assertThatThrownBy(() -> noAdmin.syncFromAiByAdmin(ADMIN_ID))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(ErrorCode.NO_PERMISSION);
-        verifyNoInteractions(aiSongClient);
-    }
-
-    @Test
     @DisplayName("AI 서버 주소가 없으면 수동 동기화는 503 SONG_SYNC_UNAVAILABLE이다")
-    void syncFromAiByAdmin_unavailable_whenNotConfigured() {
+    void syncFromAiManually_unavailable_whenNotConfigured() {
         when(aiSongClient.isConfigured()).thenReturn(false);
 
-        assertThatThrownBy(() -> songService.syncFromAiByAdmin(ADMIN_ID))
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
         verify(aiSongClient, never()).fetchSongs(any(), anyInt());
@@ -337,12 +314,12 @@ class SongServiceTest {
 
     @Test
     @DisplayName("동기화가 이미 돌고 있으면 수동 동기화는 409 SONG_SYNC_IN_PROGRESS이고 AI 서버를 다시 부르지 않는다")
-    void syncFromAiByAdmin_conflict_whileAlreadyRunning() {
+    void syncFromAiManually_conflict_whileAlreadyRunning() {
         configured();
         List<Throwable> nested = new ArrayList<>();
         when(aiSongClient.fetchSongs(isNull(), anyInt())).thenAnswer(invocation -> {
             try {
-                songService.syncFromAiByAdmin(ADMIN_ID); // 스케줄 실행이 도는 도중에 들어온 수동 실행
+                songService.syncFromAiManually(USER_ID); // 스케줄 실행이 도는 도중에 들어온 수동 실행
             } catch (BusinessException e) {
                 nested.add(e);
             }
@@ -357,7 +334,7 @@ class SongServiceTest {
 
     @Test
     @DisplayName("AI 서버 호출이 실패하면 수동 동기화는 503이고, 앞 페이지는 남으며, 끝난 뒤 다시 부를 수 있다")
-    void syncFromAiByAdmin_unavailable_whenAiFails_andCanRunAgain() {
+    void syncFromAiManually_unavailable_whenAiFails_andCanRunAgain() {
         configured();
         when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE))
                 .thenReturn(page("c1", item("ext-1", "A", null)))
@@ -366,22 +343,22 @@ class SongServiceTest {
                 .thenThrow(new ResourceAccessException("read timed out"));
         when(songRepository.findAllByExternalIdIn(any())).thenReturn(List.of());
 
-        assertThatThrownBy(() -> songService.syncFromAiByAdmin(ADMIN_ID))
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
         verify(transactionManager, times(1)).commit(any());
 
-        assertThat(songService.syncFromAiByAdmin(ADMIN_ID)).isEqualTo(new SongSyncResponse(1, 0, 0, 0));
+        assertThat(songService.syncFromAiManually(USER_ID)).isEqualTo(new SongSyncResponse(1, 0, 0, 0));
     }
 
     @Test
     @DisplayName("AI 서버가 같은 커서를 다시 돌려주면(응답 형식 위반) 수동 동기화는 503이다")
-    void syncFromAiByAdmin_unavailable_whenCursorRepeats() {
+    void syncFromAiManually_unavailable_whenCursorRepeats() {
         configured();
         when(aiSongClient.fetchSongs(null, SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1"));
         when(aiSongClient.fetchSongs("c1", SongService.SYNC_PAGE_SIZE)).thenReturn(page("c1"));
 
-        assertThatThrownBy(() -> songService.syncFromAiByAdmin(ADMIN_ID))
+        assertThatThrownBy(() -> songService.syncFromAiManually(USER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.SONG_SYNC_UNAVAILABLE);
     }

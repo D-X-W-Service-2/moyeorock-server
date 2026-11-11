@@ -2,7 +2,6 @@ package com.moyeorock.domain.song.service;
 
 import com.moyeorock.domain.song.client.AiSongClient;
 import com.moyeorock.domain.song.client.AiSongPage;
-import com.moyeorock.domain.song.config.SongSyncProperties;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.song.dto.response.SongSyncResponse;
@@ -52,7 +51,6 @@ public class SongService {
     private final AiSongClient aiSongClient;
     private final TransactionTemplate transactionTemplate;
     private final Validator validator;
-    private final SongSyncProperties syncProperties;
     private final AtomicBoolean syncing = new AtomicBoolean(false);
 
     /**
@@ -91,20 +89,17 @@ public class SongService {
 
     /**
      * 수동 동기화(POST /v1/songs/sync, 이슈 #162). 스케줄과 같은 동기화를 바로 돌리고 결과를 돌려준다.
-     * {@code ai.song-sync.enabled}(스케줄 켜기)와 무관하다. 스케줄과 달리 돌지 못한 이유를 에러로 알린다.
+     * {@code ai.song-sync.enabled}(스케줄 켜기)와 무관하고, 로그인한 사용자면 누구나 부를 수 있다. 스케줄과 달리 돌지 못한
+     * 이유를 에러로 알린다.
      *
      * <ul>
-     *   <li>{@code ai.song-sync.admin-user-ids}에 없는 사용자 → 403 NO_PERMISSION(서비스에 관리자 권한이 없어 설정으로 정한다)</li>
      *   <li>AI 서버 주소가 없음 → 503 SONG_SYNC_UNAVAILABLE</li>
      *   <li>이미 돌고 있음(스케줄·다른 수동 실행) → 409 SONG_SYNC_IN_PROGRESS</li>
      *   <li>AI 서버 호출 실패·응답 형식 위반 → 503 SONG_SYNC_UNAVAILABLE. 이미 저장한 앞 페이지는 남는다</li>
      * </ul>
      * 카탈로그 전체를 받을 때까지 응답을 기다린다 — 페이지마다 AI 응답을 최대 30초 기다린다(AiSongClient).
      */
-    public SongSyncResponse syncFromAiByAdmin(Long userId) {
-        if (!syncProperties.adminUserIds().contains(userId)) {
-            throw new BusinessException(ErrorCode.NO_PERMISSION);
-        }
+    public SongSyncResponse syncFromAiManually(Long userId) {
         if (!aiSongClient.isConfigured()) {
             throw new BusinessException(ErrorCode.SONG_SYNC_UNAVAILABLE);
         }

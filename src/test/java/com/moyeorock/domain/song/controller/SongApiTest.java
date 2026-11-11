@@ -105,11 +105,11 @@ class SongApiTest {
     }
 
     @Test
-    @DisplayName("수동 동기화는 지정한 사용자가 아니면 403 NO_PERMISSION이다(테스트 설정은 지정한 사용자가 없다)")
-    void sync_byOtherUser_returns403() throws Exception {
+    @DisplayName("수동 동기화는 로그인한 사용자면 부를 수 있고, AI 서버 주소가 없으면 503 SONG_SYNC_UNAVAILABLE이다(테스트 설정은 주소가 비어 있다)")
+    void sync_withoutAiServer_returns503() throws Exception {
         mockMvc.perform(post("/v1/songs/sync").header("Authorization", bearer()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("NO_PERMISSION"));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SONG_SYNC_UNAVAILABLE"));
     }
 
     private String bearer() {
