@@ -26,8 +26,7 @@ import org.springframework.web.util.UriComponentsBuilder;
  * {@code practice.ai.type=ai}일 때만 뜬다. 곡 동기화·팀원 추천과 같은 AI 서버·키(AI_SERVER_BASE_URL·AI_SERVER_API_KEY)를 쓴다.
  *
  * <p>원곡은 AI 서버가 비공개 저장소에서 읽으므로 곡의 external_id만 보내고, 연습 녹음은 Base64로 실어 보낸다. 응답의
- * {@code events}(녹음에서 원곡과 다르게 연주한 후보 구간)를 피드백 한 줄씩으로 바꾼다 — AI가 세션·문장을 주지 않아 세션은
- * 녹음한 세션, 문장은 원곡 구간으로 만든 고정 문장이다(2026-11-11 결정).
+ * {@code events}(녹음에서 원곡과 다르게 연주한 후보 구간)를 피드백 한 줄씩으로 바꾼다.
  *
  * <p>사용자에게 보여 줄 사유가 있는 실패(지원하지 않는 곡·원곡과 맞추지 못함·녹음 길이 등)는
  * {@link PracticeAnalysisException}, 그 밖(인증 실패·5xx·응답 해석 실패)은 원래 예외를 그대로 던진다.
@@ -64,9 +63,8 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
 
     @Override
     public List<AnalysisFeedback> analyze(AnalysisRequest request) {
-        FeedbackResponse response = call(new FeedbackRequest(request.songExternalId(),
-                Base64.getEncoder().encodeToString(request.performanceAudio()), request.performanceFilename(),
-                properties.highRecall()));
+        FeedbackResponse response = call(new FeedbackRequest(request.songExternalId(), request.part().name(),
+                Base64.getEncoder().encodeToString(request.performanceAudio()), request.performanceFilename()));
         if (response == null || response.status() == null) {
             throw new IllegalStateException("AI 연습 피드백 응답에 status가 없습니다.");
         }
@@ -121,14 +119,28 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
         return UriComponentsBuilder.fromUriString(properties.baseUrl()).path(FEEDBACK_PATH).build().toUri();
     }
 
-    // 예: 원곡 20.056~23.0초 → "원곡 0:20~0:23 구간과 다르게 연주했어요." 원곡 구간이 없으면 구간 없이 쓴다.
+    // AI 이벤트 종류와 대응하는 원곡 구간을 함께 보여 준다. 종류가 없거나 새로 추가되면 일반 문장으로 처리한다.
     private static String contentOf(Event event) {
-        if (event.referenceStart() == null || event.referenceEnd() == null) {
-            return "원곡과 다르게 연주한 구간이에요.";
+        if (StringUtils.hasText(event.message())) {
+            if (event.referenceStart() == null || event.referenceEnd() == null) {
+                return event.message();
+            }
+            return "원곡 %s~%s: %s".formatted(
+                    minuteSecond((int) Math.floor(event.referenceStart())),
+                    minuteSecond((int) Math.ceil(event.referenceEnd())), event.message());
         }
-        return "원곡 %s~%s 구간과 다르게 연주했어요.".formatted(
+        String detail = switch (event.type() == null ? "" : event.type()) {
+            case "pitch_or_harmony_mismatch" -> "음정 또는 화음이 원곡과 다른 구간이에요.";
+            case "rhythm_mismatch" -> "리듬이 원곡과 다른 구간이에요.";
+            case "missing_or_quiet" -> "연주가 빠졌거나 소리가 작은 구간이에요.";
+            default -> "원곡과 다르게 연주한 구간이에요.";
+        };
+        if (event.referenceStart() == null || event.referenceEnd() == null) {
+            return detail;
+        }
+        return "원곡 %s~%s: %s".formatted(
                 minuteSecond((int) Math.floor(event.referenceStart())),
-                minuteSecond((int) Math.ceil(event.referenceEnd())));
+                minuteSecond((int) Math.ceil(event.referenceEnd())), detail);
     }
 
     private static String minuteSecond(int totalSeconds) {
@@ -143,8 +155,8 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
         return factory;
     }
 
-    record FeedbackRequest(String externalId, String performanceAudioBase64, String performanceFilename,
-                           boolean highRecall) {
+    record FeedbackRequest(String externalId, String part, String performanceAudioBase64,
+                           String performanceFilename) {
     }
 
     // alignment_similarity·alignment_method·transposition_semitones·sensitivity·score는 저장할 곳이 없어 받지 않는다.
@@ -152,7 +164,7 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
     }
 
     // start·end는 녹음 시간, reference_start·reference_end는 대응하는 원곡 시간(초, 소수).
-    record Event(Double start, Double end,
+    record Event(Double start, Double end, String type, String message,
                  @JsonProperty("reference_start") Double referenceStart,
                  @JsonProperty("reference_end") Double referenceEnd) {
     }

@@ -14,7 +14,7 @@ class FakePracticeAnalysisClientTest {
     @DisplayName("가짜 AI는 고정 구간·문장 3줄을 요청한 세션 그대로 돌려준다(혼자 연습한 세션 하나의 녹음)")
     void analyze_returnsFixedLinesWithRequestedPart() {
         FakePracticeAnalysisClient client =
-                new FakePracticeAnalysisClient(new PracticeProperties(30, new PracticeProperties.Ai("fake", 0, null, null, false, 180)));
+                new FakePracticeAnalysisClient(new PracticeProperties(30, new PracticeProperties.Ai("fake", 0, null, null, 180)));
 
         List<AnalysisFeedback> result = client.analyze(new AnalysisRequest("local-song", new byte[]{1}, "a.m4a", Instrument.BASS));
 
