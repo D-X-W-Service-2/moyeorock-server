@@ -1,15 +1,19 @@
 package com.moyeorock.domain.team.service;
 
+import com.moyeorock.domain.team.dto.response.TeamRecommendationProfile;
+import com.moyeorock.domain.team.dto.response.TeamRecommendationProfile.MemberPart;
 import com.moyeorock.domain.team.entity.Team;
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +32,16 @@ public class TeamMemberService {
 
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final TeamGenreRepository teamGenreRepository;
+
+    public TeamRecommendationProfile getRecommendationProfile(Long teamId, Long userId) {
+        ensureActiveMember(teamId, userId);
+        Team team = getActiveTeam(teamId);
+        return new TeamRecommendationProfile(team.getPerformanceId(),
+                teamGenreRepository.findAllByTeamIdIn(List.of(teamId)).stream().map(g -> g.getGenre()).toList(),
+                teamMemberRepository.findActiveMembers(teamId).stream()
+                        .map(member -> new MemberPart(member.getUserId(), member.getInstrument())).toList());
+    }
 
     /**
      * 팀장인지 확인한다. 없는 팀이나 해체된 팀은 TEAM_NOT_FOUND, 활동 중인 팀장이 아니면 NOT_TEAM_LEADER다.
