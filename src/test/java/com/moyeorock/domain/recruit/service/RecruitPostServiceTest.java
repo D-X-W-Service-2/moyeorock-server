@@ -16,7 +16,6 @@ import com.moyeorock.domain.recruit.dto.response.RecruitPostTargetResponse;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamMemberService;
-import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.enums.Genre;
@@ -64,9 +63,6 @@ class RecruitPostServiceTest {
 
     @Mock
     private UserService userService;
-
-    @Mock
-    private TeamService teamService;
 
     @Mock
     private TeamMemberService teamMemberService;
@@ -132,7 +128,7 @@ class RecruitPostServiceTest {
     @DisplayName("팀 공고는 팀 요약(이름·지역·장르)과 작성자 요약, 현재 팀장 기준 canEdit이 채워진다")
     void create_fillsTargetAuthorAndCanEdit() {
         when(recruitPostRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(teamService.getSummaries(List.of(5L))).thenReturn(Map.of(5L, teamSummary(5L)));
+        when(teamMemberService.getSummaries(List.of(5L))).thenReturn(Map.of(5L, teamSummary(5L)));
         when(userService.getSummaries(List.of(AUTHOR_ID)))
                 .thenReturn(Map.of(AUTHOR_ID, new UserSummaryResponse(AUTHOR_ID, "민서", null)));
         when(teamMemberService.isLeader(5L, AUTHOR_ID)).thenReturn(true);
@@ -160,7 +156,7 @@ class RecruitPostServiceTest {
     @Test
     @DisplayName("공연 팀은 팀장이어도 공고를 만들 수 없고 저장하지 않는다")
     void create_fails_whenTargetIsPerformanceTeam() {
-        when(teamService.isPerformanceTeam(5L)).thenReturn(true);
+        when(teamMemberService.isPerformanceTeam(5L)).thenReturn(true);
 
         assertThat(thrownBy(() -> recruitPostService.create(AUTHOR_ID, createRequest(TargetType.TEAM, 5L)))
                 .getErrorCode()).isEqualTo(ErrorCode.PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED);
@@ -175,7 +171,7 @@ class RecruitPostServiceTest {
 
         assertThat(thrownBy(() -> recruitPostService.create(OTHER_USER_ID, createRequest(TargetType.TEAM, 5L)))
                 .getErrorCode()).isEqualTo(ErrorCode.NOT_TEAM_LEADER);
-        verify(teamService, never()).isPerformanceTeam(any());
+        verify(teamMemberService, never()).isPerformanceTeam(any());
     }
 
     @Test
@@ -192,7 +188,7 @@ class RecruitPostServiceTest {
         assertThat(saved.getValue().getTargetGroupId()).isEqualTo(9L);
         verify(groupMemberService).ensureOwner(9L, AUTHOR_ID);
         verify(teamMemberService, never()).ensureLeader(any(), any());
-        verify(teamService, never()).isPerformanceTeam(any());
+        verify(teamMemberService, never()).isPerformanceTeam(any());
     }
 
     @Test
@@ -228,7 +224,7 @@ class RecruitPostServiceTest {
     void search_mapsToSummary() {
         when(recruitPostRepository.search(any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(existingPost(RecruitStatus.OPEN), existingPost(RecruitStatus.OPEN))));
-        when(teamService.getSummaries(any())).thenReturn(Map.of(5L, teamSummary(5L)));
+        when(teamMemberService.getSummaries(any())).thenReturn(Map.of(5L, teamSummary(5L)));
 
         var response = recruitPostService.search(new RecruitPostSearchCondition(null, null, null, null),
                 PageRequest.of(0, 20));
@@ -242,7 +238,7 @@ class RecruitPostServiceTest {
             });
         });
         ArgumentCaptor<Collection<Long>> teamIds = ArgumentCaptor.forClass(Collection.class);
-        verify(teamService).getSummaries(teamIds.capture());
+        verify(teamMemberService).getSummaries(teamIds.capture());
         assertThat(teamIds.getValue()).containsExactly(5L);
     }
 
@@ -251,7 +247,7 @@ class RecruitPostServiceTest {
     void search_unresolvedTargetsKeepIdOnly() {
         when(recruitPostRepository.search(any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(existingPost(RecruitStatus.OPEN), existingGroupPost(), existingGroupPost())));
-        when(teamService.getSummaries(any())).thenReturn(Map.of());
+        when(teamMemberService.getSummaries(any())).thenReturn(Map.of());
         when(groupMemberService.getGroupBrief(9L)).thenThrow(new BusinessException(ErrorCode.GROUP_NOT_FOUND));
 
         var response = recruitPostService.search(new RecruitPostSearchCondition(null, null, null, null),
@@ -287,7 +283,7 @@ class RecruitPostServiceTest {
     @DisplayName("현재 팀장이 조회하면 canEdit=true, 아니면 false다 (작성자라도 팀장이 아니면 false)")
     void getDetail_canEdit_dependsOnCurrentLeader() {
         stubFind(existingPost(RecruitStatus.OPEN));
-        when(teamService.getSummaries(List.of(5L))).thenReturn(Map.of(5L, teamSummary(5L)));
+        when(teamMemberService.getSummaries(List.of(5L))).thenReturn(Map.of(5L, teamSummary(5L)));
         when(teamMemberService.isLeader(5L, OTHER_USER_ID)).thenReturn(true);
         when(teamMemberService.isLeader(5L, AUTHOR_ID)).thenReturn(false);
 
@@ -299,7 +295,7 @@ class RecruitPostServiceTest {
     @DisplayName("해체돼 요약에서 빠진 팀은 팀장 행이 남아 있어도 canEdit=false다 — isLeader는 해체 여부를 보지 않는다")
     void getDetail_canEdit_falseWhenTeamDisbanded() {
         stubFind(existingPost(RecruitStatus.OPEN));
-        when(teamService.getSummaries(List.of(5L))).thenReturn(Map.of());
+        when(teamMemberService.getSummaries(List.of(5L))).thenReturn(Map.of());
 
         assertThat(recruitPostService.getDetail(AUTHOR_ID, 10L).canEdit()).isFalse();
         verify(teamMemberService, never()).isLeader(any(), any());

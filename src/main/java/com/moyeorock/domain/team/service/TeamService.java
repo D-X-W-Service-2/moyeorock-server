@@ -25,7 +25,6 @@ import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
-import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
@@ -74,6 +73,7 @@ public class TeamService {
     private final PerformanceMemberService performanceMemberService;
     private final SetlistService setlistService;
     private final AiMemberRecommendationClient aiMemberRecommendationClient;
+    private final TeamMemberService teamMemberService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -288,15 +288,6 @@ public class TeamService {
             return Map.of();
         }
         return toSummaryMap(teamRepository.findActiveByIdIn(teamIds));
-    }
-
-    /**
-     * 공연 팀(모임 공연에 속한 팀)인지(3팀 공고 작성 차단, #174). 없는 팀이나 독립 팀이면 false다.
-     * 팀 존재·해체 여부는 보지 않으니 호출하는 쪽이 따로 확인한다.
-     */
-    @Transactional(readOnly = true)
-    public boolean isPerformanceTeam(Long teamId) {
-        return teamRepository.existsByIdAndPerformanceIdIsNotNull(teamId);
     }
 
     /**
@@ -558,32 +549,13 @@ public class TeamService {
         return new PageImpl<>(buildSummaries(teams.getContent()), teams.getPageable(), teams.getTotalElements());
     }
 
-    // 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져온다
+    // 요약·장르 조립은 TeamMemberService에 있다(공고가 이 Service를 거치지 않고 읽어야 해서, #178)
     private List<TeamSummaryResponse> buildSummaries(List<Team> teams) {
-        if (teams.isEmpty()) {
-            return List.of();
-        }
-        List<Long> teamIds = teams.stream().map(Team::getId).toList();
-        Map<Long, List<Genre>> genres = groupGenres(teamIds);
-        Map<Long, Integer> counts = countMembers(teamIds);
-        return teams.stream()
-                .map(team -> TeamSummaryResponse.of(team,
-                        genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)))
-                .toList();
+        return teamMemberService.summarize(teams);
     }
 
-    // 장르 행의 id 순(저장한 순서)을 유지한다
     private Map<Long, List<Genre>> groupGenres(List<Long> teamIds) {
-        return teamGenreRepository.findAllByTeamIdIn(teamIds).stream()
-                .sorted(Comparator.comparing(TeamGenre::getId))
-                .collect(Collectors.groupingBy(TeamGenre::getTeamId,
-                        Collectors.mapping(TeamGenre::getGenre, Collectors.toList())));
-    }
-
-    // 팀원이 0명인 팀은 집계 결과에 행이 없어서 호출하는 쪽이 getOrDefault로 0을 채운다
-    private Map<Long, Integer> countMembers(List<Long> teamIds) {
-        return teamMemberRepository.countActiveByTeamIds(teamIds).stream()
-                .collect(Collectors.toMap(TeamMemberCount::getTeamId, count -> (int) count.getCount()));
+        return teamMemberService.getGenres(teamIds);
     }
 
     // 탈퇴한 회원은 getSummaries 결과에 없어 user가 null로 내려간다

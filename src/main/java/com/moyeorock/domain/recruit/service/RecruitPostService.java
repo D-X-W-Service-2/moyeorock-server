@@ -20,7 +20,6 @@ import com.moyeorock.domain.group.dto.response.GroupBriefResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.service.TeamMemberService;
-import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -63,7 +62,6 @@ public class RecruitPostService {
 
     private final RecruitPostRepository recruitPostRepository;
     private final UserService userService;
-    private final TeamService teamService;
     private final TeamMemberService teamMemberService;
     private final GroupMemberService groupMemberService;
     private final JoinRequestStatService joinRequestStatService;
@@ -73,7 +71,7 @@ public class RecruitPostService {
         // 대상 팀/모임이 있고 요청자가 그 팀장/모임장인지 한 번에 확인한다(없으면 404, 아니면 403).
         ensureCanManage(request.targetType(), request.targetId(), userId);
         // 공연 팀은 그 모임의 모임원만 들어갈 수 있어 공개 공고로 모집하지 않는다 — 신청해도 모임원이 아니면 막힌다(#174)
-        if (request.targetType() == TargetType.TEAM && teamService.isPerformanceTeam(request.targetId())) {
+        if (request.targetType() == TargetType.TEAM && teamMemberService.isPerformanceTeam(request.targetId())) {
             throw new BusinessException(ErrorCode.PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED);
         }
         // API 계약(targetType+targetId)을 exclusive-arc 컬럼(targetTeamId/targetGroupId)으로 변환한다.
@@ -90,7 +88,7 @@ public class RecruitPostService {
         Pageable latestFirst = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), LATEST_FIRST);
         Page<RecruitPost> page = recruitPostRepository.search(
                 condition.targetType(), condition.region(), condition.instrument(), condition.status(), latestFirst);
-        Map<Long, TeamSummaryResponse> teams = teamService.getSummaries(ids(page, RecruitPost::getTargetTeamId));
+        Map<Long, TeamSummaryResponse> teams = teamMemberService.getSummaries(ids(page, RecruitPost::getTargetTeamId));
         // 모임은 일괄 조회가 없어 한 페이지(최대 20건) 안에서 중복을 뺀 id마다 단건 조회한다(4팀 일괄 메서드가 생기면 교체).
         Map<Long, GroupBriefResponse> groups = new HashMap<>();
         for (Long groupId : ids(page, RecruitPost::getTargetGroupId)) {
@@ -187,7 +185,7 @@ public class RecruitPostService {
         // 탈퇴한 작성자는 getSummaries에서 빠져 null이다
         UserSummaryResponse author = userService.getSummaries(List.of(authorId)).get(authorId);
         Map<Long, TeamSummaryResponse> teams = post.getTargetTeamId() == null ? Map.of()
-                : teamService.getSummaries(List.of(post.getTargetTeamId()));
+                : teamMemberService.getSummaries(List.of(post.getTargetTeamId()));
         Map<Long, GroupBriefResponse> groups = new HashMap<>();
         if (post.getTargetGroupId() != null) {
             findGroupBrief(post.getTargetGroupId()).ifPresent(brief -> groups.put(post.getTargetGroupId(), brief));

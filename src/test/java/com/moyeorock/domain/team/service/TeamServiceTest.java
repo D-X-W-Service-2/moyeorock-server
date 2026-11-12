@@ -56,11 +56,11 @@ import com.moyeorock.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -90,8 +90,15 @@ class TeamServiceTest {
     SetlistService setlistService;
     @Mock
     AiMemberRecommendationClient aiMemberRecommendationClient;
-    @InjectMocks
     TeamService teamService;
+
+    // 팀 요약 조립은 TeamMemberService에 있어서, 같은 Repository 목으로 만든 진짜 서비스를 붙인다(기존 스텁이 그대로 통한다)
+    @BeforeEach
+    void setUp() {
+        teamService = new TeamService(teamRepository, teamGenreRepository, teamMemberRepository, userService,
+                performanceMemberService, setlistService, aiMemberRecommendationClient,
+                new TeamMemberService(teamRepository, teamGenreRepository, teamMemberRepository));
+    }
 
     private Team team() {
         Team team = Team.create("무명밴드", "소개", Region.SEOUL);
