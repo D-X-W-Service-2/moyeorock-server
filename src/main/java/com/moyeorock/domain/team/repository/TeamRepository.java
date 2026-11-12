@@ -80,6 +80,9 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
      * 공연에 속한 활성 팀(공연 상세의 팀 요약, 공연 종료 시 해체 대상). 이미 해체된 팀은 빠지므로 여러 번 불러도 안전하다.
      * 순서가 흔들리지 않도록 id 순으로 고정한다.
      */
+    // 공연 팀(performance_id가 있는 팀)인지. 해체 여부는 보지 않는다(3팀 공고 작성 차단, #174)
+    boolean existsByIdAndPerformanceIdIsNotNull(Long id);
+
     default List<Team> findActiveByPerformanceId(Long performanceId) {
         return findAllByPerformanceIdAndStatusOrderByIdAsc(performanceId, TeamStatus.ACTIVE);
     }

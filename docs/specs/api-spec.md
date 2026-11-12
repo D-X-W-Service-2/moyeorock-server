@@ -91,6 +91,7 @@
 
 > ¶ 공고 목록의 쿼리 파라미터: `targetType` · `region` · `instrument` · `status` · `page` · `size` (전부 선택). `authorId`는 Notion `API 초안`에 없어 뺐다(2026-09-25 대조). 정렬 파라미터는 없고 최신순 고정이다.
 > Actor(Notion `API 초안`): 작성·수정·마감은 `모임장 / 팀장`, 목록·상세는 공통. **현재 구현(2026-11-03)**: 작성·수정·마감은 대상 **팀의 현재 팀장 / 모임의 현재 모임장**만 할 수 있다(작성자가 아니라 현재 권한자 기준 — 작성자가 팀장에서 빠지면 더는 고칠 수 없다). 작성할 때 대상 팀·모임 존재도 함께 확인한다: 없거나 해체된 대상 `404 TEAM_NOT_FOUND`·`GROUP_NOT_FOUND`, 권한 없음 `403 NOT_TEAM_LEADER`·`NOT_GROUP_OWNER`. 모임이 해체되면 그 모임의 모집 중 공고는 자동 마감된다. `canEdit`은 보는 사람이 현재 팀장/모임장인지다.
+> **공연 팀은 공고를 올릴 수 없다(2026-11-12, #174)** — 대상 팀이 모임 공연에 속한 팀이면 팀장이어도 `409 PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED`다(팀장 확인이 먼저라 팀장이 아니면 `403 NOT_TEAM_LEADER`). 공연 팀은 그 모임의 활동 모임원만 들어갈 수 있어(#96) 공개 목록에 올리면 모임원이 아닌 사람이 보고 신청해도 `403 NOT_PERFORMANCE_GROUP_MEMBER`로 막히기 때문이다. 공연 팀원은 초대·팀원 추가로 모은다. 명세에는 없는 서버 정책 — Notion 반영 필요.
 > 마감(`CLOSED`)된 공고는 수정(`PUT`)할 수 없다 — 작성자라도 `409 INVALID_STATE`다(권한 검사가 먼저라 작성자가 아니면 `403 NOT_POST_AUTHOR`). 명세에는 없는 서버 정책으로, 마감 뒤 모집 세션·인원이 바뀌어 이미 들어온 신청과 어긋나는 것을 막는다 — Notion 반영 필요.
 > `wantedSlots`에 같은 `instrument`가 두 번 오면 `400 VALIDATION_FAILED`다(예: BASS 1명 + BASS 2명). 명세에는 없는 서버 검증으로, 세션별 집계·마감 기준이 모호해지는 것을 막는다 — Notion 반영 필요.
 > 경로가 단수형 `recruit-post`다 — 상단 "경로 표기" 참고.

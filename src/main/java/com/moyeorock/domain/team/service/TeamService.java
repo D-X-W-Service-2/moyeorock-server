@@ -291,6 +291,15 @@ public class TeamService {
     }
 
     /**
+     * 공연 팀(모임 공연에 속한 팀)인지(3팀 공고 작성 차단, #174). 없는 팀이나 독립 팀이면 false다.
+     * 팀 존재·해체 여부는 보지 않으니 호출하는 쪽이 따로 확인한다.
+     */
+    @Transactional(readOnly = true)
+    public boolean isPerformanceTeam(Long teamId) {
+        return teamRepository.existsByIdAndPerformanceIdIsNotNull(teamId);
+    }
+
+    /**
      * 팀 요약 일괄 조회, 해체된 팀 포함(4팀 끝난 공연 상세). 없는 id만 결과 Map에서 빠진다.
      * 팀원 행은 해체해도 그대로라서 memberCount는 해체 당시 인원이다.
      */

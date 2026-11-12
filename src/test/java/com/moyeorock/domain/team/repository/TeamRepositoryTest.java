@@ -156,6 +156,22 @@ class TeamRepositoryTest {
     }
 
     @Test
+    @DisplayName("공연 팀이면 해체됐어도 true, 독립 팀이나 없는 팀이면 false다")
+    void existsByIdAndPerformanceIdIsNotNull_detectsPerformanceTeam() {
+        Team performanceTeam = teamRepository.saveAndFlush(Team.createForPerformance(7L, "공연팀", null, Region.SEOUL));
+        Team disbandedPerformanceTeam = teamRepository.saveAndFlush(
+                Team.createForPerformance(7L, "해체된 공연팀", null, Region.SEOUL));
+        disbandedPerformanceTeam.disband();
+        teamRepository.saveAndFlush(disbandedPerformanceTeam);
+        Team independent = saveTeam("독립 팀", Region.SEOUL);
+
+        assertThat(teamRepository.existsByIdAndPerformanceIdIsNotNull(performanceTeam.getId())).isTrue();
+        assertThat(teamRepository.existsByIdAndPerformanceIdIsNotNull(disbandedPerformanceTeam.getId())).isTrue();
+        assertThat(teamRepository.existsByIdAndPerformanceIdIsNotNull(independent.getId())).isFalse();
+        assertThat(teamRepository.existsByIdAndPerformanceIdIsNotNull(Long.MAX_VALUE)).isFalse();
+    }
+
+    @Test
     @DisplayName("findActiveByPerformanceId는 그 공연의 ACTIVE 팀만 돌려준다")
     void findActiveByPerformanceId_returnsActiveTeamsOfThatPerformance() {
         teamRepository.saveAndFlush(Team.createForPerformance(7L, "공연팀 A", null, Region.SEOUL));
