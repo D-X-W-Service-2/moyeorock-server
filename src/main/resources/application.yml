@@ -43,6 +43,10 @@ jwt:
   issuer: ${JWT_ISSUER}
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY}
 
+ai:
+  recommend-url: ${AI_RECOMMEND_URL:${AI_SERVER_BASE_URL:}}
+  recommend-api-key: ${AI_RECOMMEND_API_KEY:${AI_SERVER_API_KEY:}}
+
 kakao:
   client-id: ${KAKAO_CLIENT_ID}
   client-secret: ${KAKAO_CLIENT_SECRET:}

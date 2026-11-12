@@ -41,6 +41,13 @@ public class SetlistService {
     private final SongService songService;
     private final TeamMemberService teamMemberService;
 
+    public Set<Long> getSongIdsSelectedByOtherTeam(Long performanceId, Long teamId) {
+        if (performanceId == null) {
+            return Set.of();
+        }
+        return new HashSet<>(teamSongRepository.findSongIdsSelectedByOtherTeam(performanceId, teamId));
+    }
+
     /**
      * 팀 선택곡 저장 — 기존 선택곡 전체를 요청 목록으로 바꾼다. 팀장만 가능하고(해체·없는 팀은 TEAM_NOT_FOUND), 같은 곡 중복은
      * VALIDATION_FAILED, 없는 곡이 섞이면 SONG_NOT_FOUND다. 공연 팀이면 팀의 공연 id를 행에 복사해 둔다(TeamSong 주석).
