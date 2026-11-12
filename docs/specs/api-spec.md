@@ -230,14 +230,15 @@
 |---|---|---|---|---|---|
 | GET | `/v1/songs?keyword=&genre=&page=&size=` ¶ | 곡&nbsp;검색 | | `PageResponse<SongResponse>` | 세션별 난이도 포함 |
 | GET | `/v1/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
-| GET | `/v1/teams/{teamId}/songs/recommendations` | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 |
+| GET | `/v1/teams/{teamId}/songs/recommendations` ※ | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 · §12 |
 | POST | `/v1/songs/sync` ⚙ | 곡&nbsp;수동&nbsp;동기화 | | `SongSyncResponse` | 운영용 · §12 |
 
 > ¶ `API 초안`에서 `page`·`size` 페이징 파라미터가 명시적으로 추가됐다(2026-09-11).
 > 곡 마스터(`songs`)는 화면에서 넣지 않는다 — 백엔드가 AI 서버 카탈로그를 받아와 채운다(§12, 이슈 #147).
 > ⚙ 화면에서 부르는 API가 아니라 운영용이다(2026-11-11, 이슈 #162). 매일 04:00 동기화를 지금 바로 돌린다. 노션 `API 초안`에는 없다. 로그인한 사용자면 누구나 부를 수 있다. 이미 돌고 있으면 409 `SONG_SYNC_IN_PROGRESS`, AI 서버 주소가 없거나 호출이 실패하면 503 `SONG_SYNC_UNAVAILABLE`(실패 전에 저장한 페이지는 남는다).
-> 🚧 추천 2개(내 취향 추천곡·팀 곡 추천)는 추천 방식(룰 기반/외부 모델)과 소유 도메인이 정해지지 않아 셋리스트 구현(이슈 #103) 범위에서 뺐다(2026-11-02).
-> ⚠️ `docs/conventions/domains.md`는 song 2개로 집계한다. 팀 곡 추천을 song에 두면 3개가 되므로 **소유 도메인(song vs setlist) 확인 필요.** `API 초안`은 이 3개를 모두 "노래 / 셋리스트"로 묶어만 두어 이 논쟁을 해소하지 못한다. 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
+> ※ 팀 곡 추천은 구현했다(2026-11-12, 이슈 #171). **song 도메인**이 받는다(`SongRecommendationController`·`SongRecommendationService`). 곡을 고르는 일이라 song에 두고, `docs/conventions/domains.md` song 집계를 3개로 고쳤다. 이 팀의 **활동 중인 팀원**이면 누구나 부를 수 있고(독립 팀·공연 팀 모두), 아니면 `403 NO_PERMISSION`, 없는 팀·해체된 팀은 `404 TEAM_NOT_FOUND`다(팀 선택곡 조회와 같은 규칙). 백엔드가 팀 장르·팀원 세션별 실력을 AI 서버에 보내고, AI가 자기 카탈로그에서 고른 곡을 우리 곡으로 바꿔 점수 높은 순 **최대 10곡**을 돌려준다. 우리 DB에 아직 없는 곡(동기화 전)은 빠진다. `reasons`는 백엔드가 만든다(AI는 주지 않는다). AI 서버 호출이 실패하거나 시간이 초과되거나 주소가 없으면 **`503 SONG_RECOMMENDATION_UNAVAILABLE`**이다. 노션에 없던 에러라 `API 초안` 반영 필요. 호출 형식은 §12.
+> 🚧 내 취향 추천곡(`/v1/users/me/songs/recommendations`)은 아직 없다. 프론트 홈은 이 API가 아니라 대시보드 `recommendedSongs`를 읽어서, 개인 추천은 대시보드에 연결한다(이슈 #172).
+> 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
 
 ### setlist
 
@@ -360,7 +361,7 @@
 
 ---
 
-## §12. 외부 서버 호출 — AI 서버 (곡 카탈로그 동기화 · 팀원 추천)
+## §12. 외부 서버 호출 — AI 서버 (곡 카탈로그 동기화 · 팀원 추천 · 곡 추천)
 
 프론트가 부르는 API가 아니라 **백엔드가 AI 서버를 부르는** 호출이다(2026-11-06, 이슈 #147). AI 서버는 백엔드를 부르지 않는다 — 처음엔 AI 서버가 `PUT /v1/internal/songs`로 곡을 넣는 방향이었으나(PR #148) 방향을 바꿨다.
 
@@ -392,6 +393,21 @@
 - **받는 값**: 후보별 `userId`·`score`·`reasons`. 백엔드는 우리가 보내지 않은 `userId`, 점수가 없는 항목, 같은 `userId`의 뒤쪽 항목, 탈퇴해 조회되지 않는 사용자를 버리고 점수 높은 순 최대 10명을 응답한다.
 - **실패**: 4xx·5xx·타임아웃·`candidates` 누락·주소 미설정은 모두 `503 RECOMMENDATION_UNAVAILABLE`이다. 후보가 0명이면 AI를 부르지 않고 빈 `candidates`로 `200`이다.
 - **트랜잭션**: 다른 도메인 Service 호출과 AI 응답 대기가 있어 `@Transactional`을 붙이지 않는다.
+
+### 곡 추천 호출 (song)
+
+프론트가 `GET /v1/teams/{teamId}/songs/recommendations`를 부를 때마다 백엔드가 AI 서버를 **동기로** 부른다(2026-11-12, 이슈 #171). 호출 형식은 AI 팀이 정했다(`moyeorock-ai` `codex/backend-ai-api-20261111` 브랜치 커밋 `09d46a3` `backend_api.py`). 주소·키는 전용 설정(`AiRecommendProperties`)이고, 값이 없으면 `AI_SERVER_BASE_URL`·`AI_SERVER_API_KEY`를 그대로 쓴다(지금은 같은 주소·같은 키).
+
+| 메서드 | AI 서버 경로 | 요청 | 응답 | 비고 |
+|---|---|---|---|---|
+| POST | `{AI_RECOMMEND_URL}/v1/recommendations/songs` | `AiSongRecommendRequest` | `AiSongRecommendResponse` | `X-AI-Recommend-Key: {AI_RECOMMEND_API_KEY}` (Bearer 아님) · 연결 3초·읽기 30초 |
+
+- **보내는 값**: `{ "mode": "TEAM", "genres": [...], "members": [{ "part", "level" }], "limit": 20 }`. `genres`는 팀 장르, `members`는 팀원마다 이 팀에서 맡은 세션과 그 악기의 실력이다. 실력을 등록하지 않은 팀원은 뺀다(값이 비면 AI가 422). **후보 곡은 보내지 않는다.** AI가 자기 카탈로그에서 고른다. `limit`(1~100)은 우리 DB에 없는 곡을 버려도 10곡이 남도록 20으로 보낸다.
+- **받는 값**: `{ "songs": [{ "externalId", "score" }], "ranker": "content_rule" }`. 점수 높은 순이다. 백엔드는 `externalId`·`score`가 없는 항목과 같은 `externalId`의 뒤쪽 항목을 버리고, `externalId`로 우리 곡을 찾아(`SongService.findByExternalIds`) 없는 곡은 버린 뒤 AI 순서대로 최대 10곡을 응답한다. `ranker`는 응답에 내보내지 않는다.
+- **백엔드가 채우는 값**: `reasons`(팀 장르 일치, 세션별 실력 충족·난이도 초과)와 `selectedByOtherTeam`(같은 공연의 다른 활동 중인 팀 선택곡에 있는지, `TeamService.getActiveSummaries` + `SetlistService.findTeamSongs`).
+- **실패**: 4xx·5xx·타임아웃·`songs` 누락·주소 미설정은 모두 `503 SONG_RECOMMENDATION_UNAVAILABLE`이다. AI가 고른 곡이 없거나 모두 우리 DB에 없으면 빈 `songs`로 `200`이다.
+- **트랜잭션**: 다른 도메인 Service 호출과 AI 응답 대기가 있어 `@Transactional`을 붙이지 않는다.
+- **AI 쪽 상태**: 2026-11-12 기준 AI 배포 서버에는 이 경로가 아직 없다(404). 기존 키로 인증은 통과한다.
 
 ---
 

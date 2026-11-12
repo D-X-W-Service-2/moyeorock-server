@@ -917,6 +917,22 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - 필수 값이 빠지거나 길이를 넘는 곡은 그 곡만 건너뛰고 나머지는 저장한다
 - DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
 
+### AiSongRecommendRequest · AiSongRecommendResponse (AI 서버 곡 추천)
+
+백엔드가 AI 서버에 보내는 곡 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/songs`, 2026-11-12 · 이슈 #171). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다. 동작은 `api-spec.md` §12. 형식은 AI 팀이 정했다(`moyeorock-ai` 커밋 `09d46a3`).
+
+```json
+{ "mode": "TEAM", "genres": ["ROCK"], "members": [ { "part": "BASS", "level": "NOVICE" } ], "limit": 20 }
+```
+
+```json
+{ "songs": [ { "externalId": "local-abc", "score": 0.875 } ], "ranker": "content_rule" }
+```
+
+- `mode`는 `TEAM` 또는 `PERSONAL`(개인 추천, 이슈 #172에서 쓴다). 값은 우리 enum 그대로다(`part`=`Instrument`, `level`=`Level`, `genres`=`Genre`).
+- `members`에는 실력을 아는 사람만 넣는다. `level`이 비면 AI가 422를 준다.
+- 응답의 `score`가 비어 있어도 읽는다(그 항목은 버린다). 응답에 `songs` 자체가 없으면 계약 위반이라 `503`이다.
+
 ### AiRecommendRequest · AiRecommendResponse (AI 서버 팀원 추천 · 잠정)
 
 백엔드가 AI 서버에 보내는 팀원 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/members`, 2026-11-08 · 이슈 #150). 프론트 API의 DTO가 아니라 `domain/team/client`에 둔다. 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.** 값은 ERD 컬럼과 우리 enum 그대로다.
@@ -968,7 +984,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
         "difficulty": [{ "part": "VOCAL", "level": "ADVANCED" }]
       },
       "score": 0.87,
-      "reasons": ["팀 장르 일치: ROCK", "보컬 실력 충족", "드럼 난이도 초과"],
+      "reasons": ["팀 장르 일치: 록", "보컬 실력 충족", "드럼 난이도 초과"],
       "selectedByOtherTeam": false
     }
   ]
@@ -976,6 +992,9 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 추천 두 응답의 `song`은 곡 검색과 같은 전체 정보(`SongResponse`)이고, 선택곡·셋리스트 항목의 `song`은 축약형(`SongSummaryResponse` — `id`·`title`·`artist`)이다(2026-11-02, 이슈 #103). 추천 2개는 이슈 #103 구현 범위 밖이다
+- 팀 곡 추천은 2026-11-12에 구현했다(이슈 #171). `songs`는 AI가 준 순서(점수 높은 순)이고 **최대 10곡**이다. AI가 고른 곡 중 우리 DB에 없는 곡은 빠지고, 고른 곡이 없으면 빈 배열이다
+- `score`는 AI가 준 0~1 정렬용 점수이며 선호 확률이 아니다
+- `reasons`는 **백엔드가 만든다**(AI는 주지 않는다). 화면에 그대로 보이므로 장르·세션은 프론트 표시명(`domainCodes.ts`)으로 쓴다. 팀 장르에 곡 장르가 있으면 `팀 장르 일치: {장르}`, 팀이 가진 세션마다 곡 난이도와 그 세션의 가장 높은 팀원 실력을 비교해 `{세션} 실력 충족` 또는 `{세션} 난이도 초과`. 곡에 그 세션 난이도 정보가 없거나 그 세션 팀원의 실력을 모르면 문구가 없다. 근거가 하나도 없으면 빈 배열이다(처음 예시의 `팀 장르 일치: ROCK`에서 표시명으로 바꿨다)
 - `selectedByOtherTeam`은 같은 공연의 다른 팀이 이미 고른 곡인지다("다른 팀이 이미 선택했어요" 표시). 독립 팀이면 항상 `false`. 2026-10-30에 `alreadyInSetlist`에서 이름을 바꿨다(이슈 #85, 노션도 수정)
 
 ### TeamSongsSaveRequest

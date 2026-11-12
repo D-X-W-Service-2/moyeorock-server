@@ -19,7 +19,7 @@
 | `group` | 4팀 | `groups_` `group_members` | 8 |
 | `notice` | 4팀 | `group_notices` | 5 |
 | `performance` | 4팀 | `performances` | 10 |
-| `song` | 4팀 | `songs` | 2 |
+| `song` | 4팀 | `songs` | 3 |
 | `setlist` | 4팀 | `team_songs` `setlists` | 2 |
 | `practice` | 4팀 | `practice_recordings` `practice_feedbacks` | 5 |
 | `dashboard` | 3팀 | (없음) | 1 |
@@ -46,6 +46,7 @@
 
 - **테이블은 둘 다 `setlist` 도메인 소유**다. `song`은 곡 마스터(`songs`)만 갖는다. `performance`도 `team`도 두 테이블을 직접 건드리지 않고 `SetlistService`를 부른다
 - **엔드포인트는 나눠 갖는다.** 팀 선택곡 저장(`PUT /v1/teams/{teamId}/songs`)은 `setlist`, 공연 단위 셋리스트 4개(조회 `GET`·넘기기 `PUT .../setlist/teams/{teamId}`·확정 `PUT /v1/performances/{performanceId}/setlist`·확정 해제 `PATCH .../setlist/unconfirm`)는 `performance`가 받는다. 확정 시각(`performances.setlist_confirmed_at`)이 공연 컬럼이라 공연 존재·확정 여부·모임장을 `PerformanceService`가 확인하고, 행 처리는 `SetlistService`에 맡긴다. 반대로 하면 `PerformanceService`(상세의 셋리스트) ↔ `SetlistService`(확정 시각)가 서로 불러 순환한다(`architecture.md` §3)
+- **팀 곡 추천(`GET /v1/teams/{teamId}/songs/recommendations`)은 `song`이 받는다**(2026-11-12, 이슈 #171). 경로 앞부분은 팀 선택곡과 같지만 곡을 고르는 일이라 song에 둔다. song의 엔드포인트는 곡 검색·내 취향 추천곡·팀 곡 추천 3개다(운영용 곡 수동 동기화는 세지 않는다)
 - **공연 내 같은 곡 중복은 `setlists`의 `UNIQUE(performance_id, song_id)`가 막는다.** 팀 선택곡 단계에서는 막지 않고 "다른 팀이 이미 골랐어요" 표시만 한다
 - DTO 이름은 `SetlistResponse`·`SetlistSubmitRequest`·`SetlistConfirmRequest`(공연 쪽), `TeamSongsSaveRequest`·`TeamSongsResponse`(팀 쪽)다(`dto-naming.md` §10)
 

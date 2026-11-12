@@ -70,6 +70,9 @@ ai:
   song-sync:
     enabled: false
     cron: "0 0 4 * * *"
+  recommend:
+    base-url: ""
+    api-key: ""
 
 # main application.yml의 cors.allowed-origins 기본값과 같게 둔다(CorsConfigTest가 이 목록으로 검증, #123).
 cors:

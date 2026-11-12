@@ -81,6 +81,9 @@ public enum ErrorCode {
     // 곡 수동 동기화(이슈 #162) — 코드 이름은 4팀이 정했다
     SONG_SYNC_IN_PROGRESS(HttpStatus.CONFLICT, "곡 동기화가 이미 진행 중입니다."),
     SONG_SYNC_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 서버에서 곡을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    // 곡 추천(AI): AI 서버 호출 실패·시간 초과·주소 미설정. 팀원 추천(RECOMMENDATION_UNAVAILABLE)과 문구가 달라 나눴다.
+    // 명세에 없는 코드라 노션 반영 필요(이슈 #171)
+    SONG_RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "곡 추천을 지금은 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
     // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
     SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),

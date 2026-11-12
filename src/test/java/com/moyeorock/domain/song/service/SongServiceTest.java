@@ -140,6 +140,27 @@ class SongServiceTest {
     }
 
     @Test
+    @DisplayName("externalId 일괄 조회는 우리 DB에 있는 곡만 externalId → 곡 전체 정보로 돌려준다(이슈 #171)")
+    void findByExternalIds_returnsExistingSongsOnly() {
+        Song song = Song.create("Creep", "Radiohead", Genre.ROCK, "G", 92, Map.of(Instrument.VOCAL, Level.NOVICE),
+                "ext-1");
+        ReflectionTestUtils.setField(song, "id", 104L);
+        when(songRepository.findAllByExternalIdIn(List.of("ext-1", "ext-missing"))).thenReturn(List.of(song));
+
+        Map<String, SongResponse> result = songService.findByExternalIds(List.of("ext-1", "ext-missing"));
+
+        assertThat(result).containsOnlyKeys("ext-1");
+        assertThat(result.get("ext-1")).isEqualTo(SongResponse.from(song));
+    }
+
+    @Test
+    @DisplayName("externalId가 없으면 조회하지 않고 빈 Map을 돌려준다")
+    void findByExternalIds_returnsEmpty_whenNoIds() {
+        assertThat(songService.findByExternalIds(List.of())).isEmpty();
+        verifyNoInteractions(songRepository);
+    }
+
+    @Test
     @DisplayName("동기화는 없는 externalId는 새로 만들고, 있는 externalId는 받은 값으로 통째로 바꾼다")
     void syncFromAi_createsNew_andReplacesExisting() {
         Song existing = Song.create("옛 제목", "옛 가수", Genre.POP, "C", 100,
