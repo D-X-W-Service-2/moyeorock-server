@@ -28,6 +28,7 @@ import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
+import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.user.dto.response.RecommendationCandidateResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
@@ -74,6 +75,7 @@ public class TeamService {
     private final SetlistService setlistService;
     private final AiMemberRecommendationClient aiMemberRecommendationClient;
     private final TeamMemberService teamMemberService;
+    private final RecruitPostService recruitPostService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -99,6 +101,8 @@ public class TeamService {
      * 팀 해체. teams.status만 바꾼다 — 팀원·합주 등은 그대로 두고 조회에서 걸러진다(architecture.md §6).
      * 다만 그 팀의 선택곡·셋리스트 행은 같은 트랜잭션에서 지운다(4팀 SetlistService.deleteByTeam). 해체된 팀이 곡을 쥐고 있으면
      * 같은 공연의 다른 팀이 그 곡을 넘기거나 고를 수 없기 때문이다. 공연 종료의 일괄 해체(disbandAllByPerformance)는 지우지 않는다.
+     * 그 팀의 모집 중 공고도 같은 트랜잭션에서 마감한다(3팀 RecruitPostService.closeOpenPostsOfTeam, #178). 공연 팀은 공고를 만들 수 없어
+     * 일괄 해체에서는 부르지 않는다.
      */
     @Transactional
     public TeamStatusResponse disband(Long userId, Long teamId, TeamStatusUpdateRequest request) {
@@ -111,6 +115,7 @@ public class TeamService {
 
         team.disband();
         setlistService.deleteByTeam(teamId);
+        recruitPostService.closeOpenPostsOfTeam(teamId);
         return TeamStatusResponse.from(team);
     }
 

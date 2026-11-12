@@ -141,6 +141,17 @@ public class RecruitPostService {
     }
 
     /**
+     * 팀 해체 때 그 팀의 모집 중 공고를 마감한다({@code TeamService.disband}가 부른다, 이슈 #178). 해체된 팀은 공고 응답의
+     * 팀 정보 조회에서 빠져 target이 id만 남으므로, 마감하지 않으면 해체된 팀의 공고가 모집 중으로 계속 보인다.
+     * 권한 확인은 부르는 쪽이 한다. 해체는 soft delete라 공고 행도 지우지 않고 마감으로 남긴다(architecture.md §6).
+     * 마감된 공고는 이미 두고 간다. 공연 팀은 공개 공고를 만들 수 없어(#174) 공연 종료의 일괄 해체에서는 부르지 않는다.
+     */
+    @Transactional
+    public void closeOpenPostsOfTeam(Long teamId) {
+        recruitPostRepository.findByTargetTeamIdAndStatus(teamId, RecruitStatus.OPEN).forEach(RecruitPost::close);
+    }
+
+    /**
      * join 도메인이 공고 기반 신청을 검증할 때 부른다. 없는 공고는 RECRUIT_POST_NOT_FOUND, 마감된 공고는 INVALID_STATE다.
      * 다른 Service를 부르지 않는다 — join이 이 Service를 부르고 이 Service가 join의 조회 Service를 부르므로
      * 여기서 JoinRequestService를 부르면 순환이 된다.

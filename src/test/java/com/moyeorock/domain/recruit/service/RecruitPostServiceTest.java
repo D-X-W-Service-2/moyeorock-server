@@ -480,4 +480,17 @@ class RecruitPostServiceTest {
 
         assertThat(openPosts).extracting(RecruitPost::getStatus).containsOnly(RecruitStatus.CLOSED);
     }
+
+    @Test
+    @DisplayName("팀 해체 때 그 팀의 모집 중 공고를 모두 마감하고 이미 마감된 공고는 그대로 둔다")
+    void closeOpenPostsOfTeam_closesEveryOpenPost() {
+        List<RecruitPost> openPosts = List.of(existingPost(RecruitStatus.OPEN), existingPost(RecruitStatus.OPEN));
+        when(recruitPostRepository.findByTargetTeamIdAndStatus(5L, RecruitStatus.OPEN)).thenReturn(openPosts);
+
+        recruitPostService.closeOpenPostsOfTeam(5L);
+
+        assertThat(openPosts).extracting(RecruitPost::getStatus).containsOnly(RecruitStatus.CLOSED);
+        // 모집 중인 것만 조회하므로 마감된 공고는 건드리지 않는다
+        verify(recruitPostRepository).findByTargetTeamIdAndStatus(5L, RecruitStatus.OPEN);
+    }
 }
