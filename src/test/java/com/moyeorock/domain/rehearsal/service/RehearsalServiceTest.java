@@ -322,6 +322,31 @@ class RehearsalServiceTest {
     }
 
     @Test
+    @DisplayName("합주 생성: 24시간을 넘으면 VALIDATION_FAILED이고 저장하지 않는다")
+    void create_rejects_longerThan24Hours() {
+        var tooLong = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT.plusHours(24).plusMinutes(1), null, null);
+        var multiDay = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT.plusDays(3).plusHours(2), null, null);
+
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, tooLong), ErrorCode.VALIDATION_FAILED);
+        assertErrorCode(() -> rehearsalService.create(MEMBER_ID, TEAM_ID, multiDay), ErrorCode.VALIDATION_FAILED);
+        verify(rehearsalRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("합주 생성: 자정을 넘겨도 24시간 이하면 저장한다(정확히 24시간 포함)")
+    void create_allowsOvernightUpTo24Hours() {
+        willAnswer(invocation -> invocation.getArgument(0)).given(rehearsalRepository).save(any(Rehearsal.class));
+        var overnight = new RehearsalCreateRequest("합주", LocalDateTime.of(2026, 9, 14, 22, 0),
+                LocalDateTime.of(2026, 9, 15, 1, 0), null, null);
+        var exactly24 = new RehearsalCreateRequest("합주", STARTS_AT, STARTS_AT.plusHours(24), null, null);
+
+        rehearsalService.create(MEMBER_ID, TEAM_ID, overnight);
+        rehearsalService.create(MEMBER_ID, TEAM_ID, exactly24);
+
+        verify(rehearsalRepository, times(2)).save(any(Rehearsal.class));
+    }
+
+    @Test
     @DisplayName("합주 생성: 팀원이 아니면 시각이 잘못돼도 NO_PERMISSION이다(권한 확인이 먼저)")
     void create_checksPermissionBeforeTimes() {
         givenNotMember(TEAM_ID, MEMBER_ID);
@@ -397,6 +422,17 @@ class RehearsalServiceTest {
         Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
         given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
         var request = new RehearsalUpdateRequest("새 제목", STARTS_AT, STARTS_AT, null, null);
+
+        assertErrorCode(() -> rehearsalService.update(CREATOR_ID, REHEARSAL_ID, request), ErrorCode.VALIDATION_FAILED);
+        assertThat(existing.getTitle()).isEqualTo("옛 제목");
+    }
+
+    @Test
+    @DisplayName("합주 수정: 작성자가 24시간을 넘는 기간으로 바꾸면 VALIDATION_FAILED이고 값이 바뀌지 않는다")
+    void update_rejects_longerThan24Hours() {
+        Rehearsal existing = rehearsal(REHEARSAL_ID, TEAM_ID, "옛 제목");
+        given(rehearsalRepository.findById(REHEARSAL_ID)).willReturn(Optional.of(existing));
+        var request = new RehearsalUpdateRequest("새 제목", STARTS_AT, STARTS_AT.plusDays(3), null, null);
 
         assertErrorCode(() -> rehearsalService.update(CREATOR_ID, REHEARSAL_ID, request), ErrorCode.VALIDATION_FAILED);
         assertThat(existing.getTitle()).isEqualTo("옛 제목");
