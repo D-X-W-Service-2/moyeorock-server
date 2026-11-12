@@ -3,6 +3,7 @@ package com.moyeorock.domain.song.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -25,6 +26,7 @@ import com.moyeorock.domain.user.repository.UserRepository;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Level;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -44,7 +46,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 팀 곡 추천을 실제 HTTP 흐름으로 확인한다(이슈 #171). AI 서버만 가짜({@code @MockitoBean})로 바꾸고 팀·팀원·실력·곡은 실제 DB에 넣는다.
+ * 팀 곡 추천(이슈 #171)·내 취향 추천곡(이슈 #172)을 실제 HTTP 흐름으로 확인한다. AI 서버만 가짜({@code @MockitoBean})로 바꾸고 팀·팀원·실력·곡은 실제 DB에 넣는다.
  * 팀은 팀 생성 API로, 팀원은 2팀 TeamService.addMember로, 곡·실력은 Repository로 넣는다. 클래스 단위 {@code @Transactional}이라
  * 테스트마다 롤백된다.
  */
@@ -165,6 +167,67 @@ class SongRecommendationApiTest {
     void recommend_withoutToken_returns401() throws Exception {
         mockMvc.perform(get("/v1/teams/" + teamId + "/songs/recommendations"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------- 내 취향 추천곡 (이슈 #172) ----------
+
+    @Test
+    @DisplayName("내 취향 추천곡: 온보딩을 마친 사용자는 내 장르·실력으로 AI를 부르고, 우리 곡으로 바꿔 최대 2곡을 돌려준다")
+    void recommendForMe_onboarded_returnsTopTwo() throws Exception {
+        User leader = userRepository.findById(leaderId).orElseThrow();
+        leader.completeOnboarding("팀장", Region.SEOUL, List.of(Genre.POP));
+        userRepository.saveAndFlush(leader);
+        given(aiSongRecommendationClient.isConfigured()).willReturn(true);
+        given(aiSongRecommendationClient.recommend(any())).willReturn(new AiSongRecommendResponse(List.of(
+                new AiSongRecommendResponse.Item("ext-not-synced", 0.95),
+                new AiSongRecommendResponse.Item("ext-plastic", 0.9),
+                new AiSongRecommendResponse.Item("ext-creep", 0.6)), "content_rule"));
+
+        recommendForMe(leaderId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.songs.length()").value(2))
+                .andExpect(jsonPath("$.data.songs[0].song.title").value("Plastic Love"))
+                .andExpect(jsonPath("$.data.songs[0].score").value(0.9))
+                .andExpect(jsonPath("$.data.songs[1].song.id").value(creepId))
+                .andExpect(jsonPath("$.data.songs[1].song.difficulty[0].part").value("BASS"))
+                .andExpect(jsonPath("$.data.songs[0].reasons").doesNotExist());
+
+        ArgumentCaptor<AiSongRecommendRequest> captor = ArgumentCaptor.forClass(AiSongRecommendRequest.class);
+        verify(aiSongRecommendationClient).recommend(captor.capture());
+        assertThat(captor.getValue().mode()).isEqualTo("PERSONAL");
+        assertThat(captor.getValue().genres()).containsExactly(Genre.POP);
+        assertThat(captor.getValue().members())
+                .containsExactly(new AiSongRecommendRequest.Member(Instrument.BASS, Level.INTERMEDIATE));
+        assertThat(captor.getValue().limit()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("내 취향 추천곡: 온보딩 전 사용자는 AI를 부르지 않고 빈 목록으로 200이다")
+    void recommendForMe_notOnboarded_returnsEmpty() throws Exception {
+        recommendForMe(memberId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.songs").isEmpty());
+
+        verify(aiSongRecommendationClient, never()).recommend(any());
+    }
+
+    @Test
+    @DisplayName("내 취향 추천곡: 온보딩한 사용자인데 AI 주소가 없으면 503, 인증이 없으면 401이다")
+    void recommendForMe_errors() throws Exception {
+        User leader = userRepository.findById(leaderId).orElseThrow();
+        leader.completeOnboarding("팀장", Region.SEOUL, List.of(Genre.ROCK));
+        userRepository.saveAndFlush(leader);
+        given(aiSongRecommendationClient.isConfigured()).willReturn(false);
+
+        recommendForMe(leaderId)
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("SONG_RECOMMENDATION_UNAVAILABLE"));
+        mockMvc.perform(get("/v1/users/me/songs/recommendations"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private ResultActions recommendForMe(long userId) throws Exception {
+        return mockMvc.perform(get("/v1/users/me/songs/recommendations").header("Authorization", bearer(userId)));
     }
 
     private ResultActions recommend(long userId) throws Exception {
