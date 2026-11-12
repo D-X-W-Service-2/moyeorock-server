@@ -158,6 +158,27 @@ class RecruitPostServiceTest {
     }
 
     @Test
+    @DisplayName("공연 팀은 팀장이어도 공고를 만들 수 없고 저장하지 않는다")
+    void create_fails_whenTargetIsPerformanceTeam() {
+        when(teamService.isPerformanceTeam(5L)).thenReturn(true);
+
+        assertThat(thrownBy(() -> recruitPostService.create(AUTHOR_ID, createRequest(TargetType.TEAM, 5L)))
+                .getErrorCode()).isEqualTo(ErrorCode.PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED);
+        verify(teamMemberService).ensureLeader(5L, AUTHOR_ID);
+        verify(recruitPostRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("팀장 확인이 공연 팀 확인보다 먼저라 팀장이 아니면 403이다")
+    void create_checksLeaderBeforePerformanceTeam() {
+        doThrow(new BusinessException(ErrorCode.NOT_TEAM_LEADER)).when(teamMemberService).ensureLeader(5L, OTHER_USER_ID);
+
+        assertThat(thrownBy(() -> recruitPostService.create(OTHER_USER_ID, createRequest(TargetType.TEAM, 5L)))
+                .getErrorCode()).isEqualTo(ErrorCode.NOT_TEAM_LEADER);
+        verify(teamService, never()).isPerformanceTeam(any());
+    }
+
+    @Test
     @DisplayName("GROUP 대상 공고는 targetGroupId로만 저장된다")
     void create_withGroupTarget() {
         when(recruitPostRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -171,6 +192,7 @@ class RecruitPostServiceTest {
         assertThat(saved.getValue().getTargetGroupId()).isEqualTo(9L);
         verify(groupMemberService).ensureOwner(9L, AUTHOR_ID);
         verify(teamMemberService, never()).ensureLeader(any(), any());
+        verify(teamService, never()).isPerformanceTeam(any());
     }
 
     @Test

@@ -45,6 +45,8 @@ public enum ErrorCode {
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
+    // 공연 팀은 그 모임의 모임원만 들어갈 수 있어(#96) 공개 공고 대신 초대로 팀원을 모은다(#174)
+    PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED(HttpStatus.CONFLICT, "공연 팀은 모집 공고를 올릴 수 없습니다. 모임원을 초대해 주세요."),
 
     // 가입 신청·초대 (join) — api-conventions.md §3 예시 코드
     JOIN_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 신청입니다."),

@@ -72,6 +72,10 @@ public class RecruitPostService {
     public RecruitPostDetailResponse create(Long userId, RecruitPostCreateRequest request) {
         // 대상 팀/모임이 있고 요청자가 그 팀장/모임장인지 한 번에 확인한다(없으면 404, 아니면 403).
         ensureCanManage(request.targetType(), request.targetId(), userId);
+        // 공연 팀은 그 모임의 모임원만 들어갈 수 있어 공개 공고로 모집하지 않는다 — 신청해도 모임원이 아니면 막힌다(#174)
+        if (request.targetType() == TargetType.TEAM && teamService.isPerformanceTeam(request.targetId())) {
+            throw new BusinessException(ErrorCode.PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED);
+        }
         // API 계약(targetType+targetId)을 exclusive-arc 컬럼(targetTeamId/targetGroupId)으로 변환한다.
         Long targetTeamId = request.targetType() == TargetType.TEAM ? request.targetId() : null;
         Long targetGroupId = request.targetType() == TargetType.GROUP ? request.targetId() : null;
