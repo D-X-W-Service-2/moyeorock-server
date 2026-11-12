@@ -17,6 +17,8 @@ import com.moyeorock.domain.notification.entity.Notification;
 import com.moyeorock.domain.notification.repository.NotificationRepository;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.team.enums.TeamRole;
+import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamRepository;
@@ -137,18 +139,44 @@ class GroupMemberStatusApiTest {
     }
 
     @Test
-    @DisplayName("강퇴 대상이 공연 팀 팀장이면 409 LEADER_MUST_DELEGATE_FIRST이고 모임원·팀원 상태가 그대로이며 알림도 없다")
-    void kick_teamLeader_returns409_andRollsBackEverything() throws Exception {
+    @DisplayName("강퇴 대상이 공연 팀 팀장이면 막히지 않고 가장 먼저 들어온 다른 팀원이 팀장이 되며 알림도 저장된다")
+    void kick_teamLeader_passesLeadershipToOldestMember() throws Exception {
+        long teamId = createTeam(memberId, performanceId, "모임원이 팀장인 팀");
+        teamService.addMember(teamId, ownerId, Instrument.DRUM);
+
+        changeStatus(ownerId, memberId).andExpect(status().isOk());
+
+        assertThat(groupMemberService.isActiveMember(groupId, memberId)).isFalse();
+        assertThat(teamMemberService.isActiveMember(teamId, memberId)).isFalse();
+        assertThat(teamMemberRepository.findByTeamIdAndUserId(teamId, ownerId).orElseThrow().getRole())
+                .isEqualTo(TeamRole.LEADER);
+        assertThat(teamRepository.findById(teamId).orElseThrow().getStatus()).isEqualTo(TeamStatus.ACTIVE);
+        assertThat(notificationsOf(memberId)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("강퇴 대상이 혼자인 공연 팀 팀장이면 그 팀이 해체된다")
+    void kick_teamLeaderAlone_disbandsTeam() throws Exception {
+        long teamId = createTeam(memberId, performanceId, "모임원만 있는 팀");
+
+        changeStatus(ownerId, memberId).andExpect(status().isOk());
+
+        assertThat(groupMemberService.isActiveMember(groupId, memberId)).isFalse();
+        assertThat(teamRepository.findById(teamId).orElseThrow().getStatus()).isEqualTo(TeamStatus.DISBANDED);
+    }
+
+    @Test
+    @DisplayName("본인 탈퇴인데 공연 팀 팀장이면 409 LEADER_MUST_DELEGATE_FIRST이고 모임원·팀원 상태가 그대로다")
+    void leave_teamLeader_returns409_andRollsBackEverything() throws Exception {
         long teamId = createTeam(memberId, performanceId, "모임원이 팀장인 팀");
 
-        changeStatus(ownerId, memberId)
+        changeStatus(memberId, memberId)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("LEADER_MUST_DELEGATE_FIRST"))
                 .andExpect(jsonPath("$.message").value("팀장을 위임한 뒤 탈퇴할 수 있습니다."));
 
         assertThat(groupMemberService.isActiveMember(groupId, memberId)).isTrue();
         assertThat(teamMemberService.isActiveMember(teamId, memberId)).isTrue();
-        assertThat(notificationsOf(memberId)).isEmpty();
     }
 
     @Test

@@ -268,7 +268,8 @@ class GroupServiceTest {
         groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
 
         verify(groupMemberService).changeStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
-        verify(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L));
+        verify(teamService).removeFromPerformanceTeams(MEMBER_ID, List.of(7L));
+        verify(teamService, never()).leavePerformanceTeams(any(), any());
         ArgumentCaptor<NotificationEvent> event = ArgumentCaptor.forClass(NotificationEvent.class);
         verify(eventPublisher).publishEvent(event.capture());
         assertThat(event.getValue()).isEqualTo(new NotificationEvent(MEMBER_ID, NotificationType.GROUP_MEMBER_REMOVED,
@@ -276,18 +277,16 @@ class GroupServiceTest {
     }
 
     @Test
-    @DisplayName("강퇴 대상이 공연 팀 팀장이면 LEADER_MUST_DELEGATE_FIRST를 기본 문구 그대로 던지고 알림을 보내지 않는다")
-    void changeMemberStatus_kick_throws_whenTargetLeadsPerformanceTeam() {
+    @DisplayName("강퇴는 대상이 공연 팀 팀장이어도 막히지 않고 팀장 위임·해체는 TeamService가 맡는다")
+    void changeMemberStatus_kick_doesNotThrow_whenTargetLeadsPerformanceTeam() {
         when(performanceService.findIdsByGroupId(GROUP_ID)).thenReturn(List.of(7L));
-        doThrow(new BusinessException(ErrorCode.LEADER_MUST_DELEGATE_FIRST))
-                .when(teamService).leavePerformanceTeams(MEMBER_ID, List.of(7L));
+        when(groupRepository.findByIdAndStatus(GROUP_ID, GroupStatus.ACTIVE))
+                .thenReturn(Optional.of(withId(group(), GROUP_ID)));
 
-        assertThatThrownBy(() -> groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage(ErrorCode.LEADER_MUST_DELEGATE_FIRST.getMessage())
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.LEADER_MUST_DELEGATE_FIRST);
-        verifyNoInteractions(eventPublisher);
+        groupService.changeMemberStatus(OWNER_ID, GROUP_ID, MEMBER_ID);
+
+        verify(teamService).removeFromPerformanceTeams(MEMBER_ID, List.of(7L));
+        verify(eventPublisher).publishEvent(any(NotificationEvent.class));
     }
 
     @Test
