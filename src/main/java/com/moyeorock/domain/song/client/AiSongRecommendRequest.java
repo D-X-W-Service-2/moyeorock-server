@@ -20,12 +20,17 @@ public record AiSongRecommendRequest(
 ) {
 
     public static final String MODE_TEAM = "TEAM";
+    public static final String MODE_PERSONAL = "PERSONAL";
 
     public static AiSongRecommendRequest forTeam(List<Genre> genres, List<Member> members, int limit) {
         return new AiSongRecommendRequest(MODE_TEAM, genres, members, limit);
     }
 
-    /** 세션 하나. 팀 추천이면 팀원이 이 팀에서 맡은 세션과 그 악기의 실력이다. */
+    public static AiSongRecommendRequest forPersonal(List<Genre> genres, List<Member> members, int limit) {
+        return new AiSongRecommendRequest(MODE_PERSONAL, genres, members, limit);
+    }
+
+    /** 세션 하나. 팀 추천이면 팀원이 이 팀에서 맡은 세션과 그 악기의 실력, 개인 추천이면 내 악기별 실력이다. */
     public record Member(Instrument part, Level level) {
     }
 }

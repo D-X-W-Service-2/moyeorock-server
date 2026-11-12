@@ -7,6 +7,7 @@ import com.moyeorock.domain.song.client.AiSongRecommendRequest;
 import com.moyeorock.domain.song.client.AiSongRecommendResponse;
 import com.moyeorock.domain.song.client.AiSongRecommendationClient;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
+import com.moyeorock.domain.song.dto.response.SongRecommendationResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.TeamSongRecommendationResponse;
 import com.moyeorock.domain.song.dto.response.TeamSongRecommendationResponse.RecommendedSong;
@@ -16,6 +17,7 @@ import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
+import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
@@ -36,7 +38,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 
 /**
- * 곡 추천(AI, 이슈 #171). 팀 정보·팀원 실력을 모아 AI에 보내고, AI가 자기 카탈로그에서 고른 곡({@code externalId})을
+ * 곡 추천(AI, 팀 #171 · 개인 #172). 팀 정보·팀원 실력(또는 내 장르·실력)을 모아 AI에 보내고, AI가 자기 카탈로그에서 고른 곡({@code externalId})을
  * 우리 곡으로 바꿔 돌려준다.
  *
  * <p>SongService와 나눈 이유: 호출 방향이 {@code TeamService → SetlistService → SongService}라서 SongService가
@@ -51,10 +53,14 @@ import org.springframework.web.client.RestClientException;
 @RequiredArgsConstructor
 public class SongRecommendationService {
 
-    /** 응답 곡 수. 프론트 셋리스트 곡 추가 시트에 보여 준다. */
+    /** 팀 추천 응답 곡 수. 프론트 셋리스트 곡 추가 시트에 보여 준다. */
     static final int TEAM_RESULT_LIMIT = 10;
-    /** AI에 요청하는 곡 수. 우리 DB에 아직 없는 곡을 버려도 {@link #TEAM_RESULT_LIMIT}곡이 남도록 넉넉히 받는다. */
-    static final int AI_REQUEST_LIMIT = 20;
+    /** 팀 추천에서 AI에 요청하는 곡 수. 우리 DB에 아직 없는 곡을 버려도 {@link #TEAM_RESULT_LIMIT}곡이 남도록 넉넉히 받는다. */
+    static final int TEAM_AI_REQUEST_LIMIT = 20;
+    /** 개인 추천 응답 곡 수. 프론트 홈 "취향 참고 추천곡"에 2곡을 보여 준다(2026-11-12 결정, 이슈 #172). */
+    static final int PERSONAL_RESULT_LIMIT = 2;
+    /** 개인 추천에서 AI에 요청하는 곡 수. 우리 DB에 없는 곡을 버려도 {@link #PERSONAL_RESULT_LIMIT}곡이 남도록 넉넉히 받는다. */
+    static final int PERSONAL_AI_REQUEST_LIMIT = 10;
 
     // 추천 근거 문구는 화면에 그대로 나간다. 프론트 표시명(domainCodes.ts)과 맞춘다.
     private static final Map<Genre, String> GENRE_LABELS = new EnumMap<>(Map.ofEntries(
@@ -89,23 +95,56 @@ public class SongRecommendationService {
         List<AiSongRecommendRequest.Member> members = toRecommendationMembers(team.members(), bestLevels);
 
         AiSongRecommendResponse response = callRecommendation(
-                AiSongRecommendRequest.forTeam(genres, members, AI_REQUEST_LIMIT), teamId);
+                AiSongRecommendRequest.forTeam(genres, members, TEAM_AI_REQUEST_LIMIT), "teamId=" + teamId);
+        Set<Long> selectedByOtherTeams = findSongIdsSelectedByOtherTeams(team.performance(), teamId);
 
+        List<RecommendedSong> recommended = resolveSongs(response, TEAM_RESULT_LIMIT).stream()
+                .map(scored -> new RecommendedSong(scored.song(), scored.score(),
+                        reasons(scored.song(), genres, bestLevels), selectedByOtherTeams.contains(scored.song().id())))
+                .toList();
+        return new TeamSongRecommendationResponse(teamId, recommended);
+    }
+
+    /**
+     * 내 취향 추천곡(이슈 #172). 프론트 홈의 "추천받기" 버튼이 부른다. 탈퇴했거나 없는 사용자는 USER_NOT_FOUND(404)
+     * (UserService.getMe).
+     *
+     * <p>온보딩을 마치지 않은 사용자는 AI를 부르지 않고 빈 목록이다(2026-11-12 결정). AI에는 내 선호 장르와 악기별 실력을
+     * 보낸다. AI가 고른 곡 중 우리 DB에 없는 곡은 버리고 AI 순서대로 최대 {@value #PERSONAL_RESULT_LIMIT}곡을 돌려준다.
+     * AI 주소가 없거나 호출이 실패하면 SONG_RECOMMENDATION_UNAVAILABLE(503)이다.
+     */
+    public SongRecommendationResponse recommendForUser(Long userId) {
+        UserMeResponse me = userService.getMe(userId);
+        if (!me.onboardingCompleted()) {
+            return new SongRecommendationResponse(List.of());
+        }
+        List<Genre> genres = me.genres() == null ? List.of() : me.genres();
+        List<AiSongRecommendRequest.Member> members = me.instruments() == null ? List.of() : me.instruments().stream()
+                .filter(i -> i.instrument() != null && i.level() != null)
+                .map(i -> new AiSongRecommendRequest.Member(i.instrument(), i.level()))
+                .toList();
+
+        AiSongRecommendResponse response = callRecommendation(
+                AiSongRecommendRequest.forPersonal(genres, members, PERSONAL_AI_REQUEST_LIMIT), "userId=" + userId);
+
+        return new SongRecommendationResponse(resolveSongs(response, PERSONAL_RESULT_LIMIT).stream()
+                .map(scored -> new SongRecommendationResponse.RecommendedSong(scored.song(), scored.score()))
+                .toList());
+    }
+
+    // AI가 고른 곡을 우리 곡으로 바꾼다. 우리 DB에 없는 곡은 버리고 AI 순서(점수 높은 순)대로 최대 limit곡이다.
+    private List<ScoredSong> resolveSongs(AiSongRecommendResponse response, int limit) {
         List<AiSongRecommendResponse.Item> items = validItems(response);
         Map<String, SongResponse> songs = songService.findByExternalIds(
                 items.stream().map(AiSongRecommendResponse.Item::externalId).toList());
-        Set<Long> selectedByOtherTeams = findSongIdsSelectedByOtherTeams(team.performance(), teamId);
-
-        List<RecommendedSong> recommended = items.stream()
+        return items.stream()
                 .filter(item -> songs.containsKey(item.externalId()))
-                .limit(TEAM_RESULT_LIMIT)
-                .map(item -> {
-                    SongResponse song = songs.get(item.externalId());
-                    return new RecommendedSong(song, item.score(), reasons(song, genres, bestLevels),
-                            selectedByOtherTeams.contains(song.id()));
-                })
+                .limit(limit)
+                .map(item -> new ScoredSong(songs.get(item.externalId()), item.score()))
                 .toList();
-        return new TeamSongRecommendationResponse(teamId, recommended);
+    }
+
+    private record ScoredSong(SongResponse song, double score) {
     }
 
     // 팀원마다 이 팀에서 맡은 세션과 그 악기의 실력을 붙인다. 실력·세션을 모르는 팀원은 AI 요청에서 뺀다(AI가 422를 준다).
@@ -135,7 +174,8 @@ public class SongRecommendationService {
         return result;
     }
 
-    private AiSongRecommendResponse callRecommendation(AiSongRecommendRequest request, Long teamId) {
+    // target은 로그용(teamId=5, userId=3)이다.
+    private AiSongRecommendResponse callRecommendation(AiSongRecommendRequest request, String target) {
         if (!aiSongRecommendationClient.isConfigured()) {
             log.warn("AI 추천 서버 주소가 설정되지 않아 곡 추천을 할 수 없습니다.");
             throw new BusinessException(ErrorCode.SONG_RECOMMENDATION_UNAVAILABLE);
@@ -143,7 +183,7 @@ public class SongRecommendationService {
         try {
             return aiSongRecommendationClient.recommend(request);
         } catch (RestClientException | IllegalStateException e) {
-            log.warn("AI 서버 곡 추천 호출에 실패했습니다. teamId={}", teamId, e);
+            log.warn("AI 서버 곡 추천 호출에 실패했습니다. mode={} {}", request.mode(), target, e);
             throw new BusinessException(ErrorCode.SONG_RECOMMENDATION_UNAVAILABLE);
         }
     }
