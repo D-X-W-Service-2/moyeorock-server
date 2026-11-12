@@ -5,9 +5,13 @@ import com.moyeorock.domain.notification.dto.response.NotificationReadResponse;
 import com.moyeorock.domain.notification.dto.response.NotificationsResponse;
 import com.moyeorock.domain.notification.entity.Notification;
 import com.moyeorock.domain.notification.repository.NotificationRepository;
+import com.moyeorock.global.common.enums.NotificationTargetType;
+import com.moyeorock.global.common.enums.NotificationType;
 import com.moyeorock.global.event.NotificationEvent;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -32,6 +36,10 @@ public class NotificationService {
     // 명세의 알림 목록에는 정렬 파라미터가 없다 — 최신순 고정. 클라이언트 sort를 그대로 받으면
     // 엔티티에 없는 속성이 들어왔을 때 500이 난다.
     private static final Sort LATEST_FIRST = Sort.by(Sort.Direction.DESC, "createdAt", "id");
+    // 신청·초대를 처리해 달라고 알리는 타입. 처리되면 읽음으로 바꾼다(#182).
+    private static final Map<NotificationTargetType, Set<NotificationType>> REQUEST_TYPES = Map.of(
+            NotificationTargetType.JOIN_REQUEST, Set.of(NotificationType.TEAM_APPLY, NotificationType.RECRUIT_POST_APPLIED),
+            NotificationTargetType.INVITATION, Set.of(NotificationType.TEAM_INVITE, NotificationType.GROUP_INVITE));
 
     private final NotificationRepository notificationRepository;
 
@@ -59,6 +67,16 @@ public class NotificationService {
                 ? notificationRepository.markAllAsRead(userId)
                 : notificationRepository.markAsRead(userId, new HashSet<>(ids));
         return new NotificationReadResponse(readCount, notificationRepository.countByUserIdAndIsReadFalse(userId));
+    }
+
+    /**
+     * 신청·초대 한 건이 처리됐을 때(승인·거절·수락·취소) 그 건을 알린 "처리해 달라"는 알림을 읽음 처리한다(#182).
+     * 신청은 {@code TEAM_APPLY}·{@code RECRUIT_POST_APPLIED}, 초대는 {@code TEAM_INVITE}·{@code GROUP_INVITE}다.
+     * 처리 결과 알림(승인·거절 등)은 건드리지 않는다. 호출한 쪽의 트랜잭션에 참여한다.
+     */
+    @Transactional
+    public void markRequestNotificationsRead(NotificationTargetType targetType, Long targetId) {
+        notificationRepository.markTargetAsRead(targetType, targetId, REQUEST_TYPES.get(targetType));
     }
 
     /**
