@@ -76,6 +76,18 @@ public class SongService {
     }
 
     /**
+     * 외부 카탈로그 id(external_id)로 곡 전체 정보를 일괄 조회한다(곡 추천이 AI가 고른 곡을 우리 곡으로 바꿀 때, 이슈 #171).
+     * 우리 DB에 없는 id는 결과에서 빠진다. 아직 동기화되지 않은 곡이다. 단일 쿼리라 트랜잭션을 걸지 않는다.
+     */
+    public Map<String, SongResponse> findByExternalIds(Collection<String> externalIds) {
+        if (externalIds == null || externalIds.isEmpty()) {
+            return Map.of();
+        }
+        return songRepository.findAllByExternalIdIn(externalIds).stream()
+                .collect(Collectors.toMap(Song::getExternalId, SongResponse::from, (first, second) -> first));
+    }
+
+    /**
      * 곡의 외부 카탈로그 id(external_id). 연습 녹음 분석이 AI에 원곡을 이 값으로 알려 준다 — 원곡 음원은 AI 서버가 갖고 있다.
      * 없는 곡이거나 external_id가 비어 있으면 빈 값.
      */

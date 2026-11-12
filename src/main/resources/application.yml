@@ -88,6 +88,11 @@ ai:
   song-sync:
     enabled: ${AI_SONG_SYNC_ENABLED:false}
     cron: ${AI_SONG_SYNC_CRON:0 0 4 * * *}
+  # AI 곡 추천(이슈 #171). POST {base-url}/v1/recommendations/songs, api-key는 X-AI-Recommend-Key 헤더로 보낸다.
+  # 전용 값이 없으면 위 AI 서버 주소·키를 그대로 쓴다(지금은 같은 주소·같은 키).
+  recommend:
+    base-url: ${AI_RECOMMEND_URL:${AI_SERVER_BASE_URL:}}
+    api-key: ${AI_RECOMMEND_API_KEY:${AI_SERVER_API_KEY:}}
 
 # 문서(/v3/api-docs, /swagger-ui.html)는 SWAGGER_ENABLED=true일 때만 열린다. 값이 없으면 닫힌다 — 운영 배포에서
 # 설정을 빠뜨려도 API 문서가 노출되지 않게 하려는 것이다(PR #114 리뷰). 로컬·개발은 .env에 SWAGGER_ENABLED=true를 둔다.
