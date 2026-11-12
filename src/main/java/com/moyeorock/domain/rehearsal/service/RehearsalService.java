@@ -15,6 +15,7 @@ import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -33,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RehearsalService {
+
+    /** 합주 한 건의 최대 길이. 이 길이까지는 허용한다(정확히 24시간은 된다). */
+    static final Duration MAX_DURATION = Duration.ofHours(24);
 
     private final RehearsalRepository rehearsalRepository;
     private final TeamMemberService teamMemberService;
@@ -122,10 +126,12 @@ public class RehearsalService {
         return rehearsal;
     }
 
-    // 종료는 시작보다 늦어야 한다. 필드 하나로는 판단할 수 없어 DTO 어노테이션이 아니라 여기서 검사한다.
+    // 종료는 시작보다 늦고, 합주 길이는 24시간 이하여야 한다(#180). 자정을 넘기는 합주(22:00~다음 날 01:00)는 되지만
+    // 며칠에 걸친 합주는 막는다 — 달력이 기간의 모든 날짜에 같은 합주를 표시해 여러 개로 보였다.
+    // 필드 하나로는 판단할 수 없어 DTO 어노테이션이 아니라 여기서 검사한다.
     // 권한 확인(팀원·작성자·팀장)을 먼저 하고 부른다 — 권한이 없는 사람에게는 입력이 맞는지보다 403이 먼저다.
     private void validateTimes(LocalDateTime startsAt, LocalDateTime endsAt) {
-        if (!endsAt.isAfter(startsAt)) {
+        if (!endsAt.isAfter(startsAt) || endsAt.isAfter(startsAt.plus(MAX_DURATION))) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
     }
