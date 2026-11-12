@@ -971,6 +971,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 내 취향 추천곡은 2026-11-12에 구현했다(이슈 #172). `songs`는 AI 순서(점수 높은 순)이고 **최대 2곡**이다(홈에 2곡을 보여 준다). 온보딩 전 사용자이거나 AI가 고른 곡이 우리 DB에 없으면 빈 배열이다. `score`는 AI가 준 0~1 정렬용 점수다
+
 ### TeamSongRecommendationResponse
 
 ```json
@@ -1154,6 +1156,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - 구현(2026-11-04, 이슈 #135): `upcomingRehearsals`는 내 팀 합주 중 오늘부터 14일 안에 끝나지 않은 것을 가까운 순 5개, `openRecruitPosts`는 모집 중(`OPEN`) 공고를 최신순 5개(개인화하지 않는다)다. 둘 다 항목은 각 도메인 응답(`RehearsalSummaryResponse`·`RecruitPostSummaryResponse`) 그대로다. 개수·기간은 서버 기본값이며 명세에 없어 정한 값이다 — Notion 반영 필요
 - `recommendedSongs`는 AI 추천이 연결되기 전까지 **`null`**이다(빈 배열이 아님). 항목은 `SongSummaryResponse(id, title, artist)`다. 연결되면 배열로 바뀐다
+- 2026-11-12 결정(이슈 #172): 개인 추천곡은 대시보드에 넣지 않고 홈의 추천받기 버튼이 `GET /v1/users/me/songs/recommendations`(`SongRecommendationResponse`)로 받는다. 그래서 `recommendedSongs`는 계속 `null`이다
 
 ## §11. 로그인 (auth)
 
