@@ -10,6 +10,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.setlist.dto.response.TeamSongResponse;
 import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
@@ -56,11 +57,11 @@ import com.moyeorock.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -90,8 +91,18 @@ class TeamServiceTest {
     SetlistService setlistService;
     @Mock
     AiMemberRecommendationClient aiMemberRecommendationClient;
-    @InjectMocks
+    @Mock
+    RecruitPostService recruitPostService;
     TeamService teamService;
+
+    // 팀 요약 조립은 TeamMemberService에 있어서, 같은 Repository 목으로 만든 진짜 서비스를 붙인다(기존 스텁이 그대로 통한다)
+    @BeforeEach
+    void setUp() {
+        teamService = new TeamService(teamRepository, teamGenreRepository, teamMemberRepository, userService,
+                performanceMemberService, setlistService, aiMemberRecommendationClient,
+                new TeamMemberService(teamRepository, teamGenreRepository, teamMemberRepository),
+                recruitPostService);
+    }
 
     private Team team() {
         Team team = Team.create("무명밴드", "소개", Region.SEOUL);
@@ -257,11 +268,23 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("팀 해체: 해체되면 그 팀의 모집 중 공고를 마감한다")
+    void disband_closesOpenRecruitPosts() {
+        givenTeam(team());
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+
+        teamService.disband(LEADER_ID, TEAM_ID, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        verify(recruitPostService).closeOpenPostsOfTeam(TEAM_ID);
+    }
+
+    @Test
     @DisplayName("팀 해체: DISBANDED가 아닌 값은 VALIDATION_FAILED")
     void disband_withOtherStatus_isValidationFailed() {
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.ACTIVE)), ErrorCode.VALIDATION_FAILED);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     @Test
@@ -273,6 +296,7 @@ class TeamServiceTest {
         assertErrorCode(() -> teamService.disband(MEMBER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.NOT_TEAM_LEADER);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     @Test
@@ -284,6 +308,7 @@ class TeamServiceTest {
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.INVALID_STATE);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     // ---------- changeMember ----------
@@ -1070,6 +1095,8 @@ class TeamServiceTest {
         teamService.disbandAllByPerformance(7L);
 
         verify(setlistService, never()).deleteByTeam(any());
+        // 공연 팀은 공개 공고를 만들 수 없어 공고를 건드리지 않는다
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     // ---------- recommendMembers ----------

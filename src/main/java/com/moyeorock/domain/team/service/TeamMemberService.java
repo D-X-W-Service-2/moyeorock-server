@@ -1,16 +1,24 @@
 package com.moyeorock.domain.team.service;
 
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
+import com.moyeorock.domain.team.entity.TeamGenre;
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
+import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,12 +29,16 @@ import org.springframework.stereotype.Service;
  * <p>다른 Service를 부르지 않는 것이 이 클래스의 조건이다. TeamService가 셋리스트 Service를 부르고
  * 셋리스트 Service도 팀 정보가 필요해서, 확인 용도만 여기로 떼어 두어야 서비스끼리 서로 부르는 순환이 생기지 않는다
  * (architecture.md §3).
+ *
+ * <p>팀 요약(이름·지역·장르·인원 수) 조립도 여기에 있다. 공고가 팀 해체 때 불려야 해서(#178) 공고 Service가
+ * TeamService를 주입받으면 순환이 되므로, 공고는 요약과 공연 팀 여부를 이 서비스로 읽는다. TeamService도 같은 조립을 쓴다.
  */
 @Service
 @RequiredArgsConstructor
 public class TeamMemberService {
 
     private final TeamRepository teamRepository;
+    private final TeamGenreRepository teamGenreRepository;
     private final TeamMemberRepository teamMemberRepository;
 
     /**
@@ -103,6 +115,54 @@ public class TeamMemberService {
         }
         return teamRepository.findAllById(teamIds).stream()
                 .collect(Collectors.toMap(Team::getId, Team::getName));
+    }
+
+    /**
+     * 공연 팀(모임 공연에 속한 팀)인지(3팀 공고 작성 차단, #174). 없는 팀이나 독립 팀이면 false다.
+     * 팀 존재·해체 여부는 보지 않으니 호출하는 쪽이 따로 확인한다.
+     */
+    public boolean isPerformanceTeam(Long teamId) {
+        return teamRepository.existsByIdAndPerformanceIdIsNotNull(teamId);
+    }
+
+    /**
+     * 팀 요약 일괄 조회(3팀 공고 등). 해체된 팀과 없는 id는 결과 Map에서 빠지니, 호출하는 쪽이 없는 id를
+     * "삭제된 항목"으로 처리한다. 쿼리는 팀·장르·인원 수 각 1번이다.
+     */
+    public Map<Long, TeamSummaryResponse> getSummaries(Collection<Long> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) {
+            return Map.of();
+        }
+        return summarize(teamRepository.findActiveByIdIn(teamIds)).stream()
+                .collect(Collectors.toMap(TeamSummaryResponse::id, Function.identity()));
+    }
+
+    /** 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져와 요약으로 조립한다. */
+    public List<TeamSummaryResponse> summarize(List<Team> teams) {
+        if (teams.isEmpty()) {
+            return List.of();
+        }
+        List<Long> teamIds = teams.stream().map(Team::getId).toList();
+        Map<Long, List<Genre>> genres = getGenres(teamIds);
+        Map<Long, Integer> counts = countMembers(teamIds);
+        return teams.stream()
+                .map(team -> TeamSummaryResponse.of(team,
+                        genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)))
+                .toList();
+    }
+
+    /** 팀별 장르. 장르 행의 id 순(저장한 순서)을 유지한다. 장르가 없는 팀은 결과에 키가 없다. */
+    public Map<Long, List<Genre>> getGenres(List<Long> teamIds) {
+        return teamGenreRepository.findAllByTeamIdIn(teamIds).stream()
+                .sorted(Comparator.comparing(TeamGenre::getId))
+                .collect(Collectors.groupingBy(TeamGenre::getTeamId,
+                        Collectors.mapping(TeamGenre::getGenre, Collectors.toList())));
+    }
+
+    // 팀원이 0명인 팀은 집계 결과에 행이 없어서 호출하는 쪽이 getOrDefault로 0을 채운다
+    private Map<Long, Integer> countMembers(List<Long> teamIds) {
+        return teamMemberRepository.countActiveByTeamIds(teamIds).stream()
+                .collect(Collectors.toMap(TeamMemberCount::getTeamId, count -> (int) count.getCount()));
     }
 
     private Team getActiveTeam(Long teamId) {

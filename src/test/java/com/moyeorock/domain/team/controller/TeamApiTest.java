@@ -1,5 +1,6 @@
 package com.moyeorock.domain.team.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,11 +9,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.moyeorock.config.TestcontainersConfig;
+import com.moyeorock.domain.recruit.entity.RecruitPost;
+import com.moyeorock.domain.recruit.entity.WantedSlot;
+import com.moyeorock.domain.recruit.enums.RecruitStatus;
+import com.moyeorock.domain.recruit.repository.RecruitPostRepository;
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.security.JwtProvider;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +58,9 @@ class TeamApiTest {
 
     @Autowired
     private TeamMemberRepository teamMemberRepository;
+
+    @Autowired
+    private RecruitPostRepository recruitPostRepository;
 
     private String bearer(long userId) {
         return "Bearer " + jwtProvider.generateToken(userId);
@@ -294,6 +304,26 @@ class TeamApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.members.length()").value(1))
                 .andExpect(jsonPath("$.data.members[0].role").value("LEADER"));
+    }
+
+    @Test
+    @DisplayName("팀을 해체하면 그 팀의 모집 중 공고가 마감되고, 다른 팀의 공고는 그대로다")
+    void disband_closesRecruitPostsOfTheTeamOnly() throws Exception {
+        long teamId = createTeam(LEADER_ID);
+        long otherTeamId = createTeam(MEMBER_ID);
+        List<WantedSlot> slots = List.of(new WantedSlot(Instrument.DRUM, 1));
+        RecruitPost mine = recruitPostRepository.saveAndFlush(
+                RecruitPost.create(LEADER_ID, teamId, null, "드럼 구해요", "본문", slots, Region.SEOUL));
+        RecruitPost others = recruitPostRepository.saveAndFlush(
+                RecruitPost.create(MEMBER_ID, otherTeamId, null, "다른 팀 공고", "본문", slots, Region.SEOUL));
+
+        send(patch("/v1/teams/" + teamId + "/status"), LEADER_ID, "{\"status\":\"DISBANDED\"}")
+                .andExpect(status().isOk());
+
+        assertThat(recruitPostRepository.findById(mine.getId()).orElseThrow().getStatus())
+                .isEqualTo(RecruitStatus.CLOSED);
+        assertThat(recruitPostRepository.findById(others.getId()).orElseThrow().getStatus())
+                .isEqualTo(RecruitStatus.OPEN);
     }
 
     @Test
