@@ -53,7 +53,7 @@ class AiPracticeAnalysisClientTest {
                          "performanceFilename":"abc.m4a","part":"VOCAL"}""", JsonCompareMode.STRICT))
                 .andRespond(withSuccess("""
                         {"status":"analyzed",
-                         "events":[{"start":13.0,"end":16.2,"type":"rhythm_mismatch","score":0.987,"reference_start":20.056,"reference_end":23.0},
+                         "events":[{"start":13.0,"end":16.2,"type":"rhythm_mismatch","message":"원곡보다 박자가 빠른 구간이에요.","score":0.987,"reference_start":20.056,"reference_end":23.0},
                                    {"start":40.4,"end":42.0,"type":"missing_or_quiet","score":0.5,"reference_start":65.5,"reference_end":70.1}],
                          "alignment_similarity":0.98,"alignment_method":"chroma_onset",
                          "transposition_semitones":0,"sensitivity":"conservative"}""", MediaType.APPLICATION_JSON));
@@ -61,7 +61,7 @@ class AiPracticeAnalysisClientTest {
         List<AnalysisFeedback> result = client.analyze(REQUEST);
 
         assertThat(result).containsExactly(
-                new AnalysisFeedback(13, 17, "VOCAL", "원곡 0:20~0:23: 리듬이 원곡과 다른 구간이에요."),
+                new AnalysisFeedback(13, 17, "VOCAL", "원곡 0:20~0:23: 원곡보다 박자가 빠른 구간이에요."),
                 new AnalysisFeedback(40, 42, "VOCAL", "원곡 1:05~1:11: 연주가 빠졌거나 소리가 작은 구간이에요."));
         server.verify();
     }

@@ -121,6 +121,14 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
 
     // AI 이벤트 종류와 대응하는 원곡 구간을 함께 보여 준다. 종류가 없거나 새로 추가되면 일반 문장으로 처리한다.
     private static String contentOf(Event event) {
+        if (StringUtils.hasText(event.message())) {
+            if (event.referenceStart() == null || event.referenceEnd() == null) {
+                return event.message();
+            }
+            return "원곡 %s~%s: %s".formatted(
+                    minuteSecond((int) Math.floor(event.referenceStart())),
+                    minuteSecond((int) Math.ceil(event.referenceEnd())), event.message());
+        }
         String detail = switch (event.type() == null ? "" : event.type()) {
             case "pitch_or_harmony_mismatch" -> "음정 또는 화음이 원곡과 다른 구간이에요.";
             case "rhythm_mismatch" -> "리듬이 원곡과 다른 구간이에요.";
@@ -156,7 +164,7 @@ public class AiPracticeAnalysisClient implements PracticeAnalysisClient {
     }
 
     // start·end는 녹음 시간, reference_start·reference_end는 대응하는 원곡 시간(초, 소수).
-    record Event(Double start, Double end, String type,
+    record Event(Double start, Double end, String type, String message,
                  @JsonProperty("reference_start") Double referenceStart,
                  @JsonProperty("reference_end") Double referenceEnd) {
     }
