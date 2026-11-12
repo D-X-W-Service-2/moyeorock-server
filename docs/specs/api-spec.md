@@ -229,7 +229,7 @@
 | 메서드 | 경로 | 기능 | Request | Response | 비고 |
 |---|---|---|---|---|---|
 | GET | `/v1/songs?keyword=&genre=&page=&size=` ¶ | 곡&nbsp;검색 | | `PageResponse<SongResponse>` | 세션별 난이도 포함 |
-| GET | `/v1/users/me/songs/recommendations` | 내&nbsp;취향&nbsp;추천곡 | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 |
+| GET | `/v1/users/me/songs/recommendations` † | 내&nbsp;취향&nbsp;추천곡&nbsp;(AI) | | `SongRecommendationResponse` | 6.2.1 세션별 실력·장르 반영 · §12 |
 | GET | `/v1/teams/{teamId}/songs/recommendations` ※ | 팀&nbsp;곡&nbsp;추천&nbsp;(AI) | | `TeamSongRecommendationResponse` | 7.2 · 팀원 · §12 |
 | POST | `/v1/songs/sync` ⚙ | 곡&nbsp;수동&nbsp;동기화 | | `SongSyncResponse` | 운영용 · §12 |
 
@@ -237,7 +237,7 @@
 > 곡 마스터(`songs`)는 화면에서 넣지 않는다 — 백엔드가 AI 서버 카탈로그를 받아와 채운다(§12, 이슈 #147).
 > ⚙ 화면에서 부르는 API가 아니라 운영용이다(2026-11-11, 이슈 #162). 매일 04:00 동기화를 지금 바로 돌린다. 노션 `API 초안`에는 없다. 로그인한 사용자면 누구나 부를 수 있다. 이미 돌고 있으면 409 `SONG_SYNC_IN_PROGRESS`, AI 서버 주소가 없거나 호출이 실패하면 503 `SONG_SYNC_UNAVAILABLE`(실패 전에 저장한 페이지는 남는다).
 > ※ 팀 곡 추천은 구현했다(2026-11-12, 이슈 #171). **song 도메인**이 받는다(`SongRecommendationController`·`SongRecommendationService`). 곡을 고르는 일이라 song에 두고, `docs/conventions/domains.md` song 집계를 3개로 고쳤다. 이 팀의 **활동 중인 팀원**이면 누구나 부를 수 있고(독립 팀·공연 팀 모두), 아니면 `403 NO_PERMISSION`, 없는 팀·해체된 팀은 `404 TEAM_NOT_FOUND`다(팀 선택곡 조회와 같은 규칙). 백엔드가 팀 장르·팀원 세션별 실력을 AI 서버에 보내고, AI가 자기 카탈로그에서 고른 곡을 우리 곡으로 바꿔 점수 높은 순 **최대 10곡**을 돌려준다. 우리 DB에 아직 없는 곡(동기화 전)은 빠진다. `reasons`는 백엔드가 만든다(AI는 주지 않는다). AI 서버 호출이 실패하거나 시간이 초과되거나 주소가 없으면 **`503 SONG_RECOMMENDATION_UNAVAILABLE`**이다. 노션에 없던 에러라 `API 초안` 반영 필요. 호출 형식은 §12.
-> 🚧 내 취향 추천곡(`/v1/users/me/songs/recommendations`)은 아직 없다. 프론트 홈은 이 API가 아니라 대시보드 `recommendedSongs`를 읽어서, 개인 추천은 대시보드에 연결한다(이슈 #172).
+> † 내 취향 추천곡은 구현했다(2026-11-12, 이슈 #172). 프론트 홈 "취향 참고 추천곡"에 **추천받기 버튼**을 두고 누를 때만 부른다(대시보드 `recommendedSongs`에 넣지 않는다. AI를 기다리는 동안 홈 전체가 늦어지지 않게). 로그인한 사용자 본인만 부르고, 탈퇴했거나 없는 사용자는 `404 USER_NOT_FOUND`다. **온보딩을 마치지 않은 사용자는 AI를 부르지 않고 빈 `songs`로 200**이다. 백엔드가 내 선호 장르·악기별 실력을 AI 서버에 보내(`mode: "PERSONAL"`) 고른 곡을 우리 곡으로 바꿔 점수 높은 순 **최대 2곡**을 돌려준다. 팀 곡 추천과 달리 `reasons`·`selectedByOtherTeam`은 없다. AI 실패는 `503 SONG_RECOMMENDATION_UNAVAILABLE`. 호출 형식은 §12.
 > 2026-10-30에 이름을 "팀 셋리스트 추천"에서 바꿨다 — 팀 쪽에서는 "셋리스트"라는 말을 쓰지 않는다(이슈 #85).
 
 ### setlist
@@ -329,7 +329,7 @@
 |---|---|---|---|---|---|
 | GET | `/v1/dashboard` | 대시보드&nbsp;통합 | | `DashboardResponse` | 7.3 / 7.1.1 |
 
-> 대시보드는 2026-11-04 구현했다(이슈 #135). 합주·공고 개수·기간 기준과 `recommendedSongs: null`(AI 연결 전)은 `dto-spec.md` DashboardResponse 참고.
+> 대시보드는 2026-11-04 구현했다(이슈 #135). 합주·공고 개수·기간 기준과 `recommendedSongs: null`은 `dto-spec.md` DashboardResponse 참고. 개인 추천곡은 대시보드가 아니라 `GET /v1/users/me/songs/recommendations`(버튼, 이슈 #172)로 받는다.
 
 ---
 
@@ -396,13 +396,14 @@
 
 ### 곡 추천 호출 (song)
 
-프론트가 `GET /v1/teams/{teamId}/songs/recommendations`를 부를 때마다 백엔드가 AI 서버를 **동기로** 부른다(2026-11-12, 이슈 #171). 호출 형식은 AI 팀이 정했다(`moyeorock-ai` `codex/backend-ai-api-20261111` 브랜치 커밋 `09d46a3` `backend_api.py`). 주소·키는 전용 설정(`AiRecommendProperties`)이고, 값이 없으면 `AI_SERVER_BASE_URL`·`AI_SERVER_API_KEY`를 그대로 쓴다(지금은 같은 주소·같은 키).
+프론트가 `GET /v1/teams/{teamId}/songs/recommendations`(이슈 #171)나 `GET /v1/users/me/songs/recommendations`(이슈 #172)를 부를 때마다 백엔드가 AI 서버를 **동기로** 부른다(2026-11-12). 호출 형식은 AI 팀이 정했다(`moyeorock-ai` `codex/backend-ai-api-20261111` 브랜치 커밋 `09d46a3` `backend_api.py`). 주소·키는 전용 설정(`AiRecommendProperties`)이고, 값이 없으면 `AI_SERVER_BASE_URL`·`AI_SERVER_API_KEY`를 그대로 쓴다(지금은 같은 주소·같은 키).
 
 | 메서드 | AI 서버 경로 | 요청 | 응답 | 비고 |
 |---|---|---|---|---|
 | POST | `{AI_RECOMMEND_URL}/v1/recommendations/songs` | `AiSongRecommendRequest` | `AiSongRecommendResponse` | `X-AI-Recommend-Key: {AI_RECOMMEND_API_KEY}` (Bearer 아님) · 연결 3초·읽기 30초 |
 
 - **보내는 값**: `{ "mode": "TEAM", "genres": [...], "members": [{ "part", "level" }], "limit": 20 }`. `genres`는 팀 장르, `members`는 팀원마다 이 팀에서 맡은 세션과 그 악기의 실력이다. 실력을 등록하지 않은 팀원은 뺀다(값이 비면 AI가 422). **후보 곡은 보내지 않는다.** AI가 자기 카탈로그에서 고른다. `limit`(1~100)은 우리 DB에 없는 곡을 버려도 10곡이 남도록 20으로 보낸다.
+- **개인 추천**: 같은 경로에 `{ "mode": "PERSONAL", "genres": 내 선호 장르, "members": 내 악기별 실력, "limit": 10 }`을 보내고 최대 2곡을 응답한다. 온보딩 전 사용자는 부르지 않는다.
 - **받는 값**: `{ "songs": [{ "externalId", "score" }], "ranker": "content_rule" }`. 점수 높은 순이다. 백엔드는 `externalId`·`score`가 없는 항목과 같은 `externalId`의 뒤쪽 항목을 버리고, `externalId`로 우리 곡을 찾아(`SongService.findByExternalIds`) 없는 곡은 버린 뒤 AI 순서대로 최대 10곡을 응답한다. `ranker`는 응답에 내보내지 않는다.
 - **백엔드가 채우는 값**: `reasons`(팀 장르 일치, 세션별 실력 충족·난이도 초과)와 `selectedByOtherTeam`(같은 공연의 다른 활동 중인 팀 선택곡에 있는지, `TeamService.getActiveSummaries` + `SetlistService.findTeamSongs`).
 - **실패**: 4xx·5xx·타임아웃·`songs` 누락·주소 미설정은 모두 `503 SONG_RECOMMENDATION_UNAVAILABLE`이다. AI가 고른 곡이 없거나 모두 우리 DB에 없으면 빈 `songs`로 `200`이다.

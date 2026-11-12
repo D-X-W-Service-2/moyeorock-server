@@ -408,7 +408,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `songs.difficulty` JSON 컬럼과 엔티티는 `Map<Instrument, Level>` 그대로 두고, 응답에서만 노션대로 `[{part, level}]` 배열로 펼친다(2026-11-02, 이슈 #103 — 전에는 응답도 Map 객체였다). 팀 선택곡 조회는 노션 "[추가 필요]" 페이지(`/v1/teams/{teamId}/setlist`)를 `/songs`로 맞춰 추가했다(이슈 #103).
 
-팀 곡 추천은 2026-11-12에 구현했다(이슈 #171). AI 서버를 동기로 불러 바로 응답하므로 작업 id·폴링 조회는 만들지 않았다. song 도메인이 받는다. `SongRecommendationController`·`SongRecommendationService`(TeamService → SetlistService → SongService 방향이라 SongService에 두면 순환), 응답 `TeamSongRecommendationResponse(Long teamId, List<RecommendedSong> songs)`, 중첩 `RecommendedSong(SongResponse song, double score, List<String> reasons, boolean selectedByOtherTeam)`. AI 호출 record는 `domain/song/client`의 `AiSongRecommendRequest`·`AiSongRecommendResponse`다. 내 취향 추천곡은 아직 없다(이슈 #172는 대시보드에 연결).
+팀 곡 추천은 2026-11-12에 구현했다(이슈 #171). AI 서버를 동기로 불러 바로 응답하므로 작업 id·폴링 조회는 만들지 않았다. song 도메인이 받는다. `SongRecommendationController`·`SongRecommendationService`(TeamService → SetlistService → SongService 방향이라 SongService에 두면 순환), 응답 `TeamSongRecommendationResponse(Long teamId, List<RecommendedSong> songs)`, 중첩 `RecommendedSong(SongResponse song, double score, List<String> reasons, boolean selectedByOtherTeam)`. AI 호출 record는 `domain/song/client`의 `AiSongRecommendRequest`·`AiSongRecommendResponse`다. 내 취향 추천곡도 같은 Controller·Service가 받는다(2026-11-12, 이슈 #172). 응답 `SongRecommendationResponse(List<RecommendedSong> songs)`, 중첩 `RecommendedSong(SongResponse song, double score)`(근거 없음).
 
 ---
 

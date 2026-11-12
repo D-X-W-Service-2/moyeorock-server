@@ -1,5 +1,6 @@
 package com.moyeorock.domain.song.controller;
 
+import com.moyeorock.domain.song.dto.response.SongRecommendationResponse;
 import com.moyeorock.domain.song.dto.response.TeamSongRecommendationResponse;
 import com.moyeorock.domain.song.service.SongRecommendationService;
 import com.moyeorock.global.common.dto.ApiResponse;
@@ -11,9 +12,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 곡 추천(AI, 이슈 #171). 팀 선택곡 저장·조회(SetlistController)와 경로 앞부분이 같지만 song 도메인이 받는다. */
+/**
+ * 곡 추천(AI, 팀 #171 · 개인 #172). 팀 곡 추천은 팀 선택곡 저장·조회(SetlistController)와 경로 앞부분이 같고, 내 취향 추천곡은
+ * {@code /v1/users/me} 아래지만 둘 다 곡을 고르는 일이라 song 도메인이 받는다(domains.md). 경로가 서로 달라 메서드마다 적는다.
+ */
 @RestController
-@RequestMapping("/v1/teams/{teamId}/songs/recommendations")
+@RequestMapping("/v1")
 @RequiredArgsConstructor
 public class SongRecommendationController {
 
@@ -55,9 +59,34 @@ public class SongRecommendationController {
             { "songs": [ { "externalId": "local-abc", "score": 0.875 } ], "ranker": "content_rule" }
             ```
             """)
-    @GetMapping
+    @GetMapping("/teams/{teamId}/songs/recommendations")
     public ApiResponse<TeamSongRecommendationResponse> recommendForTeam(@AuthUser Long userId,
             @PathVariable Long teamId) {
         return ApiResponse.success(songRecommendationService.recommendForTeam(userId, teamId));
+    }
+
+    @Operation(summary = "내 취향 추천곡 (AI)", description = """
+            내 선호 장르와 악기별 실력을 바탕으로 AI 서버가 고른 곡을 추천받는다. 홈 화면 "취향 참고 추천곡"의 추천받기 버튼이 부른다.
+
+            **호출 조건**
+            - 로그인한 사용자 본인. 요청 본문과 쿼리 파라미터는 없다.
+
+            **동작**
+            - 온보딩을 마치지 않은 사용자는 AI를 부르지 않고 `songs`가 빈 배열이다(200).
+            - AI에는 내 선호 장르와 등록한 악기별 실력을 보낸다(`mode: "PERSONAL"`, `limit: 10`).
+            - AI가 고른 곡 중 우리 DB에 아직 없는 곡(동기화 전)은 빼고, 점수 높은 순 **최대 2곡**을 돌려준다. 고른 곡이 없으면 `songs`는 빈 배열이다.
+            - `score`는 0~1 정렬용 점수이며 선호 확률이 아니다. 팀 곡 추천과 달리 `reasons`는 없다.
+            - AI 서버 응답을 최대 30초까지 기다린다(오래 쉬다 부르는 첫 호출은 수 초 걸릴 수 있다).
+
+            **에러**
+            - 401 `UNAUTHORIZED`: 인증 필요
+            - 404 `USER_NOT_FOUND`: 탈퇴했거나 없는 사용자
+            - 503 `SONG_RECOMMENDATION_UNAVAILABLE`: AI 서버 호출 실패·시간 초과·주소 미설정
+
+            AI 서버 호출 형식은 팀 곡 추천과 같고 `mode`만 `"PERSONAL"`이다(`api-spec.md` §12).
+            """)
+    @GetMapping("/users/me/songs/recommendations")
+    public ApiResponse<SongRecommendationResponse> recommendForMe(@AuthUser Long userId) {
+        return ApiResponse.success(songRecommendationService.recommendForUser(userId));
     }
 }

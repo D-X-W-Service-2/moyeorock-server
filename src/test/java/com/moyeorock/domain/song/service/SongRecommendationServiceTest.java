@@ -16,6 +16,7 @@ import com.moyeorock.domain.song.client.AiSongRecommendRequest;
 import com.moyeorock.domain.song.client.AiSongRecommendResponse;
 import com.moyeorock.domain.song.client.AiSongRecommendationClient;
 import com.moyeorock.domain.song.dto.response.SongDifficultyResponse;
+import com.moyeorock.domain.song.dto.response.SongRecommendationResponse;
 import com.moyeorock.domain.song.dto.response.SongResponse;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
 import com.moyeorock.domain.song.dto.response.TeamSongRecommendationResponse;
@@ -29,7 +30,10 @@ import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.service.TeamMemberService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
+import com.moyeorock.domain.user.dto.response.UserMeResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
+import com.moyeorock.domain.user.enums.LoginType;
+import com.moyeorock.domain.user.enums.PlatformRole;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
@@ -151,7 +155,7 @@ class SongRecommendationServiceTest {
         assertThat(sent.members()).containsExactly(
                 new AiSongRecommendRequest.Member(Instrument.VOCAL, Level.INTERMEDIATE),
                 new AiSongRecommendRequest.Member(Instrument.DRUM, Level.BEGINNER));
-        assertThat(sent.limit()).isEqualTo(SongRecommendationService.AI_REQUEST_LIMIT);
+        assertThat(sent.limit()).isEqualTo(SongRecommendationService.TEAM_AI_REQUEST_LIMIT);
     }
 
     // ---------- 응답 조립 ----------
@@ -270,5 +274,104 @@ class SongRecommendationServiceTest {
                 .extracting("errorCode").isEqualTo(ErrorCode.SONG_RECOMMENDATION_UNAVAILABLE);
         assertThatThrownBy(() -> service.recommendForTeam(LEADER_ID, TEAM_ID))
                 .extracting("errorCode").isEqualTo(ErrorCode.SONG_RECOMMENDATION_UNAVAILABLE);
+    }
+
+    // ---------- 내 취향 추천곡 (이슈 #172) ----------
+
+    private static UserMeResponse me(boolean onboardingCompleted, List<Genre> genres,
+            List<UserInstrumentResponse> instruments) {
+        return new UserMeResponse(LEADER_ID, "me@moyeorock.test", "나", Region.SEOUL, genres, null, null,
+                PlatformRole.USER, LoginType.EMAIL, instruments, true, true, onboardingCompleted, LocalDateTime.now());
+    }
+
+    @Test
+    @DisplayName("개인 추천: 온보딩을 마치지 않았으면 AI를 부르지 않고 빈 목록이다")
+    void personal_notOnboarded_returnsEmptyWithoutAi() {
+        given(userService.getMe(LEADER_ID)).willReturn(me(false, null, List.of()));
+
+        SongRecommendationResponse response = service.recommendForUser(LEADER_ID);
+
+        assertThat(response.songs()).isEmpty();
+        verify(aiSongRecommendationClient, never()).recommend(any());
+        verify(songService, never()).findByExternalIds(anyCollection());
+    }
+
+    @Test
+    @DisplayName("개인 추천: AI에는 PERSONAL 모드로 내 선호 장르와 악기별 실력을 보내고 limit은 10이다")
+    void personal_sendsGenresAndLevels() {
+        given(userService.getMe(LEADER_ID)).willReturn(me(true, List.of(Genre.ROCK, Genre.INDIE), List.of(
+                new UserInstrumentResponse(11L, Instrument.BASS, Level.NOVICE),
+                new UserInstrumentResponse(12L, Instrument.VOCAL, Level.ADVANCED))));
+        given(aiSongRecommendationClient.isConfigured()).willReturn(true);
+        givenAi(List.of());
+        given(songService.findByExternalIds(anyCollection())).willReturn(Map.of());
+
+        service.recommendForUser(LEADER_ID);
+
+        ArgumentCaptor<AiSongRecommendRequest> captor = ArgumentCaptor.forClass(AiSongRecommendRequest.class);
+        verify(aiSongRecommendationClient).recommend(captor.capture());
+        AiSongRecommendRequest sent = captor.getValue();
+        assertThat(sent.mode()).isEqualTo("PERSONAL");
+        assertThat(sent.genres()).containsExactly(Genre.ROCK, Genre.INDIE);
+        assertThat(sent.members()).containsExactly(
+                new AiSongRecommendRequest.Member(Instrument.BASS, Level.NOVICE),
+                new AiSongRecommendRequest.Member(Instrument.VOCAL, Level.ADVANCED));
+        assertThat(sent.limit()).isEqualTo(SongRecommendationService.PERSONAL_AI_REQUEST_LIMIT);
+    }
+
+    @Test
+    @DisplayName("개인 추천: 선호 장르가 비어 있으면 빈 장르로 보낸다(온보딩은 마침)")
+    void personal_nullGenres_sendsEmptyGenres() {
+        given(userService.getMe(LEADER_ID)).willReturn(me(true, null, List.of()));
+        given(aiSongRecommendationClient.isConfigured()).willReturn(true);
+        givenAi(List.of());
+        given(songService.findByExternalIds(anyCollection())).willReturn(Map.of());
+
+        service.recommendForUser(LEADER_ID);
+
+        ArgumentCaptor<AiSongRecommendRequest> captor = ArgumentCaptor.forClass(AiSongRecommendRequest.class);
+        verify(aiSongRecommendationClient).recommend(captor.capture());
+        assertThat(captor.getValue().genres()).isEmpty();
+        assertThat(captor.getValue().members()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("개인 추천: 우리 DB에 없는 곡은 버리고 AI 순서대로 최대 2곡만 돌려준다")
+    void personal_resolvesTopTwo() {
+        given(userService.getMe(LEADER_ID)).willReturn(me(true, List.of(Genre.ROCK), List.of()));
+        given(aiSongRecommendationClient.isConfigured()).willReturn(true);
+        givenAi(List.of(item("ext-missing", 0.95), item("ext-1", 0.9), item("ext-2", 0.8), item("ext-3", 0.7)));
+        given(songService.findByExternalIds(anyCollection())).willReturn(Map.of(
+                "ext-1", song(101L, Genre.ROCK, List.of()),
+                "ext-2", song(102L, Genre.ROCK, List.of()),
+                "ext-3", song(103L, Genre.ROCK, List.of())));
+
+        SongRecommendationResponse response = service.recommendForUser(LEADER_ID);
+
+        assertThat(response.songs()).hasSize(SongRecommendationService.PERSONAL_RESULT_LIMIT);
+        assertThat(response.songs()).extracting(r -> r.song().id()).containsExactly(101L, 102L);
+        assertThat(response.songs()).extracting(SongRecommendationResponse.RecommendedSong::score)
+                .containsExactly(0.9, 0.8);
+    }
+
+    @Test
+    @DisplayName("개인 추천: AI 호출이 실패하면 503 SONG_RECOMMENDATION_UNAVAILABLE이다")
+    void personal_aiFailure_unavailable() {
+        given(userService.getMe(LEADER_ID)).willReturn(me(true, List.of(Genre.ROCK), List.of()));
+        given(aiSongRecommendationClient.isConfigured()).willReturn(true);
+        given(aiSongRecommendationClient.recommend(any())).willThrow(new ResourceAccessException("timeout"));
+
+        assertThatThrownBy(() -> service.recommendForUser(LEADER_ID))
+                .extracting("errorCode").isEqualTo(ErrorCode.SONG_RECOMMENDATION_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("개인 추천: 없는 사용자면 UserService가 던진 404를 그대로 낸다")
+    void personal_missingUser_notFound() {
+        given(userService.getMe(LEADER_ID)).willThrow(new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        assertThatThrownBy(() -> service.recommendForUser(LEADER_ID))
+                .extracting("errorCode").isEqualTo(ErrorCode.USER_NOT_FOUND);
+        verify(aiSongRecommendationClient, never()).recommend(any());
     }
 }
