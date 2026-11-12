@@ -478,7 +478,7 @@ class PracticeRecordingServiceTest {
 
     private PracticeRecordingService serviceWith(TaskExecutor executor) {
         return new PracticeRecordingService(recordingRepository, feedbackRepository, analysisService, analysisClient,
-                fileService, songService, new PracticeProperties(30, new PracticeProperties.Ai("fake", 0, null, null, false, 180)),
+                fileService, songService, new PracticeProperties(30, new PracticeProperties.Ai("fake", 0, null, null, 180)),
                 executor);
     }
 

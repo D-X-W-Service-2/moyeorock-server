@@ -68,12 +68,12 @@ file:
       region: ${FILE_STORAGE_S3_REGION:ap-northeast-2}
       upload-url-expiry-seconds: 600
 
-# 개인 연습 녹음 AI 분석(이슈 #155). AI 서버가 생기기 전까지 가짜 AI(고정 결과)를 쓴다 — PracticeProperties 참고.
+# 개인 연습 녹음 AI 분석. 기본값은 실제 AI 서버이며 주소·키가 없으면 부팅 시 실패한다.
 practice:
   audio-url-expiry-minutes: 30
   ai:
-    # fake(기본값, 가짜 AI) | ai(실제 AI 서버). 실제 AI는 곡 동기화·팀원 추천과 같은 AI 서버·키를 쓴다(AI 팀 핸드오프 2026-11-11)
-    type: ${PRACTICE_AI_TYPE:fake}
+    # ai(기본값, 실제 AI 서버) | fake(명시적인 로컬 테스트용)
+    type: ${PRACTICE_AI_TYPE:ai}
     fake-delay-seconds: 5
     base-url: ${AI_SERVER_BASE_URL:}
     api-key: ${AI_SERVER_API_KEY:}

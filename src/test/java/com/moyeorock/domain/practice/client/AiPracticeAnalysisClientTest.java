@@ -34,44 +34,44 @@ class AiPracticeAnalysisClientTest {
 
     private MockRestServiceServer server;
 
-    private AiPracticeAnalysisClient client(String baseUrl, boolean highRecall) {
+    private AiPracticeAnalysisClient client(String baseUrl) {
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
         return new AiPracticeAnalysisClient(
-                new PracticeProperties.Ai("ai", 0, baseUrl, "ai-key", highRecall, 180), builder.build());
+                new PracticeProperties.Ai("ai", 0, baseUrl, "ai-key", 180), builder.build());
     }
 
     @Test
-    @DisplayName("external_id·Base64 녹음·파일 이름·highRecall을 Bearer 키와 함께 보내고, events를 정수 초 구간·녹음 세션·원곡 구간 문장으로 바꾼다")
+    @DisplayName("externalId·part·Base64 녹음·파일 이름을 Bearer 키와 함께 보내고, 분석 이벤트를 피드백으로 바꾼다")
     void analyze_sendsRequest_andMapsEvents() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer ai-key"))
                 .andExpect(content().json("""
                         {"externalId":"local-ce9924cfa2b2a7d2d4a37f46","performanceAudioBase64":"AQID",
-                         "performanceFilename":"abc.m4a","highRecall":false}""", JsonCompareMode.STRICT))
+                         "performanceFilename":"abc.m4a","part":"VOCAL"}""", JsonCompareMode.STRICT))
                 .andRespond(withSuccess("""
                         {"status":"analyzed",
-                         "events":[{"start":13.0,"end":16.2,"score":0.987,"reference_start":20.056,"reference_end":23.0},
-                                   {"start":40.4,"end":42.0,"score":0.5,"reference_start":65.5,"reference_end":70.1}],
+                         "events":[{"start":13.0,"end":16.2,"type":"rhythm_mismatch","score":0.987,"reference_start":20.056,"reference_end":23.0},
+                                   {"start":40.4,"end":42.0,"type":"missing_or_quiet","score":0.5,"reference_start":65.5,"reference_end":70.1}],
                          "alignment_similarity":0.98,"alignment_method":"chroma_onset",
                          "transposition_semitones":0,"sensitivity":"conservative"}""", MediaType.APPLICATION_JSON));
 
         List<AnalysisFeedback> result = client.analyze(REQUEST);
 
         assertThat(result).containsExactly(
-                new AnalysisFeedback(13, 17, "VOCAL", "원곡 0:20~0:23 구간과 다르게 연주했어요."),
-                new AnalysisFeedback(40, 42, "VOCAL", "원곡 1:05~1:11 구간과 다르게 연주했어요."));
+                new AnalysisFeedback(13, 17, "VOCAL", "원곡 0:20~0:23: 리듬이 원곡과 다른 구간이에요."),
+                new AnalysisFeedback(40, 42, "VOCAL", "원곡 1:05~1:11: 연주가 빠졌거나 소리가 작은 구간이에요."));
         server.verify();
     }
 
     @Test
-    @DisplayName("base-url 끝에 /가 있어도 //가 되지 않고, highRecall 설정값을 그대로 보낸다")
-    void analyze_joinsPathWithoutDoubleSlash_andSendsHighRecall() {
-        AiPracticeAnalysisClient client = client(BASE_URL + "/", true);
+    @DisplayName("base-url 끝에 /가 있어도 //가 되지 않는다")
+    void analyze_joinsPathWithoutDoubleSlash() {
+        AiPracticeAnalysisClient client = client(BASE_URL + "/");
         server.expect(requestTo(FEEDBACK_URL))
-                .andExpect(content().json("{\"highRecall\":true}"))
+                .andExpect(content().json("{\"part\":\"VOCAL\"}"))
                 .andRespond(withSuccess("{\"status\":\"analyzed\",\"events\":[]}", MediaType.APPLICATION_JSON));
 
         assertThat(client.analyze(REQUEST)).isEmpty();
@@ -81,7 +81,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("원곡 구간이 없는 event는 구간 없는 문장이 되고, 녹음 구간이 없는 event는 버린다")
     void analyze_handlesMissingTimes() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL))
                 .andRespond(withSuccess("""
                         {"status":"analyzed","events":[{"start":1.5,"end":3.0},{"start":null,"end":5.0}]}""",
@@ -94,7 +94,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("review_required(원곡과 맞추지 못함)는 사유가 정해진 실패다")
     void analyze_throwsReviewRequired() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL))
                 .andRespond(withSuccess("{\"status\":\"review_required\",\"events\":[]}", MediaType.APPLICATION_JSON));
 
@@ -106,7 +106,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("알 수 없는 status는 사유 없는 실패다")
     void analyze_throws_onUnknownStatus() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL))
                 .andRespond(withSuccess("{\"status\":\"queued\"}", MediaType.APPLICATION_JSON));
 
@@ -118,7 +118,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("404와 'Feedback is not available for this song'이면 지원하지 않는 곡이다")
     void analyze_throwsUnsupportedSong_on404WithMessage() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL))
                 .andRespond(withResourceNotFound().contentType(MediaType.APPLICATION_JSON)
                         .body("{\"detail\":\"Feedback is not available for this song\"}"));
@@ -131,7 +131,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("문장이 다른 404(주소 설정 문제)와 401(키 문제)은 사유로 바꾸지 않고 그대로 던진다")
     void analyze_rethrows_onConfigErrors() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL)).andRespond(withResourceNotFound().body("Not Found"));
         server.expect(requestTo(FEEDBACK_URL)).andRespond(withUnauthorizedRequest());
 
@@ -142,7 +142,7 @@ class AiPracticeAnalysisClientTest {
     @Test
     @DisplayName("400(녹음 길이·형식 문제)은 녹음을 확인하라는 사유, 503(원곡 저장소 장애)은 잠시 후 다시 요청하라는 사유다")
     void analyze_mapsBadRequestAndServiceUnavailable() {
-        AiPracticeAnalysisClient client = client(BASE_URL, false);
+        AiPracticeAnalysisClient client = client(BASE_URL);
         server.expect(requestTo(FEEDBACK_URL)).andRespond(withBadRequest());
         server.expect(requestTo(FEEDBACK_URL)).andRespond(withServiceUnavailable());
 
@@ -158,10 +158,10 @@ class AiPracticeAnalysisClientTest {
     @DisplayName("type=ai인데 주소나 키가 없으면 부팅 때 실패한다")
     void constructor_throws_whenNotConfigured() {
         assertThatThrownBy(() -> new AiPracticeAnalysisClient(
-                new PracticeProperties.Ai("ai", 0, "", "ai-key", false, 180), RestClient.create()))
+                new PracticeProperties.Ai("ai", 0, "", "ai-key", 180), RestClient.create()))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> new AiPracticeAnalysisClient(
-                new PracticeProperties.Ai("ai", 0, BASE_URL, null, false, 180), RestClient.create()))
+                new PracticeProperties.Ai("ai", 0, BASE_URL, null, 180), RestClient.create()))
                 .isInstanceOf(IllegalStateException.class);
     }
 }
