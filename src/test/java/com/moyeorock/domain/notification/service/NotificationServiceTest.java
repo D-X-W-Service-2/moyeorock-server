@@ -17,6 +17,7 @@ import com.moyeorock.global.common.enums.NotificationType;
 import com.moyeorock.global.event.NotificationEvent;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -85,6 +86,18 @@ class NotificationServiceTest {
         assertThat(ids.getValue()).containsExactlyInAnyOrder(10L, 20L);
         assertThat(response).isEqualTo(new NotificationReadResponse(2, 1));
         verify(notificationRepository, never()).markAllAsRead(any());
+    }
+
+    @Test
+    @DisplayName("신청·초대가 처리되면 그 건을 알린 처리형 알림 타입만 읽음 처리한다")
+    void markRequestNotificationsRead_usesRequestTypesOfTarget() {
+        notificationService.markRequestNotificationsRead(NotificationTargetType.JOIN_REQUEST, 7L);
+        notificationService.markRequestNotificationsRead(NotificationTargetType.INVITATION, 8L);
+
+        verify(notificationRepository).markTargetAsRead(NotificationTargetType.JOIN_REQUEST, 7L,
+                Set.of(NotificationType.TEAM_APPLY, NotificationType.RECRUIT_POST_APPLIED));
+        verify(notificationRepository).markTargetAsRead(NotificationTargetType.INVITATION, 8L,
+                Set.of(NotificationType.TEAM_INVITE, NotificationType.GROUP_INVITE));
     }
 
     @Test

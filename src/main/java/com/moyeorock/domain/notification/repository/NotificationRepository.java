@@ -1,6 +1,8 @@
 package com.moyeorock.domain.notification.repository;
 
 import com.moyeorock.domain.notification.entity.Notification;
+import com.moyeorock.global.common.enums.NotificationTargetType;
+import com.moyeorock.global.common.enums.NotificationType;
 import java.util.Collection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,4 +33,14 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Query("update Notification n set n.isRead = true "
             + "where n.userId = :userId and n.isRead = false and n.id in :ids")
     int markAsRead(@Param("userId") Long userId, @Param("ids") Collection<Long> ids);
+
+    /**
+     * 신청·초대 한 건을 가리키는 알림 중 지정한 타입의 안읽은 알림을 받은 사람과 관계없이 읽음 처리한다(#182).
+     * 신청·초대가 처리되면 "처리해 달라"는 알림은 더 볼 필요가 없다.
+     */
+    @Modifying
+    @Query("update Notification n set n.isRead = true "
+            + "where n.targetType = :targetType and n.targetId = :targetId and n.type in :types and n.isRead = false")
+    int markTargetAsRead(@Param("targetType") NotificationTargetType targetType, @Param("targetId") Long targetId,
+            @Param("types") Collection<NotificationType> types);
 }
