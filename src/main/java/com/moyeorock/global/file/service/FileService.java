@@ -1,5 +1,6 @@
 package com.moyeorock.global.file.service;
 
+import com.moyeorock.global.common.dto.DeleteResponse;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import com.moyeorock.global.file.client.FileStorageClient;
@@ -13,8 +14,12 @@ import java.io.InputStream;
 import java.io.PushbackInputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.NoSuchFileException;
+import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -29,24 +34,26 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class FileService {
 
-    // 결정 필요 사항: 이미지 파일만 허용(docs/plans/file-upload-presigned-url.md). gif·heic 등이
-    // 필요해지면 이 목록에 추가만 하면 된다.
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+    // 도메인별 허용 형식·크기는 노션 API 초안 "Presigned URL 발급"의 표(2026-11-09)를 따른다.
+    // 이미지 3개 도메인은 같은 규칙이고, 연습 녹음만 오디오다. 새 형식이 필요하면 해당 목록에 추가만 하면 된다.
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+    private static final Set<String> AUDIO_EXTENSIONS = Set.of("mp3", "m4a", "wav");
 
     // fileName 확장자만 막으면 contentType은 클라이언트가 원하는 값을 그대로 보낼 수 있어서
     // (예: fileName=x.png + contentType=text/html) GET /v1/files/local/**(인증 없음)가 그
     // contentType을 그대로 응답 헤더로 echo하면 저장형 XSS가 된다 — 확장자와 별개로 반드시 검증한다.
-    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+    private static final Set<String> IMAGE_CONTENT_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
+    private static final Set<String> AUDIO_CONTENT_TYPES =
+            Set.of("audio/mpeg", "audio/mp4", "audio/x-m4a", "audio/wav", "audio/x-wav");
 
-    // receiveUpload는 raw PUT body를 그대로 디스크에 써서 spring.servlet.multipart.max-file-size가
-    // 적용되지 않는다 — 로컬 디스크 고갈을 막기 위한 임시 상한(S3 전환 시 이 제약 자체가 사라진다).
-    private static final long MAX_UPLOAD_SIZE_BYTES = 10L * 1024 * 1024;
-
-    private static final Map<UploadDomain, String> FOLDER_BY_DOMAIN = Map.of(
-            UploadDomain.PROFILE_IMAGE, "profile",
-            UploadDomain.GROUP_COVER, "group",
-            UploadDomain.PERFORMANCE_POSTER, "performance"
-    );
+    // 로컬 저장의 receiveUpload는 raw PUT body를 그대로 디스크에 써서 spring.servlet.multipart.max-file-size가
+    // 적용되지 않아 여기서 막는다. S3는 클라이언트가 S3에 직접 올려 서버가 업로드 때 막을 수 없다 — 크기가
+    // 중요한 쪽(연습 녹음)은 findSize·maxUploadBytes로 사후에 확인한다.
+    private static final long IMAGE_MAX_BYTES = 10L * 1024 * 1024;
+    // 연습 녹음은 AI 연습 피드백 API로 Base64에 실어 보낸다(PracticeRecordingService). AI 쪽 한도는 Base64 2,600,000자·원본
+    // 2,000,000바이트인데, Base64가 원본의 4/3배라 원본 1,950,000바이트가 Base64 2,600,000자다 — 둘 중 빡빡한 쪽에 맞춘다
+    // (AI 팀 핸드오프 2026-11-11). Lambda 함수 URL의 요청 본문 한도(6MB) 안에도 들어간다.
+    private static final long AUDIO_MAX_BYTES = 1_950_000L;
 
     private final UploadedFileRepository uploadedFileRepository;
     private final FileStorageClient fileStorageClient;
@@ -54,12 +61,13 @@ public class FileService {
     @Transactional
     public PresignedUrlResponse issuePresignedUrl(UploadDomain domain, String fileName, String contentType,
             Long uploaderId) {
+        UploadRule rule = ruleOf(domain);
         String extension = extractExtension(fileName);
-        if (!ALLOWED_EXTENSIONS.contains(extension) || !isAllowedContentType(contentType)) {
+        if (!rule.extensions().contains(extension) || !rule.allowsContentType(contentType)) {
             throw new BusinessException(ErrorCode.UNSUPPORTED_FILE_TYPE);
         }
 
-        String fileKey = generateFileKey(domain, extension);
+        String fileKey = rule.folder() + "/" + UUID.randomUUID() + "." + extension;
         UploadUrl uploadUrl = fileStorageClient.issuePresignedUrl(fileKey, contentType);
 
         UploadedFile file = UploadedFile.create(fileKey, domain, fileName, contentType, uploaderId);
@@ -97,7 +105,7 @@ public class FileService {
         }
         InputStream body = requireNonEmpty(content);
         try {
-            fileStorageClient.write(fileKey, new SizeLimitedInputStream(body, MAX_UPLOAD_SIZE_BYTES));
+            fileStorageClient.write(fileKey, new SizeLimitedInputStream(body, ruleOf(file.getDomain()).maxBytes()));
         } catch (UncheckedIOException e) {
             if (e.getCause() instanceof UploadSizeExceededException) {
                 throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
@@ -115,15 +123,94 @@ public class FileService {
         return new FileContent(openOrThrow(fileKey), file.getContentType());
     }
 
+    /**
+     * 다른 도메인이 요청으로 받은 {@code fileUrl}이 이 사용자가 {@code domain}으로 올린 파일인지 확인하고 스토리지
+     * key를 돌려준다. 비공개 파일(연습 녹음)은 URL이 아니라 이 key를 저장해 두고, 읽을 때마다
+     * {@link #issueReadUrl}로 임시 URL을 만든다.
+     *
+     * <p>이 저장소가 만든 URL이 아니거나, 발급 이력(files 행)이 없거나, 업로더·도메인이 다르면 빈 값이다 —
+     * 어느 경우인지는 구분해 알려주지 않는다(남의 파일이 있는지 드러내지 않으려고). 쿼리 1번이라 트랜잭션은 열지 않는다.
+     */
+    public Optional<String> findOwnedFileKey(String fileUrl, UploadDomain domain, Long userId) {
+        return fileStorageClient.toFileKey(fileUrl)
+                .flatMap(uploadedFileRepository::findByFileKey)
+                .filter(file -> file.isUploadedBy(userId) && file.getDomain() == domain)
+                .map(UploadedFile::getFileKey);
+    }
+
+    /** 비공개 파일을 읽을 임시 URL. 권한 확인은 부르는 도메인이 key를 저장할 때(findOwnedFileKey) 끝낸 것으로 본다. */
+    public String issueReadUrl(String fileKey, Duration expiry) {
+        return fileStorageClient.issueReadUrl(fileKey, expiry);
+    }
+
+    /**
+     * 비공개 파일(연습 녹음)을 통째로 읽는다 — AI에 Base64로 실어 보낼 때 쓴다. {@code maxBytes}를 넘으면 더 읽지 않고
+     * FILE_SIZE_EXCEEDED다: 등록 때 크기를 확인했어도 업로드 URL이 만료되기 전이면 같은 key에 더 큰 파일을 다시 올릴 수
+     * 있어서, 메모리에 올리기 전에 다시 막는다. DB를 보지 않아 트랜잭션을 열지 않는다.
+     */
+    public byte[] readBytes(String fileKey, long maxBytes) {
+        // 한도보다 1바이트 더 받아 넘었는지 안다. 저장소는 이만큼만 내려받는다(S3는 Range) — 인증 없는 로컬 서빙이 쓰는
+        // read(스트림)와 따로 둔 서버 전용 읽기다(이슈 #167).
+        byte[] bytes;
+        try {
+            bytes = fileStorageClient.readAtMost(fileKey, Math.toIntExact(maxBytes + 1));
+        } catch (UncheckedIOException e) {
+            if (e.getCause() instanceof NoSuchFileException) {
+                throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
+            }
+            throw e;
+        }
+        if (bytes.length > maxBytes) {
+            throw new BusinessException(ErrorCode.FILE_SIZE_EXCEEDED);
+        }
+        return bytes;
+    }
+
+    /** 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값. */
+    public OptionalLong findSize(String fileKey) {
+        return fileStorageClient.size(fileKey);
+    }
+
+    /** 도메인별 업로드 크기 한도. S3는 업로드 때 막지 못해 부르는 쪽이 findSize와 비교한다. */
+    public long maxUploadBytes(UploadDomain domain) {
+        return ruleOf(domain).maxBytes();
+    }
+
+    /**
+     * 다른 도메인이 자기 데이터와 함께 지우는 파일을 key로 지운다(연습 녹음 — 회원 탈퇴, PR #157 리뷰). 부르는 쪽 트랜잭션에
+     * 참여해 files 행을 지우고, 저장소 객체는 커밋된 뒤에 지운다(delete와 같은 순서 — 롤백되면 파일이 남는다).
+     * 업로더가 다른 key와 이미 지워진 key는 건너뛴다(사용자가 파일 삭제 API로 먼저 지웠을 수 있다). 같은 key가 여러 번 와도 한 번만 지운다.
+     */
     @Transactional
-    public void delete(Long fileId, Long userId) {
-        UploadedFile file = uploadedFileRepository.findById(fileId)
+    public void deleteOwnedFiles(Long uploaderId, Collection<String> fileKeys) {
+        if (fileKeys.isEmpty()) {
+            return;
+        }
+        List<UploadedFile> files = uploadedFileRepository.findAllByFileKeyIn(Set.copyOf(fileKeys)).stream()
+                .filter(file -> file.isUploadedBy(uploaderId))
+                .toList();
+        uploadedFileRepository.deleteAll(files);
+        files.forEach(file -> deleteFromStorageAfterCommit(file.getFileKey()));
+    }
+
+    /**
+     * 업로드 URL 발급 때 받은 {@code fileUrl}로 파일을 지운다(이슈 #164). 프로필·커버·포스터는 fileUrl만 저장하고 조회 응답에도
+     * URL만 주므로, fileId로 지우게 하면 저장한 뒤에는 프론트가 삭제를 부를 수 없었다.
+     *
+     * <p>이 저장소가 만든 URL이 아니거나 발급 이력(files 행)이 없으면 FILE_NOT_FOUND, 업로더가 아니면 NO_PERMISSION이다.
+     * 연습 녹음 상세의 {@code audioUrl}은 조회 때마다 만드는 임시 URL이라 fileUrl이 아니다 — FILE_NOT_FOUND가 난다.
+     */
+    @Transactional
+    public DeleteResponse delete(String fileUrl, Long userId) {
+        UploadedFile file = fileStorageClient.toFileKey(fileUrl)
+                .flatMap(uploadedFileRepository::findByFileKey)
                 .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
         if (!file.isUploadedBy(userId)) {
             throw new BusinessException(ErrorCode.NO_PERMISSION);
         }
         uploadedFileRepository.delete(file);
         deleteFromStorageAfterCommit(file.getFileKey());
+        return DeleteResponse.of(file.getId());
     }
 
     // repository.delete()는 삭제를 예약만 하고 실제 DELETE는 커밋 때 나간다 — 그 전에 스토리지(비가역)를
@@ -175,13 +262,15 @@ public class FileService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.FILE_NOT_FOUND));
     }
 
-    private boolean isAllowedContentType(String contentType) {
-        return ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT));
-    }
-
-    private String generateFileKey(UploadDomain domain, String extension) {
-        String folder = FOLDER_BY_DOMAIN.get(domain);
-        return folder + "/" + UUID.randomUUID() + "." + extension;
+    // default 없는 switch라 UploadDomain에 값이 늘면 규칙을 정하기 전까지 컴파일되지 않는다.
+    private static UploadRule ruleOf(UploadDomain domain) {
+        return switch (domain) {
+            case PROFILE_IMAGE -> new UploadRule("profile", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
+            case GROUP_COVER -> new UploadRule("group", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
+            case PERFORMANCE_POSTER ->
+                    new UploadRule("performance", IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_MAX_BYTES);
+            case PRACTICE_AUDIO -> new UploadRule("practice", AUDIO_EXTENSIONS, AUDIO_CONTENT_TYPES, AUDIO_MAX_BYTES);
+        };
     }
 
     // 경로 조작(키 안에 "..", "/" 등을 넣는 것) 방지를 위해 확장자는 영숫자만 허용하고 소문자로 통일한다.
@@ -195,5 +284,13 @@ public class FileService {
     }
 
     public record FileContent(InputStream content, String contentType) {
+    }
+
+    // 업로드 도메인 하나의 저장 폴더·허용 형식·크기 한도.
+    private record UploadRule(String folder, Set<String> extensions, Set<String> contentTypes, long maxBytes) {
+
+        boolean allowsContentType(String contentType) {
+            return contentTypes.contains(contentType.toLowerCase(Locale.ROOT));
+        }
     }
 }

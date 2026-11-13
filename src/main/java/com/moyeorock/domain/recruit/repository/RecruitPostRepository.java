@@ -17,6 +17,9 @@ public interface RecruitPostRepository extends JpaRepository<RecruitPost, Long> 
     // 모임 해체 때 그 모임의 모집 중 공고를 찾는다(idx_recruit_posts_target_group_id).
     List<RecruitPost> findByTargetGroupIdAndStatus(Long targetGroupId, RecruitStatus status);
 
+    // 팀 해체 때 그 팀의 모집 중 공고를 찾는다(idx_recruit_posts_target_team_id).
+    List<RecruitPost> findByTargetTeamIdAndStatus(Long targetTeamId, RecruitStatus status);
+
     /**
      * 조건 4개(targetType·region·instrument·status)라 파생 메서드명 대신 @Query로 뺐다(conventions.md §4).
      * 전부 선택 조건이고 null이면 걸지 않는다.

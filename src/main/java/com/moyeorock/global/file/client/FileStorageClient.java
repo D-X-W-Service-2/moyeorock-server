@@ -2,6 +2,8 @@ package com.moyeorock.global.file.client;
 
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 // local/s3 구현체 둘 다 만들어서 file.storage.type으로 전환한다(기본값 local) — 구현체가
 // 실제로 2개라 CLAUDE.md 절대 규칙 3(인터페이스+구현체 1:1 금지)에 걸리지 않는다.
@@ -16,7 +18,22 @@ public interface FileStorageClient {
 
     void write(String fileKey, InputStream content);
 
+    // 로컬 서빙(GET /v1/files/local/**, 인증 없음)이 쓰는 스트림 읽기. S3에서는 열지 않는다 — 열면 비공개 파일(연습 녹음)이
+    // 그 경로로 인증 없이 나간다.
     InputStream read(String fileKey);
 
+    // 서버가 파일 내용을 직접 읽을 때(연습 녹음을 AI에 보낼 때, 이슈 #167) 쓴다. 앞에서부터 최대 maxBytes까지만 받는다 —
+    // 등록 뒤 같은 key에 큰 파일을 다시 올려도 그만큼만 내려받는다. 파일이 없으면 UncheckedIOException(NoSuchFileException).
+    byte[] readAtMost(String fileKey, int maxBytes);
+
     void delete(String fileKey);
+
+    // 비공개 파일(연습 녹음)을 읽을 임시 URL. 공개 파일(프로필·커버·포스터)은 fileUrl을 그대로 쓰므로 부르지 않는다.
+    String issueReadUrl(String fileKey, Duration expiry);
+
+    // issuePresignedUrl이 돌려준 fileUrl을 fileKey로 되돌린다. 이 저장소가 만든 URL 모양이 아니면 빈 값.
+    Optional<String> toFileKey(String fileUrl);
+
+    // 실제로 올라간 파일 크기(바이트). 아직 안 올라왔으면 빈 값.
+    OptionalLong size(String fileKey);
 }

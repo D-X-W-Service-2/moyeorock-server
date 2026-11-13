@@ -7,12 +7,17 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.entity.Team;
+import com.moyeorock.domain.team.entity.TeamGenre;
 import com.moyeorock.domain.team.entity.TeamMember;
 import com.moyeorock.domain.team.enums.MemberStatus;
 import com.moyeorock.domain.team.enums.TeamRole;
+import com.moyeorock.domain.team.enums.TeamStatus;
+import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
@@ -37,6 +42,8 @@ class TeamMemberServiceTest {
 
     @Mock
     TeamRepository teamRepository;
+    @Mock
+    TeamGenreRepository teamGenreRepository;
     @Mock
     TeamMemberRepository teamMemberRepository;
     @InjectMocks
@@ -207,5 +214,52 @@ class TeamMemberServiceTest {
         assertThat(teamMemberService.isLeader(TEAM_ID, MEMBER_ID)).isFalse();
         assertThat(teamMemberService.isLeader(TEAM_ID, 3L)).isFalse();
         assertThat(teamMemberService.isLeader(TEAM_ID, 99L)).isFalse();
+    }
+
+    // ---------- isPerformanceTeam · getSummaries ----------
+
+    @Test
+    @DisplayName("공연 팀 여부: Repository의 답을 그대로 돌려준다")
+    void isPerformanceTeam_delegatesToRepository() {
+        given(teamRepository.existsByIdAndPerformanceIdIsNotNull(TEAM_ID)).willReturn(true);
+        given(teamRepository.existsByIdAndPerformanceIdIsNotNull(6L)).willReturn(false);
+
+        assertThat(teamMemberService.isPerformanceTeam(TEAM_ID)).isTrue();
+        assertThat(teamMemberService.isPerformanceTeam(6L)).isFalse();
+    }
+
+    @Test
+    @DisplayName("팀 요약: 활동 중인 팀만 이름·지역·장르·인원 수로 조립하고, 해체된 팀과 없는 id는 빠진다")
+    void getSummaries_assemblesActiveTeamsOnly() {
+        Team active = team(TEAM_ID, "무명밴드", null);
+        TeamGenre rock = TeamGenre.create(TEAM_ID, Genre.ROCK);
+        ReflectionTestUtils.setField(rock, "id", 1L);
+        TeamMemberRepository.TeamMemberCount count = new TeamMemberRepository.TeamMemberCount() {
+            public Long getTeamId() {
+                return TEAM_ID;
+            }
+
+            public long getCount() {
+                return 3;
+            }
+        };
+        // 해체된 팀(6번)과 없는 팀(7번)은 findActiveByIdIn 결과에 없다
+        given(teamRepository.findActiveByIdIn(List.of(TEAM_ID, 6L, 7L))).willReturn(List.of(active));
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of(rock));
+        given(teamMemberRepository.countActiveByTeamIds(List.of(TEAM_ID))).willReturn(List.of(count));
+
+        Map<Long, TeamSummaryResponse> result = teamMemberService.getSummaries(List.of(TEAM_ID, 6L, 7L));
+
+        assertThat(result).containsOnlyKeys(TEAM_ID);
+        assertThat(result.get(TEAM_ID)).isEqualTo(new TeamSummaryResponse(
+                TEAM_ID, "무명밴드", Region.SEOUL, List.of(Genre.ROCK), TeamStatus.ACTIVE, 3));
+    }
+
+    @Test
+    @DisplayName("팀 요약: id가 없거나 비었으면 조회하지 않고 빈 Map이다")
+    void getSummaries_withoutIds_returnsEmpty() {
+        assertThat(teamMemberService.getSummaries(null)).isEmpty();
+        assertThat(teamMemberService.getSummaries(List.of())).isEmpty();
+        verify(teamRepository, never()).findActiveByIdIn(List.of());
     }
 }

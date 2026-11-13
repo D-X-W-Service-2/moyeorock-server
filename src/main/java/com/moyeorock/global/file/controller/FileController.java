@@ -19,11 +19,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -47,11 +47,22 @@ public class FileController {
         return ApiResponse.success(response);
     }
 
-    @Operation(summary = "파일 삭제")
-    @DeleteMapping("/{fileId}")
-    public ApiResponse<DeleteResponse> delete(@AuthUser Long userId, @PathVariable Long fileId) {
-        fileService.delete(fileId, userId);
-        return ApiResponse.success(DeleteResponse.of(fileId));
+    @Operation(summary = "파일 삭제", description = """
+            업로드 URL 발급 때 받은 `fileUrl`(프로필·커버·포스터에 저장한 그 URL)로 지운다. 업로더 본인만 지울 수 있다.
+
+            - 예: `DELETE /v1/files?fileUrl=https%3A%2F%2F...%2Fprofile%2Fabc.png` — 쿼리 값이라 `encodeURIComponent`로 인코딩한다.
+            - 응답 `id`는 지운 파일의 id다(업로드 응답의 `fileId`와 같은 값).
+            - 연습 녹음 상세의 `audioUrl`은 조회 때마다 새로 만드는 임시 URL이라 이 API로 지울 수 없다(404).
+
+            **에러**
+            - 400 `VALIDATION_FAILED`: `fileUrl`이 없음
+            - 401 `UNAUTHORIZED`: 인증 필요
+            - 403 `NO_PERMISSION`: 남이 올린 파일
+            - 404 `FILE_NOT_FOUND`: 이 서버가 발급한 URL이 아니거나 이미 지워진 파일
+            """)
+    @DeleteMapping
+    public ApiResponse<DeleteResponse> delete(@AuthUser Long userId, @RequestParam String fileUrl) {
+        return ApiResponse.success(fileService.delete(fileUrl, userId));
     }
 
     /**

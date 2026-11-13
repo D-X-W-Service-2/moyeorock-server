@@ -10,9 +10,13 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.setlist.dto.response.TeamSongResponse;
 import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.song.dto.response.SongSummaryResponse;
+import com.moyeorock.domain.team.client.AiMemberRecommendationClient;
+import com.moyeorock.domain.team.client.AiRecommendRequest;
+import com.moyeorock.domain.team.client.AiRecommendResponse;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
@@ -20,6 +24,7 @@ import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
 import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
+import com.moyeorock.domain.team.dto.response.TeamMemberRecommendationResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembersResponse;
@@ -36,6 +41,8 @@ import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
+import com.moyeorock.domain.user.dto.response.RecommendationCandidateResponse;
+import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
@@ -43,17 +50,18 @@ import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.common.enums.Genre;
 import com.moyeorock.global.common.enums.Instrument;
+import com.moyeorock.global.common.enums.Level;
 import com.moyeorock.global.common.enums.Region;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -81,8 +89,20 @@ class TeamServiceTest {
     PerformanceMemberService performanceMemberService;
     @Mock
     SetlistService setlistService;
-    @InjectMocks
+    @Mock
+    AiMemberRecommendationClient aiMemberRecommendationClient;
+    @Mock
+    RecruitPostService recruitPostService;
     TeamService teamService;
+
+    // 팀 요약 조립은 TeamMemberService에 있어서, 같은 Repository 목으로 만든 진짜 서비스를 붙인다(기존 스텁이 그대로 통한다)
+    @BeforeEach
+    void setUp() {
+        teamService = new TeamService(teamRepository, teamGenreRepository, teamMemberRepository, userService,
+                performanceMemberService, setlistService, aiMemberRecommendationClient,
+                new TeamMemberService(teamRepository, teamGenreRepository, teamMemberRepository),
+                recruitPostService);
+    }
 
     private Team team() {
         Team team = Team.create("무명밴드", "소개", Region.SEOUL);
@@ -248,11 +268,23 @@ class TeamServiceTest {
     }
 
     @Test
+    @DisplayName("팀 해체: 해체되면 그 팀의 모집 중 공고를 마감한다")
+    void disband_closesOpenRecruitPosts() {
+        givenTeam(team());
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+
+        teamService.disband(LEADER_ID, TEAM_ID, new TeamStatusUpdateRequest(TeamStatus.DISBANDED));
+
+        verify(recruitPostService).closeOpenPostsOfTeam(TEAM_ID);
+    }
+
+    @Test
     @DisplayName("팀 해체: DISBANDED가 아닌 값은 VALIDATION_FAILED")
     void disband_withOtherStatus_isValidationFailed() {
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.ACTIVE)), ErrorCode.VALIDATION_FAILED);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     @Test
@@ -264,6 +296,7 @@ class TeamServiceTest {
         assertErrorCode(() -> teamService.disband(MEMBER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.NOT_TEAM_LEADER);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     @Test
@@ -275,6 +308,7 @@ class TeamServiceTest {
         assertErrorCode(() -> teamService.disband(LEADER_ID, TEAM_ID,
                 new TeamStatusUpdateRequest(TeamStatus.DISBANDED)), ErrorCode.INVALID_STATE);
         verify(setlistService, never()).deleteByTeam(any());
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
     }
 
     // ---------- changeMember ----------
@@ -1130,5 +1164,183 @@ class TeamServiceTest {
         teamService.disbandAllByPerformance(7L);
 
         verify(setlistService, never()).deleteByTeam(any());
+        // 공연 팀은 공개 공고를 만들 수 없어 공고를 건드리지 않는다
+        verify(recruitPostService, never()).closeOpenPostsOfTeam(any());
+    }
+
+    // ---------- recommendMembers ----------
+
+    private TeamMember memberWith(Long userId, TeamRole role, Instrument instrument) {
+        return TeamMember.create(TEAM_ID, userId, role, instrument);
+    }
+
+    private RecommendationCandidateResponse candidate(Long userId, Level level) {
+        return new RecommendationCandidateResponse(userId, Region.SEOUL, List.of(Genre.ROCK), level);
+    }
+
+    private AiRecommendResponse.Item scored(Long userId, Double score, String... reasons) {
+        return new AiRecommendResponse.Item(userId, score, List.of(reasons));
+    }
+
+    // 팀장 1명(보컬)만 있는 활동 중 팀에서 DRUM 후보 2명(30·31)이 있는 상황
+    private void givenRecommendationSetup() {
+        givenTeam(team());
+        givenMember(LEADER_ID, memberWith(LEADER_ID, TeamRole.LEADER, Instrument.VOCAL));
+        given(teamMemberRepository.findActiveMembers(TEAM_ID))
+                .willReturn(List.of(memberWith(LEADER_ID, TeamRole.LEADER, Instrument.VOCAL)));
+        // 후보 수를 바꾸는 테스트가 다시 덮어쓰므로 lenient다
+        lenient().when(userService.findRecommendationCandidates(eq(Instrument.DRUM), eq(List.of(LEADER_ID)), eq(200)))
+                .thenReturn(List.of(candidate(30L, Level.ADVANCED), candidate(31L, Level.NOVICE)));
+        given(userService.getInstruments(List.of(LEADER_ID))).willReturn(Map.of(LEADER_ID, List.of(
+                new UserInstrumentResponse(1L, Instrument.BASS, Level.NOVICE),
+                new UserInstrumentResponse(2L, Instrument.VOCAL, Level.INTERMEDIATE))));
+        lenient().when(aiMemberRecommendationClient.isConfigured()).thenReturn(true);
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 팀장이 아니면 403이고 후보 조회도 AI 호출도 하지 않는다")
+    void recommendMembers_notLeader_forbidden() {
+        givenTeam(team());
+        givenMember(MEMBER_ID, member(MEMBER_ID, TeamRole.MEMBER, MemberStatus.ACTIVE));
+
+        assertErrorCode(() -> teamService.recommendMembers(MEMBER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.NOT_TEAM_LEADER);
+
+        verify(userService, never()).findRecommendationCandidates(any(), any(), any(Integer.class));
+        verify(aiMemberRecommendationClient, never()).recommend(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 없는 팀은 404, 해체된 팀은 409다")
+    void recommendMembers_missingOrDisbandedTeam() {
+        givenNoTeam();
+        assertErrorCode(() -> teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.TEAM_NOT_FOUND);
+
+        givenTeam(disbandedTeam());
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+        assertErrorCode(() -> teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.INVALID_STATE);
+
+        verify(aiMemberRecommendationClient, never()).recommend(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 후보가 없으면 AI를 부르지 않고 빈 목록을 돌려준다")
+    void recommendMembers_noCandidates_skipsAi() {
+        givenTeam(team());
+        givenMember(LEADER_ID, member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE));
+        given(teamMemberRepository.findActiveMembers(TEAM_ID))
+                .willReturn(List.of(member(LEADER_ID, TeamRole.LEADER, MemberStatus.ACTIVE)));
+        given(userService.findRecommendationCandidates(any(), any(), any(Integer.class))).willReturn(List.of());
+
+        TeamMemberRecommendationResponse response =
+                teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM);
+
+        assertThat(response.instrument()).isEqualTo(Instrument.DRUM);
+        assertThat(response.candidates()).isEmpty();
+        verify(aiMemberRecommendationClient, never()).recommend(any());
+    }
+
+    @Test
+    @DisplayName("팀원 추천: AI에는 팀·찾는 악기·팀원(세션과 그 악기 실력)·후보를 ERD 값대로 보낸다")
+    void recommendMembers_sendsTeamMembersAndCandidates() {
+        givenRecommendationSetup();
+        TeamGenre rock = TeamGenre.create(TEAM_ID, Genre.ROCK);
+        ReflectionTestUtils.setField(rock, "id", 1L);
+        given(teamGenreRepository.findAllByTeamIdIn(List.of(TEAM_ID))).willReturn(List.of(rock));
+        given(aiMemberRecommendationClient.recommend(any())).willReturn(new AiRecommendResponse(List.of()));
+
+        teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM);
+
+        ArgumentCaptor<AiRecommendRequest> captor = ArgumentCaptor.forClass(AiRecommendRequest.class);
+        verify(aiMemberRecommendationClient).recommend(captor.capture());
+        AiRecommendRequest sent = captor.getValue();
+        assertThat(sent.team()).isEqualTo(new AiRecommendRequest.Team(TEAM_ID, Region.SEOUL, List.of(Genre.ROCK)));
+        assertThat(sent.instrument()).isEqualTo(Instrument.DRUM);
+        // 팀장은 이 팀에서 보컬이므로 실력도 보컬 것(INTERMEDIATE)이다 — 베이스 실력(NOVICE)이 아니다
+        assertThat(sent.members()).containsExactly(
+                new AiRecommendRequest.Member(LEADER_ID, Instrument.VOCAL, Level.INTERMEDIATE));
+        assertThat(sent.candidates()).containsExactly(
+                new AiRecommendRequest.Candidate(30L, Region.SEOUL, List.of(Genre.ROCK), Level.ADVANCED),
+                new AiRecommendRequest.Candidate(31L, Region.SEOUL, List.of(Genre.ROCK), Level.NOVICE));
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 점수 높은 순으로 돌려주고, 보내지 않은 id·점수 없음·중복·탈퇴한 사용자는 버린다")
+    void recommendMembers_sortsAndDropsInvalidItems() {
+        givenRecommendationSetup();
+        given(aiMemberRecommendationClient.recommend(any())).willReturn(new AiRecommendResponse(List.of(
+                scored(31L, 0.40, "실력 NOVICE"),
+                scored(30L, 0.87, "장르 일치: ROCK", "활동 지역 동일"),
+                scored(30L, 0.10, "중복 항목"),
+                scored(999L, 0.99, "보내지 않은 사용자"),
+                new AiRecommendResponse.Item(31L, null, List.of("점수 없음")))));
+        given(userService.getSummaries(any())).willReturn(Map.of(
+                30L, new UserSummaryResponse(30L, "서준", null),
+                31L, new UserSummaryResponse(31L, "민서", null)));
+
+        TeamMemberRecommendationResponse response =
+                teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM);
+
+        assertThat(response.candidates()).extracting(c -> c.user().id()).containsExactly(30L, 31L);
+        assertThat(response.candidates().get(0).score()).isEqualTo(0.87);
+        assertThat(response.candidates().get(0).reasons()).containsExactly("장르 일치: ROCK", "활동 지역 동일");
+
+        // 31번이 탈퇴해 요약이 조회되지 않으면 결과에서 빠진다
+        given(userService.getSummaries(any())).willReturn(Map.of(30L, new UserSummaryResponse(30L, "서준", null)));
+        assertThat(teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM).candidates())
+                .extracting(c -> c.user().id()).containsExactly(30L);
+    }
+
+    @Test
+    @DisplayName("팀원 추천: 최대 10명까지만 돌려주고 근거가 없으면 빈 목록이다")
+    void recommendMembers_limitsToTenAndFillsEmptyReasons() {
+        givenRecommendationSetup();
+        List<RecommendationCandidateResponse> many = java.util.stream.LongStream.rangeClosed(100, 114)
+                .mapToObj(id -> candidate(id, Level.NOVICE)).toList();
+        given(userService.findRecommendationCandidates(eq(Instrument.DRUM), eq(List.of(LEADER_ID)), eq(200)))
+                .willReturn(many);
+        List<AiRecommendResponse.Item> items = many.stream()
+                .map(c -> new AiRecommendResponse.Item(c.userId(), c.userId() / 1000.0, null)).toList();
+        given(aiMemberRecommendationClient.recommend(any())).willReturn(new AiRecommendResponse(items));
+        given(userService.getSummaries(any())).willAnswer(inv -> {
+            java.util.Collection<Long> ids = inv.getArgument(0);
+            return ids.stream().collect(java.util.stream.Collectors.toMap(id -> id,
+                    id -> new UserSummaryResponse(id, "u" + id, null)));
+        });
+
+        TeamMemberRecommendationResponse response =
+                teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM);
+
+        assertThat(response.candidates()).hasSize(10);
+        assertThat(response.candidates().get(0).user().id()).isEqualTo(114L);
+        assertThat(response.candidates().get(0).reasons()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("팀원 추천: AI 호출이 실패하거나 계약을 어기면 503 RECOMMENDATION_UNAVAILABLE이다")
+    void recommendMembers_aiFailure_unavailable() {
+        givenRecommendationSetup();
+        given(aiMemberRecommendationClient.recommend(any()))
+                .willThrow(new org.springframework.web.client.ResourceAccessException("timeout"))
+                .willThrow(new IllegalStateException("candidates 없음"));
+
+        assertErrorCode(() -> teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.RECOMMENDATION_UNAVAILABLE);
+        assertErrorCode(() -> teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.RECOMMENDATION_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("팀원 추천: AI 서버 주소가 설정되지 않았으면 호출하지 않고 503이다")
+    void recommendMembers_notConfigured_unavailable() {
+        givenRecommendationSetup();
+        given(aiMemberRecommendationClient.isConfigured()).willReturn(false);
+
+        assertErrorCode(() -> teamService.recommendMembers(LEADER_ID, TEAM_ID, Instrument.DRUM),
+                ErrorCode.RECOMMENDATION_UNAVAILABLE);
+
+        verify(aiMemberRecommendationClient, never()).recommend(any());
     }
 }

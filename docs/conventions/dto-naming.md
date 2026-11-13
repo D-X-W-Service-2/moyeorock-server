@@ -1,6 +1,6 @@
 # moyeorock DTO 명명 규약
 
-대상: 전체 77개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28, 내 모임 목록·모임 해체 추가분 2026-10-29, 내 팀 목록 신규분 2026-10-31 포함) · 14 도메인
+대상: 전체 77개 엔드포인트(파일 삭제 신규분 2026-09-11, 카카오 가입 완료 신규분 2026-09-28, 내 모임 목록·모임 해체 추가분 2026-10-29, 내 팀 목록 신규분 2026-10-31, 연습 녹음 신규분 2026-11-09 포함) · 15 도메인
 기준: `API 초안`(2026-09-11 대조) · ERD v3 (MySQL 8.0)
 
 **버전**: 전 도메인 `/v1/`, 예외 없음. `rehearsal`의 `/v0/` 예외는 초안이 정리돼 2026-10-05에 해소했다(`docs/specs/api-spec.md` §3).
@@ -386,6 +386,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 곡 검색 | GET | `/v1/songs` | — | `PageResponse<SongResponse>` |
 | 내 취향 추천곡 | GET | `/v1/users/me/songs/recommendations` | — | `SongRecommendationResponse` |
 | 팀 곡 추천 (AI) | GET | `/v1/teams/{teamId}/songs/recommendations` | — | `TeamSongRecommendationResponse` |
+| 곡 수동 동기화 (운영용) | POST | `/v1/songs/sync` | — | `SongSyncResponse` |
 | 팀 선택곡 저장 | PUT | `/v1/teams/{teamId}/songs` | `TeamSongsSaveRequest` | `TeamSongsResponse` |
 | 팀 선택곡 조회 | GET | `/v1/teams/{teamId}/songs` | — | `TeamSongsResponse` |
 
@@ -396,6 +397,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | `SongResponse` | `(Long id, String title, String artist, Genre genre, String songKey, Integer bpm, List<SongDifficultyResponse> difficulty)` — 곡 검색·추천의 곡 정보 |
 | `SongDifficultyResponse` | `(Instrument part, Level level)` — 파트별 난이도. 정보가 없는 파트는 목록에서 빠진다 |
 | `SongSummaryResponse` | `(Long id, String title, String artist)` — 선택곡·셋리스트 항목용 축약형 |
+| `SongSyncResponse` | `(int pages, int created, int updated, int skipped)` — 곡 수동 동기화 결과(이슈 #162) |
 | `TeamSongResponse` | `(Long id, SongSummaryResponse song)` — 팀 선택곡 항목. 팀 상세 `songs`·팀 선택곡 저장 응답에서 재사용 |
 | `TeamSongsSaveRequest` | `(List<Long> songIds)` — 기존 선택곡 전체를 바꾼다(빈 목록이면 전부 삭제) |
 | `TeamSongsResponse` | `(Long teamId, List<TeamSongResponse> songs)` |
@@ -406,7 +408,7 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 `songs.difficulty` JSON 컬럼과 엔티티는 `Map<Instrument, Level>` 그대로 두고, 응답에서만 노션대로 `[{part, level}]` 배열로 펼친다(2026-11-02, 이슈 #103 — 전에는 응답도 Map 객체였다). 팀 선택곡 조회는 노션 "[추가 필요]" 페이지(`/v1/teams/{teamId}/setlist`)를 `/songs`로 맞춰 추가했다(이슈 #103).
 
-추천 2개는 **구현 방식 미정** 항목이다. 외부 모델을 붙이면 동기 응답이 불가능해져 `SongRecommendationJobResponse`(작업 id) + 폴링 조회가 추가된다. 지금 이름은 룰 기반 전제다.
+팀 곡 추천은 2026-11-12에 구현했다(이슈 #171). AI 서버를 동기로 불러 바로 응답하므로 작업 id·폴링 조회는 만들지 않았다. song 도메인이 받는다. `SongRecommendationController`·`SongRecommendationService`(TeamService → SetlistService → SongService 방향이라 SongService에 두면 순환), 응답 `TeamSongRecommendationResponse(Long teamId, List<RecommendedSong> songs)`, 중첩 `RecommendedSong(SongResponse song, double score, List<String> reasons, boolean selectedByOtherTeam)`. AI 호출 record는 `domain/song/client`의 `AiSongRecommendRequest`·`AiSongRecommendResponse`다. 내 취향 추천곡도 같은 Controller·Service가 받는다(2026-11-12, 이슈 #172). 응답 `SongRecommendationResponse(List<RecommendedSong> songs)`, 중첩 `RecommendedSong(SongResponse song, double score)`(근거 없음).
 
 ---
 
@@ -420,10 +422,10 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 | 저장 추가 | POST | `/v1/bookmarks` | `BookmarkCreateRequest` | `BookmarkResponse` |
 | 저장 삭제 | DELETE | `/v1/bookmarks/{id}` | — | `DeleteResponse` |
 | 업로드 URL 발급 | POST | `/v1/files/presigned-url` | `PresignedUrlCreateRequest` | `PresignedUrlResponse` |
-| 파일 삭제 † | DELETE | `/v1/files/{fileId}` | — | 미정 |
+| 파일 삭제 † | DELETE | `/v1/files?fileUrl=` | — (`fileUrl` Query) | `DeleteResponse` |
 | 대시보드 통합 | GET | `/v1/dashboard` | — | `DashboardResponse` |
 
-> † `API 초안`에서 2026-09-11 새로 확인된 엔드포인트다. Response DTO 미정 — 착수 전 팀 확인 필요(`docs/specs/api-spec.md` §10).
+> † `API 초안`에서 2026-09-11 새로 확인된 엔드포인트다. 응답은 공용 `DeleteResponse`다. 2026-11-11 경로를 `/{fileId}`에서 `?fileUrl=`로 바꿨다 — 저장한 뒤에는 프론트가 `fileId`를 알 수 없어서다(이슈 #164, `docs/specs/api-spec.md` §10).
 
 **보조 DTO**
 
@@ -447,18 +449,49 @@ global/common/dto/ ← 봉투·페이지·공통 응답
 
 ---
 
+## 11-1. practice (5)
+
+패키지 `domain/practice` (4팀, 2026-11-09 신규, 이슈 #155 — 노션 `API 초안` 도메인 "연습")
+
+| 기능 | 메서드 | 경로 | Request | Response |
+|---|---|---|---|---|
+| 연습 녹음 분석 요청 | POST | `/v1/practice-recordings` | `PracticeRecordingCreateRequest` | `PracticeRecordingSummaryResponse` (202) |
+| 내 연습 녹음 목록 | GET | `/v1/users/me/practice-recordings` | — | `PageResponse<PracticeRecordingSummaryResponse>` |
+| 연습 녹음 상세 (분석 결과) | GET | `/v1/practice-recordings/{id}` | — | `PracticeRecordingDetailResponse` |
+| 연습 녹음 분석 다시 요청 | POST | `/v1/practice-recordings/{id}/retry` | — | `PracticeRecordingSummaryResponse` (202) |
+| 연습 녹음 삭제 | DELETE | `/v1/practice-recordings/{id}` | — | — (`data: null`) |
+
+**보조 DTO**
+
+| 클래스 | 설명 |
+|---|---|
+| `PracticeRecordingCreateRequest` | `(String title, Instrument part, Long songId, String audioUrl)` — `part`는 녹음한 세션(필수, 혼자 연습한 세션 하나의 녹음). `songId`는 연습한 곡(필수). `audioUrl`은 업로드 API(`PRACTICE_AUDIO`)가 준 `fileUrl`. 서버가 "내가 올린 연습 녹음 파일"인지 확인하고 스토리지 key로 바꿔 저장한다 |
+| `PracticeRecordingSummaryResponse` | `(Long id, String title, Instrument part, PracticeRecordingStatus status, LocalDateTime createdAt, LocalDateTime analyzedAt)` — 요청·다시 요청 응답과 목록 항목 공용(규칙 3) |
+| `PracticeRecordingDetailResponse` | `(Long id, String title, Instrument part, String audioUrl, PracticeRecordingStatus status, String failureReason, LocalDateTime createdAt, LocalDateTime analyzedAt, List<Feedback> feedbacks)` |
+| `PracticeRecordingDetailResponse.Feedback` | `(int startSec, int endSec, Instrument part, String content)` — 상세에서만 쓰는 중첩 record(규칙 6). 세션은 공용 `Instrument` |
+
+`audioUrl`(상세)은 저장된 값이 아니라 조회할 때마다 만드는 **임시 URL**(S3 presigned GET, 30분)이다 — 녹음은 비공개라 DB에는 URL 대신 스토리지 key가 있다. `PracticeRecordingStatus`(`SUBMITTED|ANALYZING|DONE|FAILED`)는 practice만 쓰는 도메인 enum이다. 삭제 응답은 노션대로 `data: null`이라 `DeleteResponse`를 쓰지 않는다(공지 삭제와 같은 예외).
+
+**다른 도메인이 부르는 메서드** (`PracticeRecordingService`)
+
+| 메서드 | 호출하는 쪽 | 동작 |
+|---|---|---|
+| `deleteAllOf(Long userId)` | 1팀 user(회원 탈퇴) | 호출한 쪽 트랜잭션에 참여. 이 사람의 연습 녹음 전부(분석 중 포함)를 잠금 조회해 피드백 → 녹음 순으로 hard delete하고, 녹음 파일을 `FileService.deleteOwnedFiles`로 지운다(`files` 행은 바로, 저장소 객체는 커밋 뒤). 겹친 분석 결과는 탈퇴 커밋 뒤 빈 결과를 보고 버려진다(PR #157 리뷰) |
+
+---
+
 ## 12. 정리
 
 | 구분 | 개수 |
 |---|---|
-| 엔드포인트 | 81 |
-| Request DTO | 36 |
-| Response DTO | 60 |
+| 엔드포인트 | 86 |
+| Request DTO | 37 |
+| Response DTO | 62 |
 | 전역 공통 | 5 |
 
-요청 DTO가 36개뿐인 이유는 81개 중 **48개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
+요청 DTO가 37개뿐인 이유는 86개 중 **52개가 요청 바디를 갖지 않기** 때문이다(GET 전부 + 상태 전이 PATCH 대부분). 조회 조건은 쿼리 파라미터로 받고, `@ModelAttribute` 검색 조건 객체(`TeamSearchCondition` 등)를 둘지는 각 담당이 판단한다 — 파라미터가 3개를 넘으면 만드는 쪽을 권한다.
 
-(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡)
+(공지 상세 조회 `GET /v1/notices/{id}` 추가분, 파일 삭제 `DELETE /v1/files/{fileId}` 신규분, 내 모임 목록·모임 해체 추가분(2026-10-29, 둘 다 요청 바디 없음), 공연 셋리스트 조회·셋리스트로 넘기기 추가분과 `SetlistItemResponse`·`GroupBriefResponse`(2026-10-30, 이슈 #85·#83), 셋리스트 확정 해제 추가분(2026-11-02, 요청 바디 없음), 팀 선택곡 조회 신규분과 `SongDifficultyResponse`(2026-11-02, 이슈 #103, 요청 바디 없음), `PerformanceBriefResponse`(2026-11-02, 이슈 #105) 반영 — `docs/specs/api-spec.md` §7 ‖ · ※ · §9 · §10. 카카오 가입 완료 `POST /v1/auth/kakao/signup` 신규분과 `KakaoSignupRequest`·`KakaoAuthResponse` 반영: §11. 내 팀 목록 `GET /v1/users/me/teams` 신규분 반영: `docs/specs/api-spec.md` §2 ‡. 연습 녹음 5개 신규분(2026-11-09, 요청 바디는 분석 요청 1개뿐) 반영: §11-1 · `docs/specs/api-spec.md` §13)
 
 ### 재사용 상위 5개
 

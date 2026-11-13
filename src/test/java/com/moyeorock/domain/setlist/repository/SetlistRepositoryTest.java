@@ -45,6 +45,24 @@ class SetlistRepositoryTest {
     }
 
     @Test
+    @DisplayName("확정 후 셋리스트는 그 공연에서 순서가 매겨진 행만 순서대로 준다 — 순서가 없는 행(확정 해제 뒤 넘긴 곡)은 빠진다")
+    void findConfirmed_onlyRowsWithSortOrder() {
+        Setlist second = Setlist.create(7L, 5L, 88L);
+        second.changeSortOrder(2);
+        Setlist first = Setlist.create(7L, 9L, 104L);
+        first.changeSortOrder(1);
+        Setlist otherPerformance = Setlist.create(8L, 5L, 88L);
+        otherPerformance.changeSortOrder(1);
+        setlistRepository.save(second);
+        setlistRepository.save(first);
+        setlistRepository.save(Setlist.create(7L, 5L, 91L));
+        setlistRepository.saveAndFlush(otherPerformance);
+
+        assertThat(setlistRepository.findAllByPerformanceIdAndSortOrderIsNotNullOrderBySortOrderAscIdAsc(7L))
+                .extracting(Setlist::getSongId).containsExactly(104L, 88L);
+    }
+
+    @Test
     @DisplayName("같은 공연의 다른 팀이 이미 넘긴 곡만 걸린다 — 자기 팀이 넘긴 곡이나 다른 공연은 아니다")
     void existsByOtherTeam_onlyMatchesOtherTeamsInSamePerformance() {
         setlistRepository.save(Setlist.create(7L, 5L, 88L));

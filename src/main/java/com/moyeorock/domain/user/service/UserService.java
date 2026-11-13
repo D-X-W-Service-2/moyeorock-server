@@ -5,6 +5,7 @@ import com.moyeorock.domain.user.dto.request.UserInstrumentRequest;
 import com.moyeorock.domain.user.dto.request.UserInstrumentUpdateRequest;
 import com.moyeorock.domain.user.dto.request.UserUpdateRequest;
 import com.moyeorock.domain.user.dto.response.NicknameCheckResponse;
+import com.moyeorock.domain.user.dto.response.RecommendationCandidateResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserInstrumentsResponse;
 import com.moyeorock.domain.user.dto.response.UserMeResponse;
@@ -159,6 +160,36 @@ public class UserService {
         }
         return userRepository.findAllByIdInAndStatusNot(new HashSet<>(userIds), UserStatus.WITHDRAWN).stream()
                 .collect(Collectors.toMap(User::getId, UserProfileSummaryResponse::from));
+    }
+
+    /**
+     * 팀원 추천(2팀)이 AI 서버에 보낼 후보를 고른다. 활동 중(ACTIVE)·추천 허용(is_recommendable)·지정 악기 보유 사용자 중
+     * {@code excludedUserIds}(이미 팀원인 사람 등)를 뺀 최대 {@code limit}명을 **무작위로** 돌려준다(PR #151 리뷰 —
+     * 앞에서부터 자르면 늦게 가입한 사용자가 영영 후보가 되지 못한다). 호출할 때마다 후보가 달라질 수 있다.
+     * 쿼리는 후보 조회 1번 + 사용자 조회 1번이다.
+     * 두 조회 사이에 사용자가 바뀌어도(탈퇴 등) 사용자 조회가 탈퇴 회원을 걸러 낸다.
+     */
+    @Transactional(readOnly = true)
+    public List<RecommendationCandidateResponse> findRecommendationCandidates(Instrument instrument,
+            Collection<Long> excludedUserIds, int limit) {
+        List<UserInstrument> candidates = userInstrumentRepository.findRecommendationCandidates(
+                instrument, excludedUserIds, UserStatus.ACTIVE, limit);
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, User> users = userRepository
+                .findAllByIdInAndStatusNot(candidates.stream().map(UserInstrument::getUserId).toList(),
+                        UserStatus.WITHDRAWN)
+                .stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+        return candidates.stream()
+                .filter(candidate -> users.containsKey(candidate.getUserId()))
+                .map(candidate -> {
+                    User user = users.get(candidate.getUserId());
+                    return new RecommendationCandidateResponse(
+                            user.getId(), user.getRegion(), user.getGenres(), candidate.getLevel());
+                })
+                .toList();
     }
 
     private User getActiveUser(Long userId) {

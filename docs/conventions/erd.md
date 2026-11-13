@@ -1,5 +1,5 @@
 # moyeorock DB 테이블 명세 — ERD v3
-대상: MySQL 8.0 · 18 테이블 · PK `BIGINT AUTO_INCREMENT`
+대상: MySQL 8.0 · 20 테이블 · PK `BIGINT AUTO_INCREMENT`
 기준: `band_erd_v3_mysql.drawio` 에서 자동 생성
 표기: 타입 칸에 `NOT NULL`만 명시한다. 표기 없으면 NULL 허용.
 
@@ -175,8 +175,10 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 |  | `song_key` | `VARCHAR(10)` |  |
 |  | `bpm` | `INT` |  |
 |  | `difficulty` | `JSON` | 세션별 난이도 |
-| UK | `external_id` | `VARCHAR(100)` | 유일 |
+| UK | `external_id` | `VARCHAR(100)` | 유일 · 대소문자 구분(`utf8mb4_0900_bin`) |
 | ＋ | `created_at` | `DATETIME(6)` |  |
+
+> **2026-11-06 변경(PR #148 리뷰, V13)**: `external_id` 콜레이션을 서버 기본(대소문자 무시)에서 `utf8mb4_0900_bin`으로 바꿨다. AI 서버 곡 id(YouTube 영상 id 등)는 대소문자만 달라도 다른 곡인데, 대소문자를 무시하는 유니크에서 같은 값으로 부딪혀 곡 저장이 실패했다. 코드 포인트로 비교하고 끝 공백도 구분해서(NO PAD) 애플리케이션의 `String.equals`와 기준이 같다. 영향은 song 도메인뿐이다 — `external_id`는 AI 곡 동기화(`SongService.syncFromAi`, 이슈 #147)만 쓰고, 다른 테이블은 `songs.id`로 참조한다. 계획: `docs/plans/songs-external-id-case-sensitive.md`.
 
 
 ---
@@ -371,13 +373,13 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 
 ### 17. `files`
 
-업로드된 파일 메타데이터 (`global/file` — 도메인 아님, 1팀 담당. 1팀 프로필·4팀 커버·포스터가 같이 씀)
+업로드된 파일 메타데이터 (`global/file` — 도메인 아님, 1팀 담당. 1팀 프로필·4팀 커버·포스터·연습 녹음이 같이 씀)
 
 | 키 | 컬럼 | 타입 | 설명 |
 |---|---|---|---|
 | PK | `id` | `BIGINT AUTO_INCREMENT` |  |
 |  | `file_key` | `VARCHAR(255) NOT NULL` | 스토리지 상 실제 경로(`{도메인}/{uuid}.{확장자}`) |
-|  | `domain` | `VARCHAR(20) NOT NULL` | PROFILE_IMAGE\|GROUP_COVER\|PERFORMANCE_POSTER |
+|  | `domain` | `VARCHAR(20) NOT NULL` | PROFILE_IMAGE\|GROUP_COVER\|PERFORMANCE_POSTER\|PRACTICE_AUDIO (`PRACTICE_AUDIO`는 2026-11-09 추가, 이슈 #154 — 값만 늘어 마이그레이션 없음) |
 |  | `original_name` | `VARCHAR(255) NOT NULL` |  |
 |  | `content_type` | `VARCHAR(100) NOT NULL` |  |
 |  | `uploader_id` | `BIGINT NOT NULL` | → users · FK 아님, 인덱스만(CLAUDE.md 절대 규칙 6) |
@@ -386,6 +388,54 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 - **인덱스** `(uploader_id)`
 
 > 2026-09-30 신규. `users.profile_image`·`groups_.cover_image`·`performances.poster_image`는 이 테이블을 참조하지 않고 여전히 URL 문자열을 직접 저장한다 — `files`는 발급·삭제 이력 관리용이고, 실제 참조는 URL 문자열로 한다(각 도메인이 `fileId`를 몰라도 되게). 상세: `docs/plans/file-upload-presigned-url.md`.
+>
+> 2026-11-09: 연습 녹음(`PRACTICE_AUDIO`)은 비공개라 예외다 — 연습 도메인이 URL이 아니라 `file_key`를 저장하고, 저장 전에 이 테이블로 업로더·도메인을 확인한다(이슈 #154).
+
+---
+
+## 개인 연습
+
+> 2026-11-09 신규(이슈 #155, V14 — main의 V13(songs 콜레이션)이 먼저 머지돼 올렸다). 4팀 `practice` 도메인 소유. 다른 팀 테이블은 건드리지 않는다. 계획: `docs/plans/practice-recording.md`.
+
+### 19. `practice_recordings`
+
+개인 연습 녹음 + AI 분석 상태. 올린 본인만 본다
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+|  | `user_id` | `BIGINT NOT NULL` | → users · 올린 사람. FK 아님(CLAUDE.md 절대 규칙 6) |
+|  | `title` | `VARCHAR(100) NOT NULL` | 100자 이하 |
+|  | `part` | `VARCHAR(20) NOT NULL` | 녹음한 세션 — 공용 `Instrument`. 혼자 연습한 세션 하나의 녹음이라 올릴 때 고른다. AI 응답에 세션이 없어 피드백 줄의 세션으로 쓴다 |
+|  | `song_id` | `BIGINT NOT NULL` | → songs · 연습한 곡. FK 아님(절대 규칙 6). AI가 이 곡의 `external_id`로 원곡을 찾는다 — 원곡 음원은 AI 서버에 있다(2026-11-11 추가, AI 팀 핸드오프) |
+|  | `audio_file_key` | `VARCHAR(255) NOT NULL` | 스토리지 key `practice/{uuid}.{확장자}` — URL이 아니다(녹음은 비공개, 읽을 때마다 임시 URL). `files.file_key`와 같은 값 |
+|  | `status` | `VARCHAR(10) NOT NULL` | SUBMITTED\|ANALYZING\|DONE\|FAILED |
+|  | `failure_reason` | `VARCHAR(255)` | 화면에 그대로 보여 줄 실패 사유. FAILED일 때만 값 |
+|  | `analyzed_at` | `DATETIME(6)` | 분석이 끝난 시각. DONE일 때만 값 |
+|  | `active_user_id` | `BIGINT` 생성 컬럼(STORED) | 진행 중(SUBMITTED·ANALYZING)이면 `user_id`, 아니면 NULL. 엔티티에 매핑하지 않는다 |
+|  | `created_at` | `DATETIME(6)` | 분석을 요청한 시각. 다시 요청해도 바뀌지 않는다 |
+|  | `updated_at` | `DATETIME(6)` |  |
+
+- **인덱스** `(user_id, created_at)` ← 내 연습 녹음 목록(최근 요청 순)·진행 중 확인
+- **유니크** `(active_user_id)` ← 한 사람당 진행 중 분석 1개. 동시 요청까지 DB가 막는다(`flyway-migration.md` §3-5 패턴)
+
+> 행은 삭제 API에서 hard delete한다(`practice_feedbacks`도 함께, `architecture.md` §6). 회원 탈퇴 때도 그 사람의 행 전부를 지우고, 이때는 녹음 파일(`files` 행·S3 객체)까지 지운다(PR #157 리뷰, 2026-11-11). 서버가 재시작하면 부팅 전에 바뀐 진행 중 행을 FAILED로 정리한다.
+
+### 20. `practice_feedbacks`
+
+AI 분석 결과 한 줄(구간·세션·내용). 분석이 끝날 때 한꺼번에 쓰고 고치지 않는다
+
+| 키 | 컬럼 | 타입 | 설명 |
+|---|---|---|---|
+| PK | `id` | `BIGINT AUTO_INCREMENT` |  |
+|  | `recording_id` | `BIGINT NOT NULL` | → practice_recordings. FK 아님(같은 도메인이어도 — 절대 규칙 6) |
+|  | `start_sec` | `INT NOT NULL` | 구간 시작(초) |
+|  | `end_sec` | `INT NOT NULL` | 구간 끝(초) |
+|  | `part` | `VARCHAR(20) NOT NULL` | 세션 — 공용 `Instrument`(VOCAL\|EL_GT\|AC_GT\|BASS\|DRUM\|KEY) |
+|  | `content` | `TEXT NOT NULL` | 피드백 문장 |
+
+- **인덱스** `(recording_id, start_sec)` ← 상세의 구간 시작 순 조회, 녹음 삭제 때 일괄 삭제
+- 타임스탬프 없음 — 생성 시각은 부모의 `analyzed_at`이다
 
 ---
 
@@ -421,6 +471,9 @@ ERD는 별도 스냅샷을 만들지 않는다. 구현 시 **이 문서를 노�
 | `performances` | `setlists` | 1:N | 공연 셋리스트 |
 | `teams` | `setlists` | 1:N | 곡을 넘긴 팀 |
 | `songs` | `setlists` | 1:N |  |
+| `users` | `practice_recordings` | 1:N | 올린 사람 |
+| `songs` | `practice_recordings` | 1:N | 연습한 곡 |
+| `practice_recordings` | `practice_feedbacks` | 1:N |  |
 
 `created_by` · `author_id` · `decided_by` · `user_id`(join_requests) · `inviter_id` 는 모두 `users` 를 참조하지만 선이 얽혀 도면에서는 컬럼 주석으로만 표기했다.
 

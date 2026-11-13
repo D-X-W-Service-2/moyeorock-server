@@ -1,24 +1,37 @@
 package com.moyeorock.global.file.client;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Optional;
+import java.util.OptionalLong;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
-// S3 전환 시 활성화되는 구현체("AWS 유료라 로컬 먼저" 결정에 따라 지금은 file.storage.type이
-// s3일 때만 뜬다). CDN은 안 쓰기로 했으므로(docs/plans/file-upload-presigned-url.md) fileUrl은
-// 버킷이 퍼블릭 읽기로 열려 있다는 전제로 직접 조립한다 — 버킷 정책 설정은 이 코드 밖의 일이다.
-// S3FileStorageProperties의 @EnableConfigurationProperties는 S3StorageConfig가 이미 등록한다
-// (같은 조건이라 여기서 또 선언 안 함).
+// file.storage.type이 s3일 때만 뜨는 구현체. CDN은 안 쓰기로 했으므로(docs/plans/file-upload-presigned-url.md)
+// fileUrl은 S3 객체 주소를 직접 조립한다. 이미지 폴더(profile/·group/·performance/)는 버킷 정책으로 공개 읽기라
+// fileUrl로 바로 열리지만, practice/(연습 녹음)는 비공개라 fileUrl은 식별자로만 쓰고 읽기는 issueReadUrl로 한다 —
+// 버킷 정책 설정은 이 코드 밖의 일이다. S3FileStorageProperties의 @EnableConfigurationProperties는
+// S3StorageConfig가 이미 등록한다(같은 조건이라 여기서 또 선언 안 함).
+@Slf4j
 @Component
 @ConditionalOnProperty(prefix = "file.storage", name = "type", havingValue = "s3")
 @RequiredArgsConstructor
@@ -43,9 +56,8 @@ public class S3FileStorageClient implements FileStorageClient {
 
         PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(presignRequest);
         LocalDateTime expiresAt = LocalDateTime.ofInstant(presignedRequest.expiration(), ZoneId.systemDefault());
-        String fileUrl = "https://%s.s3.%s.amazonaws.com/%s".formatted(properties.bucket(), properties.region(), fileKey);
 
-        return new UploadUrl(presignedRequest.url().toString(), fileUrl, expiresAt);
+        return new UploadUrl(presignedRequest.url().toString(), fileUrlPrefix() + fileKey, expiresAt);
     }
 
     @Override
@@ -58,9 +70,44 @@ public class S3FileStorageClient implements FileStorageClient {
         throw new UnsupportedOperationException("S3는 클라이언트가 presigned URL로 직접 업로드하므로 서버가 파일을 받지 않는다");
     }
 
+    // 인증 없는 로컬 서빙(GET /v1/files/local/**)이 쓰는 메서드라 S3에서는 열지 않는다 — 열면 비공개인 연습 녹음이 그 경로로
+    // 인증 없이 나간다. 서버가 내용을 읽을 때는 readAtMost를 쓴다(이슈 #167).
     @Override
     public InputStream read(String fileKey) {
         throw new UnsupportedOperationException("S3는 fileUrl로 클라이언트가 직접 읽으므로 서버가 파일을 내려주지 않는다");
+    }
+
+    // Range로 앞에서부터 maxBytes까지만 받는다. 범위 없이 받으면 중간에 스트림을 닫아도 SDK가 연결을 재사용하려고 남은 내용을
+    // 끝까지 읽어 버려서, 등록 뒤 같은 key에 올린 큰 파일을 통째로 내려받게 된다. 없는 객체는 ListBucket 권한이 없으면 403으로
+    // 오므로 size와 같은 기준으로 404·403 둘 다 없음으로 본다(로컬과 같게 NoSuchFileException → FileService가 FILE_NOT_FOUND).
+    // 빈 객체에 범위를 걸면 S3가 416을 주므로 빈 내용으로 본다.
+    @Override
+    public byte[] readAtMost(String fileKey, int maxBytes) {
+        if (maxBytes <= 0) {
+            return new byte[0];
+        }
+        GetObjectRequest request = GetObjectRequest.builder()
+                .bucket(properties.bucket())
+                .key(fileKey)
+                .range("bytes=0-" + (maxBytes - 1))
+                .build();
+        try (ResponseInputStream<GetObjectResponse> content = s3Client.getObject(request)) {
+            return content.readNBytes(maxBytes);
+        } catch (S3Exception e) {
+            if (e.statusCode() == 416) {
+                return new byte[0];
+            }
+            if (e.statusCode() == 404 || e.statusCode() == 403) {
+                if (e.statusCode() == 403) {
+                    log.warn("S3 GetObject 403 — 객체가 없거나 권한이 없습니다(ListBucket 권한이 없으면 없는 객체도 403). fileKey={}",
+                            fileKey);
+                }
+                throw new UncheckedIOException(new NoSuchFileException(fileKey));
+            }
+            throw e;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Override
@@ -69,5 +116,59 @@ public class S3FileStorageClient implements FileStorageClient {
                 .bucket(properties.bucket())
                 .key(fileKey)
                 .build());
+    }
+
+    // 서명만 하고 S3를 부르지 않는다. 만료 시간은 서명에 들어가 S3가 강제한다(EC2 역할의 임시 자격증명으로
+    // 서명하면 그 자격증명이 먼저 만료될 때도 URL이 끊긴다 — 역할 자격증명은 수 시간이라 몇십 분 URL엔 문제없다).
+    @Override
+    public String issueReadUrl(String fileKey, Duration expiry) {
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(properties.bucket())
+                .key(fileKey)
+                .build();
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(expiry)
+                .getObjectRequest(getObjectRequest)
+                .build();
+
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
+    }
+
+    @Override
+    public Optional<String> toFileKey(String fileUrl) {
+        String prefix = fileUrlPrefix();
+        if (fileUrl == null || !fileUrl.startsWith(prefix) || fileUrl.length() == prefix.length()) {
+            return Optional.empty();
+        }
+        return Optional.of(fileUrl.substring(prefix.length()));
+    }
+
+    // 없는 객체에 HeadObject를 하면 버킷의 s3:ListBucket 권한이 있을 때만 404이고, 없으면 403이 온다(존재 여부를
+    // 숨기려는 S3 동작). EC2 역할은 Put/Get/DeleteObject만 있어 없는 객체도 403이라, 둘 다 "아직 안 올라옴"으로 본다.
+    // 실제 권한 문제와 구분이 안 되므로 403은 경고 로그를 남긴다.
+    @Override
+    public OptionalLong size(String fileKey) {
+        try {
+            return OptionalLong.of(s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(properties.bucket())
+                    .key(fileKey)
+                    .build()).contentLength());
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404) {
+                return OptionalLong.empty();
+            }
+            if (e.statusCode() == 403) {
+                log.warn("S3 HeadObject 403 — 객체가 없거나 권한이 없습니다(ListBucket 권한이 없으면 없는 객체도 403). fileKey={}",
+                        fileKey);
+                return OptionalLong.empty();
+            }
+            throw e;
+        }
+    }
+
+    // issuePresignedUrl의 fileUrl과 toFileKey가 같은 규칙을 쓰도록 한 곳에서 만든다.
+    private String fileUrlPrefix() {
+        return "https://%s.s3.%s.amazonaws.com/".formatted(properties.bucket(), properties.region());
     }
 }

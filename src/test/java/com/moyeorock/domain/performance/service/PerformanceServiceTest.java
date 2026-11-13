@@ -113,6 +113,8 @@ class PerformanceServiceTest {
         assertThat(response.group()).isEqualTo(GROUP);
         assertThat(response.createdBy()).isEqualTo(CREATOR);
         assertThat(response.canEdit()).isTrue();
+        assertThat(response.setlist()).isEmpty();
+        verifyNoInteractions(setlistService);
     }
 
     @Test
@@ -257,6 +259,37 @@ class PerformanceServiceTest {
 
         assertThat(response.teams()).containsExactly(team);
         assertThat(response.myTeamIds()).containsExactly(5L);
+    }
+
+    @Test
+    @DisplayName("셋리스트가 확정된 공연의 상세는 확정곡을 SetlistService에서 순서대로 받아 담는다")
+    void getDetail_fillsConfirmedSetlist_whenConfirmed() {
+        Performance performance = givenPerformance();
+        ReflectionTestUtils.setField(performance, "id", PERFORMANCE_ID);
+        performance.confirmSetlist(LocalDateTime.now());
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        givenDetailParts();
+        List<SetlistItemResponse> confirmed = List.of(
+                new SetlistItemResponse(5L, "무명밴드", new SongSummaryResponse(88L, "Bohemian Rhapsody", "Queen"), 1),
+                new SetlistItemResponse(6L, "새벽밴드", new SongSummaryResponse(89L, "Creep", "Radiohead"), 2));
+        when(setlistService.getSetlist(PERFORMANCE_ID, true)).thenReturn(confirmed);
+
+        PerformanceDetailResponse response = performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID);
+
+        assertThat(response.setlist()).isEqualTo(confirmed);
+    }
+
+    @Test
+    @DisplayName("셋리스트가 확정 전이면 상세의 setlist는 빈 목록이고 셋리스트를 조회하지 않는다")
+    void getDetail_returnsEmptySetlist_whenNotConfirmed() {
+        givenPerformance();
+        when(groupMemberService.isOwner(GROUP_ID, MEMBER_ID)).thenReturn(false);
+        givenDetailParts();
+
+        PerformanceDetailResponse response = performanceService.getDetail(MEMBER_ID, PERFORMANCE_ID);
+
+        assertThat(response.setlist()).isNotNull().isEmpty();
+        verifyNoInteractions(setlistService);
     }
 
     @Test

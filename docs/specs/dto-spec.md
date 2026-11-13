@@ -290,6 +290,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 점수 높은 순 **최대 10명**이다. 후보가 없으면 `candidates`는 빈 배열이다. 평가 대상 후보는 조건에 맞는 사용자 중 무작위 최대 200명이라, 사용자가 많으면 호출할 때마다 결과가 조금씩 달라질 수 있다. `user`는 `UserSummaryResponse`(`id`·`nickname`·`profileImage`)이고, `score`·`reasons`는 AI 서버가 매긴 값 그대로다(`reasons`가 없으면 빈 배열). 구현: 이슈 #150(2026-11-08).
+
 ## §3. 합주 (rehearsal)
 
 ### RehearsalCreateRequest
@@ -740,12 +742,12 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-- `setlist`는 확정된 것만 담는다 (원본 메모)
+- `setlist`는 확정된 것만 확정 순서(`sortOrder`)대로 담는다 (원본 메모). 항목은 `SetlistItemResponse`(공연 셋리스트 조회와 같은 모양)다. **확정 전이면 빈 목록**이고 `null`은 보내지 않는다. 노션은 Nullable O라 빈 목록도 그 정의 안이다. **빈 목록이 곧 확정 전은 아니다** — 확정 뒤 팀이 개별 해체되면 그 팀의 셋리스트 행이 지워져(`architecture.md` §6 예외), 확정곡을 넘긴 팀이 모두 해체되면 확정 상태여도 빈 목록이고, 일부만 해체되면 `sortOrder`가 1, 3처럼 빈다. 프론트는 확정 여부를 셋리스트 조회(`GET /v1/performances/{id}/setlist`)의 `confirmed`로 보고, 순서는 `sortOrder` 숫자가 아니라 배열 순서를 쓴다(2026-11-06, PR #146 리뷰). 끝난 공연(`DONE`·`CANCELED`)도 기록이라 그대로 보이고, 팀이 해체됐어도 `teamName`이 나온다(2026-11-05, 이슈 #145)
 - `teams`는 해체되지 않은 참여 팀이라 끝난 공연(`DONE`·`CANCELED`)이면 빈 목록이다 — 끝난 공연은 참여 팀을 보여주지 않는다(2026-10-30 결정, 2026-11-01 취소도 팀을 해체하기로 해서 함께)
 - `myTeamIds`는 요청자가 속한, 이 공연의 참여 팀 id 목록이다(없으면 빈 목록). 한 사용자가 같은 공연의 여러 팀에 속할 수 있어 **2026-10-30에 `myTeamId`(단일)에서 바꿨다**(노션도 수정, 이슈 #79 댓글)
 - `canEdit`은 요청자가 그 모임의 모임장인지다
 - `createdBy`는 공연을 만든 사람이 탈퇴했으면 `null`이다(노션은 Nullable X — 탈퇴 회원 표시 정책이 생기면 맞춘다)
-- **`setlist`는 아직 응답에 없다** — 셋리스트 도메인 구현 때 추가한다. `teams`·`myTeamIds`는 이슈 #88에서 추가했다(`api-spec.md` §8 ⊕). 생성·수정 응답도 같은 DTO라 함께 채워지고, 막 만든 공연은 둘 다 빈 목록이다
+- `teams`·`myTeamIds`는 이슈 #88에서(`api-spec.md` §8 ⊕), `setlist`는 이슈 #145에서 추가했다. 생성·수정 응답도 같은 DTO라 함께 채워지고, 막 만든 공연은 셋 다 빈 목록이다
 
 ### PerformanceStatusUpdateRequest / PerformanceStatusResponse
 
@@ -765,7 +767,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 `instrument`는 생성자 본인의 세션. Response는 TeamDetailResponse와 같은 형태다 (원본 페이지에 함께 기재됨).
 
 - 제약은 `TeamCreateRequest`와 같다 — `name` 필수·50자, `description` 1,000자, `region` 선택, `genres` 5개까지, `instrument` 필수(2026-11-01, 이슈 #88)
-- 응답은 `201` + `TeamDetailResponse`다. 2팀 구현(#86)에 `performance` 필드가 아직 없어 이 응답에도 없다
+- 응답은 `201` + `TeamDetailResponse`다. `performance`(소속 공연 요약)는 #130에서 팀 상세에 추가돼 이 응답에도 담긴다
 - `PLANNED`·`RECRUITING` 공연에서만 만들 수 있다 — 끝난 공연은 `409 INVALID_STATE`
 
 ```json
@@ -861,6 +863,97 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 - `difficulty`는 파트별 난이도 배열이다(`SongDifficultyResponse(part, level)`). 정보가 없는 파트는 배열에서 빠진다. `part`는 `Instrument`, `level`은 `Level`(`BEGINNER`~`ADVANCED`). **2026-11-02에 객체(`{"VOCAL":"ADVANCED"}`)에서 노션대로 배열로 바꿨다**(이슈 #103) — DB(`songs.difficulty` JSON)는 그대로 객체이고 응답에서만 펼친다
 - 쿼리 `keyword`는 제목·아티스트 부분 일치, `genre`는 장르 필터, `page`·`size`는 기본·최대 20
 
+### SongSyncResponse (곡 수동 동기화 · 운영용)
+
+`POST /v1/songs/sync`의 응답(2026-11-11 · 이슈 #162). AI 카탈로그를 처음부터 끝까지 한 번 받은 결과다. 노션 `API 초안`에는 없는 운영용 API다.
+
+```json
+{ "pages": 3, "created": 120, "updated": 880, "skipped": 2 }
+```
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `pages` | int | AI 서버에서 받은 페이지 수 |
+| `created` | int | 새로 만든 곡 수 |
+| `updated` | int | 이미 있던 `externalId`라 받은 값으로 바꾼 곡 수 |
+| `skipped` | int | 검증에 걸려 건너뛴 곡 수(이유는 서버 로그) |
+
+### AiSongPage (AI 서버 응답 · 잠정)
+
+백엔드가 AI 서버에서 받는 곡 카탈로그 한 페이지(`GET {AI}/v1/songs?cursor=&limit=`, 2026-11-06 · 이슈 #147). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다(`KakaoUserInfo`와 같은 자리). 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.**
+
+```json
+{
+  "songs": [
+    {
+      "externalId": "youtube:Lb3mQdm-UHs",
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen",
+      "genre": "ROCK",
+      "songKey": "Bb",
+      "bpm": 72,
+      "difficulty": [
+        { "part": "VOCAL", "level": "ADVANCED" },
+        { "part": "DRUM", "level": "INTERMEDIATE" }
+      ]
+    }
+  ],
+  "nextCursor": "eyJpZCI6NTAwfQ"
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `songs` | List | O | 한 페이지 최대 `limit`(500)개. 없으면 응답 형식 위반으로 그 회차가 실패한다 |
+| `nextCursor` | String | X | 다음 페이지 커서. `null`이면 마지막 페이지. 백엔드는 해석하지 않고 그대로 다음 요청에 넣는다 |
+| `songs[].externalId` | String | O | AI 쪽 곡 id. 100자 이하. 이 값으로 같은 곡을 찾는다(`songs.external_id` 유일). **대소문자를 구분한다**. 앞뒤 공백이 있거나 한 페이지 안에서 겹치면 그 곡을 건너뛴다 |
+| `songs[].title` | String | O | 200자 이하 |
+| `songs[].artist` | String | O | 100자 이하 |
+| `songs[].genre` | Enum | O | `Genre`(`ROCK` `INDIE` `PUNK` `METAL` `POP` `BALLAD` `JAZZ` `HIPHOP` `RNB` `ACOUSTIC` `ETC`) |
+| `songs[].songKey` | String | X | 10자 이하. 빈 문자열·공백뿐이면 키 정보 없음(`null`)으로 저장하고, 앞뒤 공백은 지운다 |
+| `songs[].bpm` | Integer | X | 양수 |
+| `songs[].difficulty` | List | X | 곡 검색 응답과 같은 `[{part, level}]` 배열. `part`는 `Instrument`, `level`은 `Level`. 한 곡에 같은 파트가 두 번이면 그 곡을 건너뛴다. 없거나 빈 배열이면 난이도 정보 없음 |
+
+- 필수 값이 빠지거나 길이를 넘는 곡은 그 곡만 건너뛰고 나머지는 저장한다
+- DB(`songs.difficulty` JSON)에는 지금처럼 `{"VOCAL":"ADVANCED"}` 객체로 저장한다
+
+### AiSongRecommendRequest · AiSongRecommendResponse (AI 서버 곡 추천)
+
+백엔드가 AI 서버에 보내는 곡 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/songs`, 2026-11-12 · 이슈 #171). 프론트 API의 DTO가 아니라 `domain/song/client`에 둔다. 동작은 `api-spec.md` §12. 형식은 AI 팀이 정했다(`moyeorock-ai` 커밋 `09d46a3`).
+
+```json
+{ "mode": "TEAM", "genres": ["ROCK"], "members": [ { "part": "BASS", "level": "NOVICE" } ], "limit": 20 }
+```
+
+```json
+{ "songs": [ { "externalId": "local-abc", "score": 0.875 } ], "ranker": "content_rule" }
+```
+
+- `mode`는 `TEAM` 또는 `PERSONAL`(개인 추천, 이슈 #172에서 쓴다). 값은 우리 enum 그대로다(`part`=`Instrument`, `level`=`Level`, `genres`=`Genre`).
+- `members`에는 실력을 아는 사람만 넣는다. `level`이 비면 AI가 422를 준다.
+- 응답의 `score`가 비어 있어도 읽는다(그 항목은 버린다). 응답에 `songs` 자체가 없으면 계약 위반이라 `503`이다.
+
+### AiRecommendRequest · AiRecommendResponse (AI 서버 팀원 추천 · 잠정)
+
+백엔드가 AI 서버에 보내는 팀원 추천 요청과 받는 응답(`POST {AI}/v1/recommendations/members`, 2026-11-08 · 이슈 #150). 프론트 API의 DTO가 아니라 `domain/team/client`에 둔다. 동작은 `api-spec.md` §12. **AI 팀과 맞추기 전 잠정안이다.** 값은 ERD 컬럼과 우리 enum 그대로다.
+
+```json
+{
+  "team": { "id": 5, "region": "SEOUL", "genres": ["ROCK", "POP"] },
+  "instrument": "DRUM",
+  "members": [ { "userId": 3, "instrument": "VOCAL", "level": "ADVANCED" } ],
+  "candidates": [ { "userId": 30, "region": "SEOUL", "genres": ["ROCK"], "level": "INTERMEDIATE" } ]
+}
+```
+
+```json
+{ "candidates": [ { "userId": 30, "score": 0.87, "reasons": ["장르 일치: ROCK", "활동 지역 동일"] } ] }
+```
+
+- `members[].instrument`는 그 사람이 이 팀에서 맡은 세션(`team_members.instrument`), `members[].level`은 그 악기에서의 실력(`user_instruments.level`, 없으면 `null`)이다. `candidates[].level`은 요청한 `instrument`에서의 실력이다.
+- 온보딩 전 사용자는 `region`·`genres`가 `null`일 수 있다. `team.region`도 `null`일 수 있다.
+- 응답의 `score`·`reasons`가 비어 있어도 읽는다(점수가 없는 항목은 버리고, `reasons`가 없으면 빈 배열로 응답한다). 응답에 `candidates` 자체가 없으면 계약 위반이라 `503`이다.
+
 ### SongRecommendationResponse
 
 ```json
@@ -878,6 +971,8 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
+- 내 취향 추천곡은 2026-11-12에 구현했다(이슈 #172). `songs`는 AI 순서(점수 높은 순)이고 **최대 2곡**이다(홈에 2곡을 보여 준다). 온보딩 전 사용자이거나 AI가 고른 곡이 우리 DB에 없으면 빈 배열이다. `score`는 AI가 준 0~1 정렬용 점수다
+
 ### TeamSongRecommendationResponse
 
 ```json
@@ -891,7 +986,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
         "difficulty": [{ "part": "VOCAL", "level": "ADVANCED" }]
       },
       "score": 0.87,
-      "reasons": ["팀 장르 일치: ROCK", "보컬 실력 충족", "드럼 난이도 초과"],
+      "reasons": ["팀 장르 일치: 록", "보컬 실력 충족", "드럼 난이도 초과"],
       "selectedByOtherTeam": false
     }
   ]
@@ -899,6 +994,9 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 ```
 
 - 추천 두 응답의 `song`은 곡 검색과 같은 전체 정보(`SongResponse`)이고, 선택곡·셋리스트 항목의 `song`은 축약형(`SongSummaryResponse` — `id`·`title`·`artist`)이다(2026-11-02, 이슈 #103). 추천 2개는 이슈 #103 구현 범위 밖이다
+- 팀 곡 추천은 2026-11-12에 구현했다(이슈 #171). `songs`는 AI가 준 순서(점수 높은 순)이고 **최대 10곡**이다. AI가 고른 곡 중 우리 DB에 없는 곡은 빠지고, 고른 곡이 없으면 빈 배열이다
+- `score`는 AI가 준 0~1 정렬용 점수이며 선호 확률이 아니다
+- `reasons`는 **백엔드가 만든다**(AI는 주지 않는다). 화면에 그대로 보이므로 장르·세션은 프론트 표시명(`domainCodes.ts`)으로 쓴다. 팀 장르에 곡 장르가 있으면 `팀 장르 일치: {장르}`, 팀이 가진 세션마다 곡 난이도와 그 세션의 가장 높은 팀원 실력을 비교해 `{세션} 실력 충족` 또는 `{세션} 난이도 초과`. 곡에 그 세션 난이도 정보가 없거나 그 세션 팀원의 실력을 모르면 문구가 없다. 근거가 하나도 없으면 빈 배열이다(처음 예시의 `팀 장르 일치: ROCK`에서 표시명으로 바꿨다)
 - `selectedByOtherTeam`은 같은 공연의 다른 팀이 이미 고른 곡인지다("다른 팀이 이미 선택했어요" 표시). 독립 팀이면 항상 `false`. 2026-10-30에 `alreadyInSetlist`에서 이름을 바꿨다(이슈 #85, 노션도 수정)
 
 ### TeamSongsSaveRequest
@@ -1031,9 +1129,16 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 }
 ```
 
-- `fileId`는 2026-09-30에 추가했다. 이게 없으면 `DELETE /v1/files/{fileId}`를 호출할 방법이 없다. 노션 `API 초안`에도 함께 반영했다
+- `fileId`는 2026-09-30에 `DELETE /v1/files/{fileId}`를 부르려고 추가했다. 2026-11-11 삭제가 `DELETE /v1/files?fileUrl=`로 바뀌어(이슈 #164) **삭제에는 쓰지 않는다** — 이미 읽는 프론트 코드가 깨지지 않게 남겨 둔다. 삭제 응답 `DeleteResponse.id`와 같은 값이다
 - `expiresAt`은 발급 후 **10분**이다(`file.storage.local.upload-url-expiry-seconds`). 지나면 업로드 PUT이 403 `UPLOAD_URL_EXPIRED`다(S3도 만료 후 403). 만료 전에는 같은 `uploadUrl`로 다시 올리면 덮어쓴다 — S3 presigned URL과 같은 동작이다
-- 허용 확장자는 `jpg` · `jpeg` · `png` · `webp`뿐이고, `contentType`도 `image/jpeg` · `image/png` · `image/webp`만 받는다. 둘 중 하나라도 어긋나면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+- 허용 형식·크기는 `domain`마다 다르다(노션 `Presigned URL 발급` 표, 2026-11-09 대조). 확장자와 `contentType` 중 하나라도 그 도메인 목록에 없으면 400 `UNSUPPORTED_FILE_TYPE`이다 — 확장자만 막으면 `contentType`으로 우회돼 서빙 응답 헤더에 그대로 실리기 때문이다
+
+  | `domain` | 확장자 | `contentType` | 최대 크기 |
+  |---|---|---|---|
+  | `PROFILE_IMAGE` `GROUP_COVER` `PERFORMANCE_POSTER` | `jpg` `jpeg` `png` `webp` | `image/jpeg` `image/png` `image/webp` | 10MB |
+  | `PRACTICE_AUDIO` | `mp3` `m4a` `wav` | `audio/mpeg` `audio/mp4` `audio/x-m4a` `audio/wav` `audio/x-wav` | 1.95MB(1,950,000바이트, AI 연습 피드백 API 한도 — 2026-11-11) |
+
+- `PRACTICE_AUDIO`(개인 연습 녹음)는 **비공개**다. S3 `practice/`는 공개 읽기가 아니라서 `fileUrl`로 바로 열리지 않는다 — 연습 녹음 분석 요청의 `audioUrl`로 보내는 식별자로만 쓰고, 재생은 연습 녹음 상세가 주는 임시 URL로 한다(이슈 #154)
 - 로컬 저장 중에는 `uploadUrl`·`fileUrl`이 S3·CDN이 아니라 이 서버를 가리킨다(`http://{host}/v1/files/local-upload/{fileKey}` · `/v1/files/local/{fileKey}`). S3 전환 시 위 예시 모양으로 바뀌며 **응답 구조는 그대로다**. 단 업로드 PUT의 `Authorization` 헤더 규칙이 바뀐다(로컬은 필수, S3는 금지) — `docs/specs/api-spec.md` §10 file "업로드 PUT 규칙" 참고
 
 ### DashboardResponse
@@ -1051,6 +1156,7 @@ DTO 필드는 원칙적으로 소유 팀이 착수할 때 정하지만, 아래 3
 
 - 구현(2026-11-04, 이슈 #135): `upcomingRehearsals`는 내 팀 합주 중 오늘부터 14일 안에 끝나지 않은 것을 가까운 순 5개, `openRecruitPosts`는 모집 중(`OPEN`) 공고를 최신순 5개(개인화하지 않는다)다. 둘 다 항목은 각 도메인 응답(`RehearsalSummaryResponse`·`RecruitPostSummaryResponse`) 그대로다. 개수·기간은 서버 기본값이며 명세에 없어 정한 값이다 — Notion 반영 필요
 - `recommendedSongs`는 AI 추천이 연결되기 전까지 **`null`**이다(빈 배열이 아님). 항목은 `SongSummaryResponse(id, title, artist)`다. 연결되면 배열로 바뀐다
+- 2026-11-12 결정(이슈 #172): 개인 추천곡은 대시보드에 넣지 않고 홈의 추천받기 버튼이 `GET /v1/users/me/songs/recommendations`(`SongRecommendationResponse`)로 받는다. 그래서 `recommendedSongs`는 계속 `null`이다
 
 ## §11. 로그인 (auth)
 
@@ -1153,3 +1259,68 @@ POST /v1/auth/kakao?code=abc123exampleAuthCode
 ```
 
 > 가입 응답의 `nickname`은 임시 닉네임이고 `onboardingCompleted`는 항상 false다. 로그인에서는 `onboardingCompleted`가 false면 온보딩 화면, true면 대시보드로 보낸다.
+
+---
+
+## §13. 연습 (practice)
+
+2026-11-09 신규(이슈 #155). Notion `API 초안` 도메인 "연습"과 대조했다.
+
+### PracticeRecordingCreateRequest
+
+```json
+{
+  "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
+  "songId": 41,
+  "audioUrl": "https://moyeorock-dev-files.s3.ap-northeast-2.amazonaws.com/practice/550e8400-e29b-41d4-a716-446655440000.m4a"
+}
+```
+
+- `title` 필수, 100자 이하
+- `part` 필수. 녹음한 세션(`VOCAL` `EL_GT` `AC_GT` `BASS` `DRUM` `KEY`) — 혼자 연습한 세션 하나의 녹음이다. AI에 세션 힌트로 넘긴다
+- `songId` 필수. 연습한 곡(곡 검색 API의 `id`). 없는 곡이면 404 `SONG_NOT_FOUND`. AI가 이 곡의 원곡과 녹음을 맞춰 본다 — 시범 지원 곡이 아니면 분석이 `FAILED`가 된다(2026-11-11 추가)
+- `audioUrl` 필수. 업로드 API(`domain: PRACTICE_AUDIO`)가 준 `fileUrl` 그대로. 내가 올린 연습 녹음 파일이어야 하고, 실제로 업로드돼 있어야 하며 1.95MB 이하여야 한다(녹음 길이는 3~60초) — 아니면 400 `VALIDATION_FAILED`(`message`에 `"audioUrl: …"` 사유)
+
+### PracticeRecordingSummaryResponse
+
+분석 요청·다시 요청의 응답(202)과 내 연습 녹음 목록(`PageResponse`)의 항목.
+
+```json
+{
+  "id": 12,
+  "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
+  "status": "SUBMITTED",
+  "createdAt": "2026-11-09T14:30:00",
+  "analyzedAt": null
+}
+```
+
+- `status`: `SUBMITTED`(전송 완료) · `ANALYZING`(분석 중) · `DONE`(분석 완료) · `FAILED`(분석 실패)
+- `createdAt`: 분석을 요청한 시각. 다시 요청해도 바뀌지 않는다. 목록은 이 값의 최근 순
+- `analyzedAt`: 분석이 끝난 시각. `DONE`이 아니면 `null`
+
+### PracticeRecordingDetailResponse
+
+```json
+{
+  "id": 12,
+  "title": "11/9 보컬 연습 - 너의 의미",
+  "part": "VOCAL",
+  "audioUrl": "https://moyeorock-dev-files.s3.ap-northeast-2.amazonaws.com/practice/550e8400-e29b-41d4-a716-446655440000.m4a?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=1800&...",
+  "status": "DONE",
+  "failureReason": null,
+  "createdAt": "2026-11-09T14:30:00",
+  "analyzedAt": "2026-11-09T14:33:12",
+  "feedbacks": [
+    { "startSec": 80, "endSec": 95, "part": "VOCAL", "content": "음정이 2도 플랫되었습니다" },
+    { "startSec": 4803, "endSec": 4865, "part": "VOCAL", "content": "고음 구간에서 박자가 조금 늦습니다" }
+  ]
+}
+```
+
+- `audioUrl`: 재생용 **임시 URL**(30분). 조회할 때마다 새로 만들어 값이 달라진다 — 녹음은 비공개라 DB에는 URL이 아니라 스토리지 key가 있다. 로컬 저장(개발용)에서는 서빙 경로(`/v1/files/local/practice/...`)가 나간다
+- `failureReason`: `FAILED`일 때만 값. 화면에 그대로 보여 주는 문장이다(예: "서버 재시작으로 분석이 중단되었습니다. 다시 요청해 주세요.")
+- `feedbacks`: `DONE`이 아니면 빈 배열. 구간 시작 순. `startSec`·`endSec`는 초(1:20:03 → 4803), `part`는 공용 `Instrument`(`VOCAL` `EL_GT` `AC_GT` `BASS` `DRUM` `KEY`)
+- 결과 형식(구간·세션·내용)은 AI 파트와 확정 전이다. 지금은 가짜 AI가 녹음한 세션(`part`)으로 "(테스트) …" 문장 3줄을 준다

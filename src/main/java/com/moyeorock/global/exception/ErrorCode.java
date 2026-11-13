@@ -30,6 +30,8 @@ public enum ErrorCode {
     LEADER_MUST_DELEGATE_FIRST(HttpStatus.CONFLICT, "팀장을 위임한 뒤 탈퇴할 수 있습니다."),
     // 모임의 GROUP_MEMBER_NOT_FOUND(404)와 같은 상황이라 프론트가 둘을 같게 다룰 수 있도록 맞췄다(PR #86 리뷰)
     TEAM_MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 팀의 팀원이 아닙니다."),
+    // 팀원 추천(AI) — AI 서버 호출 실패·시간 초과·주소 미설정. 명세에 없는 코드라 노션 반영 필요(이슈 #150)
+    RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "팀원 추천을 지금은 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
     // auth (노션 API 초안 로그인 4건, 2026-09-28 확정)
     EMAIL_DUPLICATED(HttpStatus.CONFLICT, "이미 가입된 이메일입니다."),
@@ -43,6 +45,8 @@ public enum ErrorCode {
 
     // 모집 공고 (recruit) — 코드 문자열은 명세에 없어 team 도메인 패턴(TEAM_NOT_FOUND 등)을 따랐다
     RECRUIT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 모집 공고입니다."),
+    // 공연 팀은 그 모임의 모임원만 들어갈 수 있어(#96) 공개 공고 대신 초대로 팀원을 모은다(#174)
+    PERFORMANCE_TEAM_RECRUIT_NOT_ALLOWED(HttpStatus.CONFLICT, "공연 팀은 모집 공고를 올릴 수 없습니다. 모임원을 초대해 주세요."),
 
     // 가입 신청·초대 (join) — api-conventions.md §3 예시 코드
     JOIN_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 신청입니다."),
@@ -74,6 +78,12 @@ public enum ErrorCode {
 
     // 노래 (song) — 코드 이름은 노션에 없어 4팀이 정했다(이슈 #103)
     SONG_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 곡입니다."),
+    // 곡 수동 동기화(이슈 #162) — 코드 이름은 4팀이 정했다
+    SONG_SYNC_IN_PROGRESS(HttpStatus.CONFLICT, "곡 동기화가 이미 진행 중입니다."),
+    SONG_SYNC_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 서버에서 곡을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    // 곡 추천(AI): AI 서버 호출 실패·시간 초과·주소 미설정. 팀원 추천(RECOMMENDATION_UNAVAILABLE)과 문구가 달라 나눴다.
+    // 명세에 없는 코드라 노션 반영 필요(이슈 #171)
+    SONG_RECOMMENDATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "곡 추천을 지금은 사용할 수 없습니다. 잠시 후 다시 시도해 주세요."),
 
     // 셋리스트 (setlist) — SONG_NOT_TEAM_CANDIDATE만 노션에 있고 나머지 이름은 4팀이 정했다(이슈 #103)
     SONG_NOT_SELECTED_BY_TEAM(HttpStatus.CONFLICT, "팀 선택곡에 없는 곡은 셋리스트로 넘길 수 없습니다."),
@@ -83,7 +93,11 @@ public enum ErrorCode {
     // 공연 (performance) — 코드·메시지는 Notion API 초안 에러 응답 예시와 맞춘다
     PERFORMANCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 공연입니다."),
     // 공연 팀원은 그 공연을 연 모임의 활동 모임원만 될 수 있다(#96). 코드 이름은 4팀이 정했다 — 기존 코드를 빌리면 프론트가 구분하기 어렵다
-    NOT_PERFORMANCE_GROUP_MEMBER(HttpStatus.FORBIDDEN, "공연을 연 모임의 모임원만 공연 팀에 들어올 수 있습니다.");
+    NOT_PERFORMANCE_GROUP_MEMBER(HttpStatus.FORBIDDEN, "공연을 연 모임의 모임원만 공연 팀에 들어올 수 있습니다."),
+
+    // 연습 (practice) — 코드 이름은 노션 API 초안 "연습"(2026-11-09)과 맞추고 메시지는 4팀이 정했다(이슈 #155)
+    PRACTICE_RECORDING_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 연습 녹음입니다."),
+    PRACTICE_ANALYSIS_IN_PROGRESS(HttpStatus.CONFLICT, "이미 분석 중인 연습 녹음이 있습니다.");
 
     private final HttpStatus status;
     private final String message;

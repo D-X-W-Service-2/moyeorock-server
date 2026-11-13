@@ -95,7 +95,7 @@ ALTER TABLE groups_
 
 moyeorock은 `deleted_at`이 아니라 **`status` enum 컬럼 기반 소프트 삭제**를 쓴다(`architecture.md` §6). 대부분은 일반 인덱스로 충분하다 — `deleted_at` NULL 기반 부분 유니크 같은 특수 처리가 필요 없다.
 
-"특정 상태일 때만 유일해야" 하는 경우가 생기면 MySQL 생성 컬럼으로 상태가 아닐 때 NULL을 만들고 그 컬럼에 유니크를 건다(유니크는 NULL끼리 겹쳐도 통과한다). 예전 `team_songs.selected_song_id`가 이 패턴이었다. 지금은 쓰는 곳이 없다 — 2026-09-16에 지웠고, 공연 내 곡 중복은 2026-10-30부터 별도 테이블 `setlists`의 일반 유니크로 막는다(이슈 #85).
+"특정 상태일 때만 유일해야" 하는 경우가 생기면 MySQL 생성 컬럼으로 상태가 아닐 때 NULL을 만들고 그 컬럼에 유니크를 건다(유니크는 NULL끼리 겹쳐도 통과한다). 예전 `team_songs.selected_song_id`가 이 패턴이었다(2026-09-16에 지웠고, 공연 내 곡 중복은 2026-10-30부터 별도 테이블 `setlists`의 일반 유니크로 막는다, 이슈 #85). 지금은 `practice_recordings.active_user_id`가 쓴다 — 진행 중(SUBMITTED·ANALYZING)일 때만 `user_id`라 한 사람당 진행 중 분석을 1개로 막는다(2026-11-09, 이슈 #155).
 
 ```sql
 -- 패턴 예시 (현재 스키마에는 없음)

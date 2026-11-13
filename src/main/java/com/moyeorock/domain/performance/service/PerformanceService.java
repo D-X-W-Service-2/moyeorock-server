@@ -15,6 +15,7 @@ import com.moyeorock.domain.performance.dto.response.SetlistResponse;
 import com.moyeorock.domain.performance.entity.Performance;
 import com.moyeorock.domain.performance.enums.PerformancePeriod;
 import com.moyeorock.domain.performance.repository.PerformanceRepository;
+import com.moyeorock.domain.setlist.dto.response.SetlistItemResponse;
 import com.moyeorock.domain.setlist.service.SetlistService;
 import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
@@ -42,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 받는다 — 모임 홈의 다가오는 공연 때문에 {@code GroupService → PerformanceService}가 있어서 순환하지 않게.
  *
  * <p>참여 팀({@code teams})과 내가 속한 팀({@code myTeamIds})은 2팀 {@code TeamService}로 받는다.
- * 상세의 {@code setlist}는 셋리스트 도메인 구현 때 붙인다.
+ * 상세의 확정 셋리스트({@code setlist})는 {@link SetlistService}로 받는다.
  *
  * <p>공연 셋리스트 엔드포인트도 여기서 받는다(domains.md "헷갈리는 경계") — 확정 시각이 공연 컬럼이라 공연·팀·확정 여부는
  * 여기서 확인하고, 행 처리는 {@link SetlistService}에 맡긴다. 팀 확인은 다른 Service를 부르지 않는 {@link TeamMemberService}로 한다.
@@ -265,15 +266,24 @@ public class PerformanceService {
                 .toList();
     }
 
-    // 생성·상세·수정이 같은 응답이라 참여 팀도 한 곳에서 채운다 — 막 만든 공연이면 둘 다 빈 목록이다.
+    // 생성·상세·수정이 같은 응답이라 참여 팀·셋리스트도 한 곳에서 채운다 — 막 만든 공연이면 셋 다 빈 목록이다.
     private PerformanceDetailResponse toDetail(Performance performance, Long userId, boolean canEdit) {
         return PerformanceDetailResponse.of(
                 performance,
                 groupMemberService.getGroupBrief(performance.getGroupId()),
                 teamService.getActiveSummaries(performance.getId()),
+                getConfirmedSetlist(performance),
                 getCreator(performance),
                 canEdit,
                 teamService.findMyTeamIds(performance.getId(), userId));
+    }
+
+    // 확정 전이면 넘겨진 곡이 있어도 담지 않는다(명세 "확정된 것만") — 조회 없이 빈 목록이다.
+    private List<SetlistItemResponse> getConfirmedSetlist(Performance performance) {
+        if (!performance.isSetlistConfirmed()) {
+            return List.of();
+        }
+        return setlistService.getSetlist(performance.getId(), true);
     }
 
     // 만든 사람이 탈퇴했으면 null이다 — getSummaries가 탈퇴 회원을 결과에서 뺀다.

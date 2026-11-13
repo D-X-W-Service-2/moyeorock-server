@@ -1,5 +1,8 @@
 package com.moyeorock.domain.team.service;
 
+import com.moyeorock.domain.team.client.AiMemberRecommendationClient;
+import com.moyeorock.domain.team.client.AiRecommendRequest;
+import com.moyeorock.domain.team.client.AiRecommendResponse;
 import com.moyeorock.domain.team.dto.request.TeamCreateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamMemberUpdateRequest;
@@ -7,6 +10,7 @@ import com.moyeorock.domain.team.dto.request.TeamStatusUpdateRequest;
 import com.moyeorock.domain.team.dto.request.TeamUpdateRequest;
 import com.moyeorock.domain.team.dto.response.PerformanceTeamResponse;
 import com.moyeorock.domain.team.dto.response.TeamDetailResponse;
+import com.moyeorock.domain.team.dto.response.TeamMemberRecommendationResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberResponse;
 import com.moyeorock.domain.team.dto.response.TeamMembershipResponse;
 import com.moyeorock.domain.team.dto.response.TeamMemberStatusResponse;
@@ -21,11 +25,13 @@ import com.moyeorock.domain.team.enums.TeamRole;
 import com.moyeorock.domain.team.enums.TeamStatus;
 import com.moyeorock.domain.team.repository.TeamGenreRepository;
 import com.moyeorock.domain.team.repository.TeamMemberRepository;
-import com.moyeorock.domain.team.repository.TeamMemberRepository.TeamMemberCount;
 import com.moyeorock.domain.team.repository.TeamRepository;
 import com.moyeorock.domain.performance.dto.response.PerformanceBriefResponse;
 import com.moyeorock.domain.performance.service.PerformanceMemberService;
+import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.setlist.service.SetlistService;
+import com.moyeorock.domain.user.dto.response.RecommendationCandidateResponse;
+import com.moyeorock.domain.user.dto.response.UserInstrumentResponse;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
 import com.moyeorock.global.common.dto.PageResponse;
@@ -36,21 +42,30 @@ import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TeamService {
+
+    // AI 서버에 보내는 후보 상한과 응답으로 돌려주는 추천 수(이슈 #150). 호출·응답 크기를 한정한다
+    private static final int RECOMMENDATION_CANDIDATE_LIMIT = 200;
+    private static final int RECOMMENDATION_RESULT_LIMIT = 10;
 
     private final TeamRepository teamRepository;
     private final TeamGenreRepository teamGenreRepository;
@@ -58,6 +73,9 @@ public class TeamService {
     private final UserService userService;
     private final PerformanceMemberService performanceMemberService;
     private final SetlistService setlistService;
+    private final AiMemberRecommendationClient aiMemberRecommendationClient;
+    private final TeamMemberService teamMemberService;
+    private final RecruitPostService recruitPostService;
 
     /** 팀 생성. 요청자가 팀장(LEADER)이 되고 요청의 세션으로 팀원에 등록된다. */
     @Transactional
@@ -83,6 +101,8 @@ public class TeamService {
      * 팀 해체. teams.status만 바꾼다 — 팀원·합주 등은 그대로 두고 조회에서 걸러진다(architecture.md §6).
      * 다만 그 팀의 선택곡·셋리스트 행은 같은 트랜잭션에서 지운다(4팀 SetlistService.deleteByTeam). 해체된 팀이 곡을 쥐고 있으면
      * 같은 공연의 다른 팀이 그 곡을 넘기거나 고를 수 없기 때문이다. 공연 종료의 일괄 해체(disbandAllByPerformance)는 지우지 않는다.
+     * 그 팀의 모집 중 공고도 같은 트랜잭션에서 마감한다(3팀 RecruitPostService.closeOpenPostsOfTeam, #178). 공연 팀은 공고를 만들 수 없어
+     * 일괄 해체에서는 부르지 않는다.
      */
     @Transactional
     public TeamStatusResponse disband(Long userId, Long teamId, TeamStatusUpdateRequest request) {
@@ -95,6 +115,7 @@ public class TeamService {
 
         team.disband();
         setlistService.deleteByTeam(teamId);
+        recruitPostService.closeOpenPostsOfTeam(teamId);
         return TeamStatusResponse.from(team);
     }
 
@@ -179,6 +200,84 @@ public class TeamService {
         getTeam(teamId);
         List<TeamMember> members = teamMemberRepository.findActiveMembers(teamId);
         return new TeamMembersResponse(toMemberResponses(members, getUsers(members)));
+    }
+
+    /**
+     * 팀원 추천(AI). 팀장만 부를 수 있고, 해체된 팀은 안 된다. 이 팀의 ACTIVE 팀원과 후보(user 도메인이 고른 최대 200명)를
+     * AI 서버에 보내 점수·근거를 받고, 점수 높은 순 최대 10명을 돌려준다. 후보가 없으면 AI를 부르지 않는다.
+     * AI가 요청에 없던 사용자나 탈퇴한 사용자를 돌려주면 버린다. AI 호출이 실패하면 RECOMMENDATION_UNAVAILABLE(503)이다.
+     * 다른 도메인 Service를 부르고 AI 응답을 기다리므로 트랜잭션을 붙이지 않는다 — DB 커넥션을 잡고 기다리지 않게 하고,
+     * 호출된 Service가 자기 트랜잭션을 열어 바깥에서 감싸도 같은 시점이 보장되지 않기 때문이다(getDetail과 같은 이유).
+     */
+    public TeamMemberRecommendationResponse recommendMembers(Long userId, Long teamId, Instrument instrument) {
+        Team team = getTeam(teamId);
+        requireLeader(teamId, userId);
+        requireActiveTeam(team);
+
+        List<TeamMember> members = teamMemberRepository.findActiveMembers(teamId);
+        List<Long> memberUserIds = members.stream().map(TeamMember::getUserId).toList();
+        List<RecommendationCandidateResponse> candidates =
+                userService.findRecommendationCandidates(instrument, memberUserIds, RECOMMENDATION_CANDIDATE_LIMIT);
+        if (candidates.isEmpty()) {
+            return new TeamMemberRecommendationResponse(instrument, List.of());
+        }
+
+        List<Genre> genres = groupGenres(List.of(teamId)).getOrDefault(teamId, List.of());
+        AiRecommendResponse response = callRecommendation(new AiRecommendRequest(
+                new AiRecommendRequest.Team(teamId, team.getRegion(), genres),
+                instrument,
+                toRecommendationMembers(members),
+                candidates.stream()
+                        .map(c -> new AiRecommendRequest.Candidate(c.userId(), c.region(), c.genres(), c.level()))
+                        .toList()));
+
+        return new TeamMemberRecommendationResponse(instrument, toRecommended(response, candidates));
+    }
+
+    // 팀원마다 이 팀에서 맡은 세션과 그 악기의 실력을 붙인다. 실력이 없으면 null이다.
+    private List<AiRecommendRequest.Member> toRecommendationMembers(List<TeamMember> members) {
+        Map<Long, List<UserInstrumentResponse>> instruments =
+                userService.getInstruments(members.stream().map(TeamMember::getUserId).toList());
+        return members.stream()
+                .map(m -> new AiRecommendRequest.Member(m.getUserId(), m.getInstrument(),
+                        instruments.getOrDefault(m.getUserId(), List.of()).stream()
+                                .filter(i -> i.instrument() == m.getInstrument())
+                                .map(UserInstrumentResponse::level)
+                                .findFirst()
+                                .orElse(null)))
+                .toList();
+    }
+
+    private AiRecommendResponse callRecommendation(AiRecommendRequest request) {
+        if (!aiMemberRecommendationClient.isConfigured()) {
+            log.warn("AI 서버 주소가 설정되지 않아 팀원 추천을 할 수 없습니다.");
+            throw new BusinessException(ErrorCode.RECOMMENDATION_UNAVAILABLE);
+        }
+        try {
+            return aiMemberRecommendationClient.recommend(request);
+        } catch (RestClientException | IllegalStateException e) {
+            log.warn("AI 서버 팀원 추천 호출에 실패했습니다. teamId={}", request.team().id(), e);
+            throw new BusinessException(ErrorCode.RECOMMENDATION_UNAVAILABLE);
+        }
+    }
+
+    // 우리가 보낸 후보에 없던 id, 점수가 없는 항목, 같은 id의 뒤쪽 항목, 탈퇴해 조회되지 않는 사용자는 버린다.
+    private List<TeamMemberRecommendationResponse.Candidate> toRecommended(AiRecommendResponse response,
+            List<RecommendationCandidateResponse> sent) {
+        Set<Long> sentUserIds = sent.stream().map(RecommendationCandidateResponse::userId).collect(Collectors.toSet());
+        Map<Long, AiRecommendResponse.Item> best = new LinkedHashMap<>();
+        response.candidates().stream()
+                .filter(item -> item != null && item.userId() != null && item.score() != null
+                        && sentUserIds.contains(item.userId()))
+                .sorted(Comparator.comparing(AiRecommendResponse.Item::score).reversed())
+                .forEach(item -> best.putIfAbsent(item.userId(), item));
+        Map<Long, UserSummaryResponse> users = userService.getSummaries(best.keySet());
+        return best.values().stream()
+                .filter(item -> users.containsKey(item.userId()))
+                .limit(RECOMMENDATION_RESULT_LIMIT)
+                .map(item -> new TeamMemberRecommendationResponse.Candidate(users.get(item.userId()), item.score(),
+                        item.reasons() == null ? List.of() : item.reasons()))
+                .toList();
     }
 
     // ---------- 타 도메인용 ----------
@@ -498,32 +597,13 @@ public class TeamService {
         return new PageImpl<>(buildSummaries(teams.getContent()), teams.getPageable(), teams.getTotalElements());
     }
 
-    // 항목마다 장르·인원 수를 따로 조회하면 N+1이 되므로 팀 id 목록으로 한 번에 가져온다
+    // 요약·장르 조립은 TeamMemberService에 있다(공고가 이 Service를 거치지 않고 읽어야 해서, #178)
     private List<TeamSummaryResponse> buildSummaries(List<Team> teams) {
-        if (teams.isEmpty()) {
-            return List.of();
-        }
-        List<Long> teamIds = teams.stream().map(Team::getId).toList();
-        Map<Long, List<Genre>> genres = groupGenres(teamIds);
-        Map<Long, Integer> counts = countMembers(teamIds);
-        return teams.stream()
-                .map(team -> TeamSummaryResponse.of(team,
-                        genres.getOrDefault(team.getId(), List.of()), counts.getOrDefault(team.getId(), 0)))
-                .toList();
+        return teamMemberService.summarize(teams);
     }
 
-    // 장르 행의 id 순(저장한 순서)을 유지한다
     private Map<Long, List<Genre>> groupGenres(List<Long> teamIds) {
-        return teamGenreRepository.findAllByTeamIdIn(teamIds).stream()
-                .sorted(Comparator.comparing(TeamGenre::getId))
-                .collect(Collectors.groupingBy(TeamGenre::getTeamId,
-                        Collectors.mapping(TeamGenre::getGenre, Collectors.toList())));
-    }
-
-    // 팀원이 0명인 팀은 집계 결과에 행이 없어서 호출하는 쪽이 getOrDefault로 0을 채운다
-    private Map<Long, Integer> countMembers(List<Long> teamIds) {
-        return teamMemberRepository.countActiveByTeamIds(teamIds).stream()
-                .collect(Collectors.toMap(TeamMemberCount::getTeamId, count -> (int) count.getCount()));
+        return teamMemberService.getGenres(teamIds);
     }
 
     // 탈퇴한 회원은 getSummaries 결과에 없어 user가 null로 내려간다
