@@ -120,6 +120,42 @@ class JoinNotificationCommitTest {
     }
 
     @Test
+    @DisplayName("신청을 승인하면 팀장이 받은 신청 알림이 읽음으로 바뀐다(#182)")
+    void approve_marksApplyNotificationRead() {
+        Long requestId = joinRequestService.apply(userId,
+                new JoinRequestCreateRequest(TargetType.TEAM, teamId, null, Instrument.BASS, null)).id();
+        assertThat(notificationsOf(leaderId)).extracting(Notification::isRead).containsExactly(false);
+
+        joinRequestService.updateStatus(leaderId, requestId, JoinStatus.APPROVED);
+
+        assertThat(notificationsOf(leaderId)).extracting(Notification::isRead).containsExactly(true);
+        assertThat(notificationsOf(userId)).extracting(Notification::isRead).containsExactly(false);
+    }
+
+    @Test
+    @DisplayName("신청자가 신청을 취소해도 팀장이 받은 신청 알림이 읽음으로 바뀐다(#182)")
+    void cancel_marksApplyNotificationRead() {
+        Long requestId = joinRequestService.apply(userId,
+                new JoinRequestCreateRequest(TargetType.TEAM, teamId, null, Instrument.BASS, null)).id();
+
+        joinRequestService.updateStatus(userId, requestId, JoinStatus.CANCELED);
+
+        assertThat(notificationsOf(leaderId)).extracting(Notification::isRead).containsExactly(true);
+    }
+
+    @Test
+    @DisplayName("초대를 거절하면 받은 사람의 초대 알림이 읽음으로 바뀐다(#182)")
+    void decline_marksInviteNotificationRead() {
+        Long invitationId = joinRequestService.invite(leaderId,
+                new InvitationCreateRequest(TargetType.TEAM, teamId, userId, Instrument.DRUM, null)).id();
+
+        joinRequestService.updateInvitationStatus(userId, invitationId, InvitationDecision.DECLINED);
+
+        assertThat(notificationsOf(userId)).extracting(Notification::isRead).containsExactly(true);
+        assertThat(notificationsOf(leaderId)).extracting(Notification::isRead).containsExactly(false);
+    }
+
+    @Test
     @DisplayName("핵심 작업이 롤백되면 알림은 저장되지 않는다 — 이미 처리된 신청을 다시 승인")
     void failedDecision_savesNoNotification() {
         Long requestId = joinRequestService.apply(userId,

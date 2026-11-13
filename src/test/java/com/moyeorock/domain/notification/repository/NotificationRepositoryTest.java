@@ -47,6 +47,31 @@ class NotificationRepositoryTest {
     }
 
     @Test
+    @DisplayName("markTargetAsRead는 같은 대상·지정 타입의 안읽은 알림만 받은 사람과 관계없이 읽음 처리한다")
+    void markTargetAsRead_sameTargetAndTypesOnly() {
+        Notification applyToMe = notificationRepository.saveAndFlush(Notification.create(
+                ME, NotificationType.TEAM_APPLY, "신청", NotificationTargetType.JOIN_REQUEST, 7L));
+        Notification applyToOther = notificationRepository.saveAndFlush(Notification.create(
+                OTHER, NotificationType.RECRUIT_POST_APPLIED, "모임 신청", NotificationTargetType.JOIN_REQUEST, 7L));
+        Notification approved = notificationRepository.saveAndFlush(Notification.create(
+                OTHER, NotificationType.JOIN_REQUEST_APPROVED, "승인", NotificationTargetType.JOIN_REQUEST, 7L));
+        Notification otherRequest = notificationRepository.saveAndFlush(Notification.create(
+                ME, NotificationType.TEAM_APPLY, "다른 신청", NotificationTargetType.JOIN_REQUEST, 8L));
+        Notification invitationSameId = notificationRepository.saveAndFlush(Notification.create(
+                ME, NotificationType.TEAM_INVITE, "초대", NotificationTargetType.INVITATION, 7L));
+
+        int updated = notificationRepository.markTargetAsRead(NotificationTargetType.JOIN_REQUEST, 7L,
+                Set.of(NotificationType.TEAM_APPLY, NotificationType.RECRUIT_POST_APPLIED));
+
+        assertThat(updated).isEqualTo(2);
+        assertThat(isRead(applyToMe)).isTrue();
+        assertThat(isRead(applyToOther)).isTrue();
+        assertThat(isRead(approved)).isFalse();
+        assertThat(isRead(otherRequest)).isFalse();
+        assertThat(isRead(invitationSameId)).isFalse();
+    }
+
+    @Test
     @DisplayName("목록은 본인 알림만, 최신순(createdAt → id 내림차순)으로 페이징해 돌려준다")
     void findByUserId_ownOnly_latestFirst() {
         Notification first = save(ME, "첫째");

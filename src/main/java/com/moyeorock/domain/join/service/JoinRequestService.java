@@ -19,6 +19,7 @@ import com.moyeorock.domain.recruit.dto.response.RecruitPostApplyInfoResponse;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
 import com.moyeorock.domain.team.dto.response.TeamSummaryResponse;
 import com.moyeorock.domain.team.service.TeamMemberService;
+import com.moyeorock.domain.notification.service.NotificationService;
 import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.domain.user.dto.response.UserSummaryResponse;
 import com.moyeorock.domain.user.service.UserService;
@@ -81,6 +82,7 @@ public class JoinRequestService {
     private final RecruitPostService recruitPostService;
     private final PerformanceMemberService performanceMemberService;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationService notificationService;
 
     // ---------------------------------------------------------------- 가입 신청
 
@@ -219,6 +221,7 @@ public class JoinRequestService {
             } else {
                 request.reject(userId);
             }
+            markRequestNotificationsRead(request);
         }
     }
 
@@ -250,6 +253,9 @@ public class JoinRequestService {
             throw new BusinessException(ErrorCode.INVALID_STATE);
         }
 
+        // 처리되면 이 건을 알린 "처리해 달라"는 알림은 읽음으로 바꾼다 — 안 읽은 개수에 계속 남지 않게(#182).
+        // 승인 중 예외가 나면 같은 트랜잭션이라 함께 롤백된다.
+        markRequestNotificationsRead(request);
         return switch (outcome) {
             case APPROVED -> approve(userId, request);
             case REJECTED -> {
@@ -282,6 +288,13 @@ public class JoinRequestService {
         request.approve(userId);
         notifyDecision(request, userId, true);
         return JoinApprovedResponse.of(request, MEMBER_ROLE);
+    }
+
+    private void markRequestNotificationsRead(JoinRequest request) {
+        notificationService.markRequestNotificationsRead(
+                request.getDirection() == JoinDirection.APPLY
+                        ? NotificationTargetType.JOIN_REQUEST : NotificationTargetType.INVITATION,
+                request.getId());
     }
 
     // 승인·거절 알림. 신청은 신청자에게, 초대는 초대한 사람에게 간다. 취소는 알리지 않는다(알맞은 타입이 없다).
