@@ -43,4 +43,8 @@ public interface PerformanceRepository extends JpaRepository<Performance, Long> 
     // 내 활동의 참여 중인 공연 — 내 팀이 나가는 공연 중 주어진 상태만, 공연일 가까운 순. 공연일이 같으면 먼저 만든 공연이 먼저다.
     List<Performance> findByIdInAndStatusInOrderByPerformedAtAscIdAsc(Collection<Long> ids,
             Collection<PerformanceStatus> statuses);
+
+    // 모임 탈퇴·강퇴 때 공연 팀에서 뺄 공연 — 그 모임의 공연 id 전체(상태 무관). 엔티티 없이 id만 읽는다.
+    @Query("SELECT p.id FROM Performance p WHERE p.groupId = :groupId")
+    List<Long> findIdsByGroupId(@Param("groupId") Long groupId);
 }

@@ -67,6 +67,7 @@ Controller → Service → Repository → DB
 | `team` · `join` → `performance` | 공연 확인(공연 팀원 = 모임원, 공연 요약)은 `PerformanceMemberService`로만 한다. `PerformanceService`는 `TeamService`를 부르므로 반대 방향으로 부르면 순환이다(#105) |
 | `user` → `team` `group` `performance` | 내 활동·타인 프로필 조립은 `UserActivityService`가 `TeamService`·`GroupMemberService`·`PerformanceService`를 호출. `TeamService`·`PerformanceService`는 `UserService`를 주입받으므로 조립을 `UserService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #90) |
 | `group` → `performance` | 동아리 홈의 다가오는 공연은 `GroupService → PerformanceService.findUpcoming`. 그래서 `PerformanceService`는 `GroupService`를 부르지 않고 모임 권한·정보를 `GroupMemberService`로만 받는다(2026-11-03, #112) |
+| `group` → `team` | 모임 탈퇴·강퇴 시 공연 팀에서 빼기는 `GroupService → TeamService.leavePerformanceTeams`(본인 탈퇴)·`removeFromPerformanceTeams`(강퇴). `GroupMemberService`에서 부르면 `TeamService → PerformanceMemberService → GroupMemberService`로 순환하므로 `GroupService`가 묶는다. `GroupService`를 주입받는 Service는 없다(2026-11-05, 이슈 #143) |
 | `song` → `team` `user` `setlist` | 팀 곡 추천은 `SongRecommendationService`가 `TeamMemberService.ensureActiveMember`·`TeamService.getDetail`·`getActiveSummaries`, `UserService.getInstruments`, `SetlistService.findTeamSongs`를 호출. 내 취향 추천곡(이슈 #172)은 `UserService.getMe`를 호출. 호출 방향이 `TeamService → SetlistService → SongService`라서 `SongService`에 두면 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(이슈 #171, 2026-11-12) |
 | `user` → `practice` | 회원 탈퇴 때 `UserWithdrawService`가 `PracticeRecordingService.deleteAllOf`로 탈퇴자의 연습 녹음·피드백·녹음 파일을 지운다. `PracticeRecordingService`는 user 도메인을 주입받지 않는다(PR #157 리뷰, 2026-11-11) |
 | `user` → `team` `group` | 회원 탈퇴 차단은 `UserWithdrawService`가 `TeamService.findLedTeams`·`leaveAllTeams`와 `GroupMemberService.findOwnedGroups`·`leaveAllGroups`를 호출. `TeamService`가 `UserService`를 주입받으므로 `UserService`에 두면 생성자 순환이 생긴다 → 같은 도메인 안의 별도 Service로 둔다(B-8, 2026-11-02) |
@@ -130,6 +131,10 @@ Hard delete는 6곳뿐이다 — 합주, 공지, 북마크, 팀 선택곡(`team_
 **연습 녹음 분석은 서버 재시작(CD 배포)마다 끊긴다.** 분석 대기열은 메모리라 재시작하면 사라지고 분석 중이던 AI 호출도 끊긴다. 앱이 뜨면 부팅 전에 바뀐 `SUBMITTED`·`ANALYZING` 녹음을 `FAILED`("서버 재시작으로 분석이 중단되었습니다")로 바꾸고, 사용자가 다시 요청한다(`PracticeAnalysisService.failUnfinishedOnStartup`). 서버 1대 전제다 — 여러 대가 되면 다른 서버가 하던 분석까지 실패로 만든다. 재시작 손실이 문제가 되면 DB를 대기열로 쓰는 폴링 방식으로 옮긴다(`docs/plans/practice-recording.md` D-4).
 
 의도적으로 두는 것이다. 발견했다고 임의로 고치지 말 것.
+
+**모임 탈퇴·강퇴는 그 모임 공연의 팀 행을 전부 잠근다.** `GroupService.changeMemberStatus`가 그 모임의 공연 id 전체(상태 무관)로 2팀 `TeamService.leavePerformanceTeams`(강퇴는 `removeFromPerformanceTeams`)를 부르고, 이 메서드는 대상이 속했는지와 관계없이 그 공연들의 활동 중인 팀을 `FOR UPDATE`로 잠근다(인덱스로 훑는 해체된 팀 행까지). 그동안 그 모임의 팀 수정·가입 승인·팀 생성이 기다린다. 탈퇴·강퇴가 잦지 않고 한 트랜잭션이 짧아 v0에서는 두고, 대상이 실제로 속한 팀만 잠그도록(`leaveAllTeams`처럼) 바꾸는 것은 2팀과 협의한다(2026-11-06, PR #144 리뷰).
+
+**모임 탈퇴·강퇴 때 공연 팀에 걸린 대기 중 가입 신청·초대는 정리하지 않는다.** 남은 신청은 승인할 때, 초대는 수락할 때 `NOT_PERFORMANCE_GROUP_MEMBER`로 막혀 팀에 들어오지는 못한다. 다만 팀장의 받은 신청 목록·대상의 받은 초대 목록에 처리할 수 없는 건이 남는다. 정리하려면 3팀 `JoinRequestService`에 "이 사람의, 이 팀들 대상 대기 건 취소" 메서드가 필요해 3팀과 협의한다(2026-11-06, PR #144 리뷰).
 
 **공연 종료와 공연 내 팀 생성이 정확히 겹치면 끝난 공연에 팀이 생길 수 있다.** 팀 생성은 공연이 끝났는지 사전 검증만 하고 공연 행을 잠그지 않는다. 버튼을 누르는 순간이 정확히 겹쳐야 생기는 일이라 v0에서는 두고, 생긴 팀은 팀장이 직접 해체할 수 있다.
 

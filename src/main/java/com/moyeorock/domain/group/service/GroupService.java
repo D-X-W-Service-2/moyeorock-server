@@ -11,11 +11,16 @@ import com.moyeorock.domain.group.repository.GroupRepository;
 import com.moyeorock.domain.notice.service.NoticeService;
 import com.moyeorock.domain.performance.service.PerformanceService;
 import com.moyeorock.domain.recruit.service.RecruitPostService;
+import com.moyeorock.domain.team.service.TeamService;
 import com.moyeorock.global.common.dto.PageResponse;
+import com.moyeorock.global.common.enums.NotificationTargetType;
+import com.moyeorock.global.common.enums.NotificationType;
+import com.moyeorock.global.event.NotificationEvent;
 import com.moyeorock.global.exception.BusinessException;
 import com.moyeorock.global.exception.ErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +35,8 @@ public class GroupService {
     private final NoticeService noticeService;
     private final RecruitPostService recruitPostService;
     private final PerformanceService performanceService;
+    private final TeamService teamService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 모임 저장과 모임장 등록은 한 단위다 — 하나만 들어가면 주인 없는 모임이 생긴다. 새 모임이라 고정 공지·공연은 없다. */
     @Transactional
@@ -86,6 +93,35 @@ public class GroupService {
         groupMemberService.ensureOwner(groupId, userId);
         group.disband();
         recruitPostService.closeOpenPostsOfGroup(groupId);
+    }
+
+    /**
+     * 모임원 내보내기·탈퇴. 모임원 상태 변경({@link GroupMemberService#changeStatus} — 본인이면 {@code LEFT}, 모임장이
+     * 타인에게 하면 {@code BANNED})과 그 모임 공연 팀에서 빼기({@code TeamService.leavePerformanceTeams})를 한 트랜잭션으로
+     * 묶는다. GroupMemberService가 TeamService를 부르면 {@code TeamService → PerformanceMemberService → GroupMemberService}로
+     * 순환하므로 여기서 묶는다(domains.md 팀 간 의존).
+     *
+     * <p>모임원 상태를 먼저 바꾼다 — changeStatus의 모임 행 잠금이 트랜잭션의 첫 조회여야 하고, 권한 없는 요청이 팀 쪽
+     * 오류를 먼저 보지 않게 하려는 것이다. 잠그는 순서(모임 → 팀)는 회원 탈퇴({@code leaveAllGroups → leaveAllTeams})와 같다.
+     * 본인 탈퇴인데 공연 팀 팀장이면 {@code LEADER_MUST_DELEGATE_FIRST}로 모임원 상태 변경까지 롤백된다(기본 문구 그대로 —
+     * 메시지를 직접 지정하는 것은 상황 값을 담을 때만이라 api-conventions.md §3, 프론트가 {@code code}로 분기한다).
+     * 강퇴는 팀장이어도 막지 않는다 — 팀장을 뺀 가장 오래된 팀원에게 팀장을 넘기고, 넘길 팀원이 없으면 그 팀을 해체한다(#152).
+     * 어느 쪽이든 팀원 상태는 {@code LEFT}다(팀 강퇴의 {@code REMOVED}가 아니다).
+     * 강퇴면 대상에게 알림을 보낸다 — 트랜잭션 안에서 발행해 롤백되면 알림도 남지 않는다. 본인 탈퇴는 알리지 않는다.
+     * 잠금 범위와 남는 대기 신청·초대는 architecture.md §7(알려진 한계).
+     */
+    @Transactional
+    public void changeMemberStatus(Long userId, Long groupId, Long targetUserId) {
+        groupMemberService.changeStatus(userId, groupId, targetUserId);
+        List<Long> performanceIds = performanceService.findIdsByGroupId(groupId);
+        if (userId.equals(targetUserId)) {
+            teamService.leavePerformanceTeams(targetUserId, performanceIds);
+        } else {
+            teamService.removeFromPerformanceTeams(targetUserId, performanceIds);
+            String groupName = getGroupOrThrow(groupId).getName();
+            eventPublisher.publishEvent(new NotificationEvent(targetUserId, NotificationType.GROUP_MEMBER_REMOVED,
+                    groupName + "에서 내보내졌습니다.", NotificationTargetType.GROUP, groupId));
+        }
     }
 
     private GroupDetailResponse toDetail(Group group, Long ownerId, GroupRole myRole) {

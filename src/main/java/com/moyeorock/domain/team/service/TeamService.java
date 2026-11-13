@@ -421,6 +421,49 @@ public class TeamService {
     }
 
     /**
+     * 모임에서 강퇴될 때 그 모임 공연들의 팀에서 이 사람을 뺀다(4팀 GroupService). 호출한 쪽의 트랜잭션에 참여한다.
+     * {@link #leavePerformanceTeams}와 달리 팀장이어도 막지 않는다 — 위임은 팀장 본인만 할 수 있어서 본인이 위임하지 않으면
+     * 모임장이 내보낼 수 없기 때문이다(#152). 이 사람이 팀장인 팀은 팀장을 뺀 ACTIVE 팀원 중 가장 먼저 들어온 사람(합류 시각,
+     * 같으면 id 순)에게 팀장을 넘기고, 넘길 팀원이 없으면 그 팀을 해체한다(선택곡·셋리스트도 지운다 — {@link #disband}와 같다).
+     * 이 사람의 팀원 행은 모두 LEFT가 된다. 해체된 팀과 이미 나간 팀은 지나간다.
+     *
+     * <p>잠금은 {@link #leavePerformanceTeams}와 같다. 다음 팀장을 고르려고 읽는 팀원 행도 잠금 읽기로 읽어서 그 사이에 나간
+     * 사람을 고르지 않는다.
+     */
+    @Transactional
+    public void removeFromPerformanceTeams(Long userId, Collection<Long> performanceIds) {
+        if (performanceIds == null || performanceIds.isEmpty()) {
+            return;
+        }
+        List<Team> lockedTeams = teamRepository.findActiveByPerformanceIdInForUpdate(performanceIds);
+        if (lockedTeams.isEmpty()) {
+            return;
+        }
+        Map<Long, Team> teamsById = lockedTeams.stream().collect(Collectors.toMap(Team::getId, Function.identity()));
+        for (TeamMember membership : teamMemberRepository.findActiveByUserIdAndTeamIdInForUpdate(userId,
+                List.copyOf(teamsById.keySet()))) {
+            if (membership.getRole() == TeamRole.LEADER) {
+                passLeadershipOrDisband(teamsById.get(membership.getTeamId()), membership);
+            }
+            membership.updateStatus(MemberStatus.LEFT);
+        }
+    }
+
+    // 나가는 팀장 대신 가장 오래된 다른 ACTIVE 팀원을 팀장으로 올린다. 남는 팀원이 없으면 팀을 해체한다.
+    private void passLeadershipOrDisband(Team team, TeamMember leaving) {
+        teamMemberRepository.findActiveMembersForUpdate(team.getId()).stream()
+                .filter(m -> !m.getUserId().equals(leaving.getUserId()))
+                .findFirst()
+                .ifPresentOrElse(next -> {
+                    leaving.changeRole(TeamRole.MEMBER);
+                    next.changeRole(TeamRole.LEADER);
+                }, () -> {
+                    team.disband();
+                    setlistService.deleteByTeam(team.getId());
+                });
+    }
+
+    /**
      * 회원 탈퇴 시 이 사람이 속한 모든 활동 중인 팀(공연 팀·독립 팀)에서 뺀다(1팀 UserService). 호출한 쪽의 트랜잭션에 참여한다.
      * ACTIVE 팀원 행을 LEFT로 바꾸고, 해체된 팀은 지나간다 — 해체된 팀의 팀원 행은 해체 당시 인원 기록이라 그대로 둔다.
      * 팀장 행이 남아 있으면 아무것도 바꾸지 않고 LEADER_MUST_DELEGATE_FIRST를 던진다. 1팀이 먼저 findLedTeams로 막으므로

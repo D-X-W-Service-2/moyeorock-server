@@ -3,6 +3,7 @@ package com.moyeorock.domain.group.controller;
 import com.moyeorock.domain.group.dto.request.GroupMemberUpdateRequest;
 import com.moyeorock.domain.group.dto.response.GroupMemberResponse;
 import com.moyeorock.domain.group.service.GroupMemberService;
+import com.moyeorock.domain.group.service.GroupService;
 import com.moyeorock.global.common.dto.ApiResponse;
 import com.moyeorock.global.common.dto.PageResponse;
 import com.moyeorock.global.security.AuthUser;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class GroupMemberController {
 
     private final GroupMemberService groupMemberService;
+    private final GroupService groupService;
 
     // 명세의 keyword(닉네임 검색)는 user 도메인 연동 때 붙인다 — 지금 받으면 무시만 하게 된다
     @Operation(summary = "모임원 목록")
@@ -40,12 +42,15 @@ public class GroupMemberController {
         return ApiResponse.success(groupMemberService.changeRole(userId, groupId, targetUserId, request.role()));
     }
 
-    /** 내보내기·탈퇴. 요청 바디가 없고 서버가 상태를 정한다(본인 → LEFT, 모임장이 타인 → BANNED). */
+    /**
+     * 내보내기·탈퇴. 요청 바디가 없고 서버가 상태를 정한다(본인 → LEFT, 모임장이 타인 → BANNED).
+     * 공연 팀에서 빼기·강퇴 알림까지 묶여 있어 GroupService로 부른다.
+     */
     @Operation(summary = "모임원 내보내기·탈퇴")
     @PatchMapping("/{targetUserId}/status")
     public ApiResponse<Void> changeStatus(@AuthUser Long userId, @PathVariable Long groupId,
             @PathVariable Long targetUserId) {
-        groupMemberService.changeStatus(userId, groupId, targetUserId);
+        groupService.changeMemberStatus(userId, groupId, targetUserId);
         return ApiResponse.success();
     }
 }
